@@ -10,7 +10,7 @@ use ark_poly::univariate::DensePolynomial;
 /// q - stores the quotient polynomail as DensePolynomial<F>
 /// f - stores the resulting polynomial of (g)^2 * h as DensePolynomial<F>
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Proof<F: PrimeField> {
     pub(crate) q: DensePolynomial<F>,
     pub(crate) f: DensePolynomial<F>

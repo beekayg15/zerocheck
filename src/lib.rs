@@ -1,5 +1,6 @@
 use anyhow::Error;
 use ark_ff::PrimeField;
+use ark_ec::pairing::Pairing;
 
 /// Import zero check protocol for univariate 
 /// polynomials verified using the quotient polynomial
@@ -8,7 +9,7 @@ pub mod univariate_zc;
 /// Trait for the zero check protocol to prove that 
 /// particular function evaluates to zero on a
 /// given domain.
-pub trait ZeroCheck<F: PrimeField>: Sized{
+pub trait ZeroCheck<F: PrimeField, E: Pairing>: Sized{
     /// Type by which input polynomials are provided.
     ///  eg. dense univariate/multilinear polynomials, evaluations
     type InputType: Clone;
@@ -31,8 +32,7 @@ pub trait ZeroCheck<F: PrimeField>: Sized{
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
-        g: Self::InputType,
-        h: Self::InputType,
+        input_poly: Vec<Self::InputType>,
         zero_domain: Self::ZeroDomain
     ) -> Result<Self::Proof, Error>;
 
@@ -48,8 +48,7 @@ pub trait ZeroCheck<F: PrimeField>: Sized{
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
-        g: Self::InputType,
-        h: Self::InputType,
+        input_poly: Vec<Self::InputType>,
         proof: Self::Proof,
         zero_domain: Self::ZeroDomain
     ) -> Result<bool, Error>;

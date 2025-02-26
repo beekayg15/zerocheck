@@ -1,3 +1,4 @@
+use ark_ec::pairing::Pairing;
 use ark_poly::{EvaluationDomain, Evaluations, GeneralEvaluationDomain, Polynomial};
 use ark_crypto_primitives::prf::blake2s::Blake2s;
 use ark_crypto_primitives::prf::PRF;
@@ -5,8 +6,8 @@ use ark_std::marker::PhantomData;
 use ark_ff::{
     FftField, PrimeField, BigInteger
 };
-use anyhow::{Error, Ok};
 use ark_ff::Zero;
+use anyhow::{Error, Ok};
 use crate::ZeroCheck;
 
 mod data_structures;
@@ -23,14 +24,19 @@ pub use data_structures::*;
 /// vanishing polynomial over the zero domain H.
 
 #[derive(Clone)]
-pub struct NaiveUnivariateZeroCheck<F: > {
+pub struct NaiveUnivariateZeroCheck<F: PrimeField + FftField, E: Pairing> {
     _field_data: PhantomData<F>,
+    _pairing_data: PhantomData<E>
 }
 
 /// Zero-Check protocol for univariate polynomials in which the 
 /// input polynomials are provided as evalution of the circuit of
 /// different inputs, and ZeroDomain is a GeneralEvaluationDomain
-impl<F: PrimeField + FftField> ZeroCheck<F> for NaiveUnivariateZeroCheck<F> {
+impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E> 
+    where 
+    F: PrimeField + FftField,
+    E: Pairing
+{
     type InputType = Evaluations<F>;
     type Proof = Proof<F>;
     type ZeroDomain = GeneralEvaluationDomain<F>;
@@ -46,10 +52,12 @@ impl<F: PrimeField + FftField> ZeroCheck<F> for NaiveUnivariateZeroCheck<F> {
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
-            g: Self::InputType,
-            h: Self::InputType,
+            input_poly: Vec<Self::InputType>,
             zero_domain: Self::ZeroDomain
         ) -> Result<Self::Proof, Error> {
+
+        let g = input_poly[0].clone();
+        let h = input_poly[1].clone();
 
         // compute the polynomials corresponding to g and h using interpolation (IFFT)
         let g_poly = g.interpolate();
@@ -62,8 +70,7 @@ impl<F: PrimeField + FftField> ZeroCheck<F> for NaiveUnivariateZeroCheck<F> {
         // the vanishing polynomial over domain `zero_domain`
         let (q_poly, r_poly) = 
             f_poly
-            .divide_by_vanishing_poly(zero_domain)
-            .unwrap();
+            .divide_by_vanishing_poly(zero_domain);
 
         // If f evaluates to 0 over the `zero_domain`
         // the vanishing polynomial perfect divides f with remainder r = 0
@@ -90,11 +97,13 @@ impl<F: PrimeField + FftField> ZeroCheck<F> for NaiveUnivariateZeroCheck<F> {
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
-            g: Self::InputType,
-            h: Self::InputType,
+            input_poly: Vec<Self::InputType>,
             proof: Self::Proof,
             zero_domain: Self::ZeroDomain
         ) -> Result<bool, anyhow::Error> {
+        let g = input_poly[0].clone();
+        let h = input_poly[1].clone();
+
         let q_poly = proof.q;
         let f_poly = proof.f;
 
@@ -234,4 +243,110 @@ fn get_random_indices<F: PrimeField>(
     }
 
     indices
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_bls12_381::Fr;
+    use ark_bls12_381::Bls12_381;
+    use ark_ff::UniformRand;
+    use ark_poly::{
+        univariate::DensePolynomial, 
+        DenseUVPolynomial, EvaluationDomain, 
+        Evaluations, GeneralEvaluationDomain
+    };
+
+    #[test]
+    fn test_proof_generation() {
+        let domain_g = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
+        let domain_h = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
+
+        let zero_domain = GeneralEvaluationDomain::<Fr>::new(1 << 5).unwrap();
+
+        println!("domain size of g: {:?}", domain_g.size());
+        println!("domain size of zero_domain: {:?}", zero_domain.size());
+
+        let evals_over_domain_g: Vec<_> = domain_g
+            .elements()
+            .map(|f| zero_domain.evaluate_vanishing_polynomial(f))
+            .collect();
+
+        let g_evals = Evaluations::from_vec_and_domain(
+            evals_over_domain_g, 
+            domain_g
+        );
+
+        let mut rand_coeffs = vec![];
+
+        let rng = &mut ark_std::test_rng();
+        for _ in 1..(1 << 8) {
+            rand_coeffs.push(Fr::rand(rng));
+        }
+
+        let random_poly = DensePolynomial::from_coefficients_vec(rand_coeffs);
+
+        let h_evals = random_poly.evaluate_over_domain(domain_h);
+
+        let mut inp_evals = vec![];
+        inp_evals.push(g_evals);
+        inp_evals.push(h_evals);
+
+
+
+        let proof = 
+            NaiveUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), zero_domain).unwrap();
+        
+        println!("Proof Generated: {:?}", proof);
+    }
+
+    #[test]
+    fn test_proof_validation() {
+        let domain_g = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
+        let domain_h = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
+
+        let zero_domain = GeneralEvaluationDomain::<Fr>::new(1 << 5).unwrap();
+
+        println!("domain size of g: {:?}", domain_g.size());
+        println!("domain size of zero_domain: {:?}", zero_domain.size());
+
+        let evals_over_domain_g: Vec<_> = domain_g
+            .elements()
+            .map(|f| zero_domain.evaluate_vanishing_polynomial(f))
+            .collect();
+
+        let g_evals = Evaluations::from_vec_and_domain(
+            evals_over_domain_g, 
+            domain_g
+        );
+
+        let mut rand_coeffs = vec![];
+
+        let rng = &mut ark_std::test_rng();
+        for _ in 1..(1 << 8) {
+            rand_coeffs.push(Fr::rand(rng));
+        }
+
+        let random_poly = DensePolynomial::from_coefficients_vec(rand_coeffs);
+
+        let h_evals = random_poly.evaluate_over_domain(domain_h);
+
+        let mut inp_evals = vec![];
+        inp_evals.push(g_evals);
+        inp_evals.push(h_evals);
+
+
+
+        let proof = 
+            NaiveUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), zero_domain).unwrap();
+        
+        println!("Proof Generated: {:?}", proof);
+
+        let result = NaiveUnivariateZeroCheck::<Fr, Bls12_381>
+            ::verify(inp_evals, proof, zero_domain)
+            .unwrap();
+
+        println!("verification result: {:?}", result);
+        assert_eq!(result, true);
+    }
 }
