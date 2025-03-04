@@ -6,6 +6,9 @@ use ark_ec::pairing::Pairing;
 /// polynomials verified using the quotient polynomial
 pub mod univariate_zc;
 
+/// Import utility functions
+pub mod utils; 
+
 /// Trait for the zero check protocol to prove that 
 /// particular function evaluates to zero on a
 /// given domain.
@@ -20,6 +23,9 @@ pub trait ZeroCheck<F: PrimeField, E: Pairing>: Sized{
 
     /// Type of the proof used in the protocol
     type Proof: Clone;
+
+    /// Type of Polynomial Commitment Scheme used
+    type PCS;
 
     /// function called by the prover to genearte a valid
     /// proof for zero-check protocol

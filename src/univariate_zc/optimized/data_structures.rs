@@ -1,4 +1,4 @@
-use ark_poly_commit::kzg10::Commitment;
+use ark_poly_commit::kzg10::{Commitment, VerifierKey, Proof as KZGProof};
 use ark_ec::pairing::Pairing;
 
 /// This is the data structure of the proof to be sent to the verifer,
@@ -13,5 +13,10 @@ use ark_ec::pairing::Pairing;
 #[derive(Clone)]
 pub struct Proof<E: Pairing> {
     pub(crate) q_comm: Commitment<E>,
-    pub(crate) inp_comms: Vec<Commitment<E>>
+    pub(crate) inp_comms: Vec<Commitment<E>>,
+    pub(crate) vk: VerifierKey<E>,
+    pub(crate) q_opening: KZGProof<E>,
+    pub(crate) inp_openings: Vec<KZGProof<E>>,
+    pub(crate) inp_evals: Vec<E::ScalarField>,
+    pub(crate) q_eval: E::ScalarField
 }
