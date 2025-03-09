@@ -1,1 +1,42 @@
+# Rust related files
 /target
+**/*.rs.bk
+
+# Cargo related files
+Cargo.lock
+.cargo/
+.cargo-lock
+
+# VS Code settings
+.vscode/
+*.code-workspace
+
+# Build artifacts and debug files
+debug/
+release/
+profile/
+bench/
+*.dSYM
+*.rlib
+*.rmeta
+
+# Temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+*.old
+
+# Dependencies and tools
+/.idea/
+/node_modules/
+/dist/
+/out/
+
+/config.stamp
+/Makefile
+/config.mk
+rustc
+__pycache__
+*.iml
