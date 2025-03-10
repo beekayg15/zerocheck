@@ -17,31 +17,28 @@ fn naive_univariate_zero_check_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("uni_naive_zerocheck");
 
     for size in [8, 10, 12] {
-        let domain_g = GeneralEvaluationDomain::<Fr>::new(1 << size).unwrap();
-        let domain_h = GeneralEvaluationDomain::<Fr>::new(1 << size).unwrap();
+        let domain = GeneralEvaluationDomain::<Fr>::new(1 << size).unwrap();
 
-        let zero_domain = GeneralEvaluationDomain::<Fr>::new(1 << (size - 3)).unwrap();
-
-        let evals_over_domain_g: Vec<_> = domain_g
+        let evals_over_domain_g: Vec<_> = domain
             .elements()
-            .map(|f| zero_domain.evaluate_vanishing_polynomial(f))
+            .map(|f| domain.evaluate_vanishing_polynomial(f))
             .collect();
 
         let g_evals = Evaluations::from_vec_and_domain(
             evals_over_domain_g, 
-            domain_g
+            domain
         );
 
         let mut rand_coeffs = vec![];
 
         let rng = &mut ark_std::test_rng();
-        for _ in 1..(1 << 15) {
+        for _ in 1..(1 << size) {
             rand_coeffs.push(Fr::rand(rng));
         }
 
         let random_poly = DensePolynomial::from_coefficients_vec(rand_coeffs);
 
-        let h_evals = random_poly.evaluate_over_domain(domain_h);
+        let h_evals = random_poly.evaluate_over_domain(domain);
 
         let mut inp_evals = vec![];
         inp_evals.push(g_evals);
@@ -56,7 +53,7 @@ fn naive_univariate_zero_check_benchmark(c: &mut Criterion) {
                     |input_evals| {
                         let _proof = NaiveUnivariateZeroCheck::<Fr, Bls12_381>::prove(
                             black_box(input_evals), 
-                            black_box(zero_domain)
+                            black_box(domain)
                         );
                     },
                     BatchSize::LargeInput
