@@ -67,6 +67,9 @@ impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E>
         let g_poly = g.interpolate();
         let h_poly = h.interpolate();
 
+        println!("deg_g_poly: {:?}", g_poly.degree());
+        println!("deg_h_poly: {:?}", h_poly.degree());
+
         end_timer!(inp_interpolation_time);
 
         let f_poly_timer =  start_timer!(|| "interpolating poly. f = g^2 * h");
@@ -166,13 +169,13 @@ mod tests {
     use ark_std::start_timer;
 
     #[test]
-    fn test_proof_generation() {
+    fn test_proof_generation_naive_uni() {
         let test_timer = start_timer!(|| "Proof Generation Test");
 
         let domain_g = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
         let domain_h = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
 
-        let zero_domain = GeneralEvaluationDomain::<Fr>::new(1 << 5).unwrap();
+        let zero_domain = GeneralEvaluationDomain::<Fr>::new(1 << 10).unwrap();
 
         println!("domain size of g: {:?}", domain_g.size());
         println!("domain size of zero_domain: {:?}", zero_domain.size());
@@ -190,7 +193,7 @@ mod tests {
         let mut rand_coeffs = vec![];
 
         let rng = &mut ark_std::test_rng();
-        for _ in 1..(1 << 8) {
+        for _ in 1..(1 << 15) {
             rand_coeffs.push(Fr::rand(rng));
         }
 
@@ -204,23 +207,25 @@ mod tests {
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
-        let proof = 
+        let _proof = 
             NaiveUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), zero_domain).unwrap();
 
         end_timer!(proof_gen_timer);
         
-        println!("Proof Generated: {:?}", proof);
+        //println!("Proof Generated: {:?}", proof);
+        
+        println!("Proof Generated");
         end_timer!(test_timer);
     }
 
     #[test]
-    fn test_proof_validation() {
+    fn test_proof_validation_naive_uni() {
         let test_timer = start_timer!(|| "Proof Generation Test");
 
         let domain_g = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
         let domain_h = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
 
-        let zero_domain = GeneralEvaluationDomain::<Fr>::new(1 << 5).unwrap();
+        let zero_domain = GeneralEvaluationDomain::<Fr>::new(1 << 10).unwrap();
 
         println!("domain size of g: {:?}", domain_g.size());
         println!("domain size of zero_domain: {:?}", zero_domain.size());
@@ -238,7 +243,7 @@ mod tests {
         let mut rand_coeffs = vec![];
 
         let rng = &mut ark_std::test_rng();
-        for _ in 1..(1 << 8) {
+        for _ in 1..(1 << 15) {
             rand_coeffs.push(Fr::rand(rng));
         }
 
