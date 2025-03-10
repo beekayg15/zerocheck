@@ -611,6 +611,7 @@ dependencies = [
  "ark-poly",
  "ark-poly-commit",
  "ark-std",
+ "num-traits",
 ]
 
 [[package]]

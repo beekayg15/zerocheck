@@ -12,3 +12,4 @@ ark-crypto-primitives = {version = "^0.5.0", default-features = false, features 
 ark-poly-commit = { version = "^0.5.0", default-features = false}
 ark-ec = { version = "^0.5.0", default-features = false}
 ark-bls12-381 ={ version = "0.5.0", default-features = false, features = [ "curve" ]}
+num-traits = "0.2"
