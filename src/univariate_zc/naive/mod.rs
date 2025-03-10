@@ -47,8 +47,8 @@ impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E>
     /// proof for zero-check protocol
     /// 
     /// Attributes:
-    /// g - input polynomial evalutions
-    /// h - input polynomial evalutions
+    /// g - input polynomial evaluations
+    /// h - input polynomial evaluations
     /// zero_domain - domain over which the resulting polynomial evaluates to 0
     /// 
     /// Returns
@@ -67,8 +67,8 @@ impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E>
         let g_poly = g.interpolate();
         let h_poly = h.interpolate();
 
-        println!("deg_g_poly: {:?}", g_poly.degree());
-        println!("deg_h_poly: {:?}", h_poly.degree());
+        // println!("deg_g_poly: {:?}", g_poly.degree());
+        // println!("deg_h_poly: {:?}", h_poly.degree());
 
         end_timer!(inp_interpolation_time);
 
@@ -177,8 +177,8 @@ mod tests {
 
         let zero_domain = GeneralEvaluationDomain::<Fr>::new(1 << 10).unwrap();
 
-        println!("domain size of g: {:?}", domain_g.size());
-        println!("domain size of zero_domain: {:?}", zero_domain.size());
+        // println!("domain size of g: {:?}", domain_g.size());
+        // println!("domain size of zero_domain: {:?}", zero_domain.size());
 
         let evals_over_domain_g: Vec<_> = domain_g
             .elements()

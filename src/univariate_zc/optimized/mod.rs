@@ -83,9 +83,9 @@ where
         let f_deg = g_deg + h_deg + s_deg;
         // let q_deg = f_deg - z_deg;
 
-        println!("degree of f: {:?}", f_deg);
+        // println!("degree of f: {:?}", f_deg);
 
-        // compute polynomial commitments to input polynomials
+        // Setting up the KZG(MSM) Polynomial Commitment Scheme
         let rng = &mut test_rng();
         let params = KZG10::<E, DensePolynomial<E::ScalarField>>::setup(
             2 * f_deg, 
@@ -93,6 +93,7 @@ where
             rng
         ).expect("PCS setup failed");
 
+        // Computing the verification key
         let vk: VerifierKey<E> = VerifierKey {
             g: params.powers_of_g[0],
             gamma_g: params.powers_of_gamma_g[&0],
@@ -102,6 +103,7 @@ where
             prepared_beta_h: params.prepared_beta_h.clone(),
         };
 
+        // Computing the powers of the generator 'G' 
         let powers_of_g = params.powers_of_g[..= 2 * f_deg].to_vec();
         let powers_of_gamma_g = (0..= 2 * f_deg)
            .map(|i| params.powers_of_gamma_g[&i])
@@ -111,6 +113,7 @@ where
             powers_of_gamma_g: ark_std::borrow::Cow::Owned(powers_of_gamma_g),
         };
 
+        // Compute the commitment to the polynomial g(X)
         let (comm_g, r_g) = KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
             &powers, 
             &g_poly, 
@@ -121,6 +124,7 @@ where
         assert!(!comm_g.0.is_zero(), "Commitment should not be zero");
         assert!(!r_g.is_hiding(), "Commitment should not be hiding");
 
+        // Compute the commitment to the polynomial h(X)
         let (comm_h, r_h) = KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
             &powers, 
             &h_poly, 
@@ -131,6 +135,7 @@ where
         assert!(!comm_h.0.is_zero(), "Commitment should not be zero");
         assert!(!r_h.is_hiding(), "Commitment should not be hiding");
 
+        // Compute the commitment to the polynomial s(X)
         let (comm_s, r_s) = KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
             &powers, 
             &s_poly, 
@@ -141,15 +146,18 @@ where
         assert!(!comm_s.0.is_zero(), "Commitment should not be zero");
         assert!(!r_s.is_hiding(), "Commitment should not be hiding");
 
+        // Collect the commitment to the input polynomials 
         let mut inp_comms = vec![];
         inp_comms.push(comm_g);
         inp_comms.push(comm_h);
         inp_comms.push(comm_s);
 
+        // Sample a random challenge - Fiat-Shamir
         let mut inp_rand = h.evals;
         inp_rand.extend(s.evals);
         let r = get_randomness(g.evals ,inp_rand)[0];
 
+        // Collect the evalution of the input polynomials at the challenge
         let mut inp_evals_at_rand = vec![];
         inp_evals_at_rand.push(g_poly.evaluate(&r));
         inp_evals_at_rand.push(h_poly.evaluate(&r));
@@ -157,6 +165,7 @@ where
 
         let mut inp_opening_proofs = vec![];
         
+        // Generate the opening proof that g(r) = x
         let g_opening_proof = Self::PCS::open(
             &powers,
             &g_poly,
@@ -164,6 +173,7 @@ where
             &r_g
         ).expect("Proof generation failed for g(X)");
 
+        // Generate the opening proof that h(r) = y
         let h_opening_proof = Self::PCS::open(
             &powers,
             &h_poly,
@@ -171,6 +181,7 @@ where
             &r_h
         ).expect("Proof generation failed for h(X)");
 
+        // Generate the opening proof that s(r) = z
         let s_opening_proof = Self::PCS::open(
             &powers,
             &s_poly,
@@ -178,15 +189,17 @@ where
             &r_s
         ).expect("Proof generation failed for s(X)");
 
+        // Collect the opening proofs of the input polynomials
         inp_opening_proofs.push(g_opening_proof);
         inp_opening_proofs.push(h_opening_proof);
         inp_opening_proofs.push(s_opening_proof);
 
-        // compute quotient polynomial q(X)
+        // Compute a unit polynomial u(X) = 1, for all X
         let unit_poly = DensePolynomial::from_coefficients_vec(
             vec![<E::ScalarField>::one()]
         );
 
+        // Compute the quotient polynomial q(X) = f(X)/z_H(X) = (g.h.s + (1-s)(g+h))/z_H
         let f_poly = &g_poly * &h_poly * &s_poly + &(&unit_poly - &s_poly) * &(&g_poly + &h_poly);
         let (q_poly, r_poly) = 
             f_poly
@@ -196,6 +209,7 @@ where
         // the vanishing polynomial perfect divides f with remainder r = 0
         assert!(r_poly.is_zero()); 
 
+        // Compute the commitment to the polynomial q(X)
         let (comm_q, r_q) = KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
             &powers, 
             &q_poly, 
@@ -206,6 +220,7 @@ where
         assert!(!comm_q.0.is_zero(), "Commitment should not be zero");
         assert!(!r_q.is_hiding(), "Commitment should not be hiding");
 
+        // Generate the opening proof that q(r) = t
         let q_opening_proof = Self::PCS::open(
             &powers,
             &q_poly,
@@ -213,6 +228,7 @@ where
             &r_q
         ).expect("Proof generation failed for q(X)");
 
+        // Send the proof with the necessary commitments and opening proofs
         Ok(Proof{
             q_comm: comm_q,
             inp_comms: inp_comms,
@@ -228,9 +244,9 @@ where
     /// zero-check protocol is valid
     /// 
     /// Attributes:
-    /// g - input polynomial evalutions
-    /// h - input polynomial evalutions
-    /// s - input polynomial evalutions
+    /// g - input polynomial evaluations
+    /// h - input polynomial evaluations
+    /// s - input polynomial evaluations
     /// zero_domain - domain over which the resulting polynomial evaluates to 0
     /// proof - proof sent by the prover for the claim
     /// 
@@ -289,6 +305,7 @@ where
         let b = inp_evals[1];
         let c = inp_evals[2];
 
+        // check if q(r) * z_H(r) = g(r).h(r).s(r) + (1 - s(r))(g(r) + h(r))
         let lhs = q_eval * zero_domain.evaluate_vanishing_polynomial(r);
         let rhs = a * b * c + (<E::ScalarField>::one() - c) * (a + b);
 
