@@ -47,8 +47,8 @@ impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E>
     /// proof for zero-check protocol
     /// 
     /// Attributes:
-    /// g - input polynomial evalutions
-    /// h - input polynomial evalutions
+    /// g - input polynomial evaluations
+    /// h - input polynomial evaluations
     /// zero_domain - domain over which the resulting polynomial evaluates to 0
     /// 
     /// Returns
@@ -67,8 +67,8 @@ impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E>
         let g_poly = g.interpolate();
         let h_poly = h.interpolate();
 
-        println!("deg_g_poly: {:?}", g_poly.degree());
-        println!("deg_h_poly: {:?}", h_poly.degree());
+        // println!("deg_g_poly: {:?}", g_poly.degree());
+        // println!("deg_h_poly: {:?}", h_poly.degree());
 
         end_timer!(inp_interpolation_time);
 
@@ -172,22 +172,19 @@ mod tests {
     fn test_proof_generation_naive_uni() {
         let test_timer = start_timer!(|| "Proof Generation Test");
 
-        let domain_g = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
-        let domain_h = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
+        let domain = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
 
-        let zero_domain = GeneralEvaluationDomain::<Fr>::new(1 << 10).unwrap();
+        // println!("domain size of g: {:?}", domain_g.size());
+        // println!("domain size of zero_domain: {:?}", zero_domain.size());
 
-        println!("domain size of g: {:?}", domain_g.size());
-        println!("domain size of zero_domain: {:?}", zero_domain.size());
-
-        let evals_over_domain_g: Vec<_> = domain_g
+        let evals_over_domain_g: Vec<_> = domain
             .elements()
-            .map(|f| zero_domain.evaluate_vanishing_polynomial(f))
+            .map(|f| domain.evaluate_vanishing_polynomial(f))
             .collect();
 
         let g_evals = Evaluations::from_vec_and_domain(
             evals_over_domain_g, 
-            domain_g
+            domain
         );
 
         let mut rand_coeffs = vec![];
@@ -199,7 +196,7 @@ mod tests {
 
         let random_poly = DensePolynomial::from_coefficients_vec(rand_coeffs);
 
-        let h_evals = random_poly.evaluate_over_domain(domain_h);
+        let h_evals = random_poly.evaluate_over_domain(domain);
 
         let mut inp_evals = vec![];
         inp_evals.push(g_evals);
@@ -208,7 +205,7 @@ mod tests {
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
         let _proof = 
-            NaiveUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), zero_domain).unwrap();
+            NaiveUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), domain).unwrap();
 
         end_timer!(proof_gen_timer);
         
@@ -222,22 +219,16 @@ mod tests {
     fn test_proof_validation_naive_uni() {
         let test_timer = start_timer!(|| "Proof Generation Test");
 
-        let domain_g = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
-        let domain_h = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
+        let domain = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
 
-        let zero_domain = GeneralEvaluationDomain::<Fr>::new(1 << 10).unwrap();
-
-        println!("domain size of g: {:?}", domain_g.size());
-        println!("domain size of zero_domain: {:?}", zero_domain.size());
-
-        let evals_over_domain_g: Vec<_> = domain_g
+        let evals_over_domain_g: Vec<_> = domain
             .elements()
-            .map(|f| zero_domain.evaluate_vanishing_polynomial(f))
+            .map(|f| domain.evaluate_vanishing_polynomial(f))
             .collect();
 
         let g_evals = Evaluations::from_vec_and_domain(
             evals_over_domain_g, 
-            domain_g
+            domain
         );
 
         let mut rand_coeffs = vec![];
@@ -249,7 +240,7 @@ mod tests {
 
         let random_poly = DensePolynomial::from_coefficients_vec(rand_coeffs);
 
-        let h_evals = random_poly.evaluate_over_domain(domain_h);
+        let h_evals = random_poly.evaluate_over_domain(domain);
 
         let mut inp_evals = vec![];
         inp_evals.push(g_evals);
@@ -258,7 +249,7 @@ mod tests {
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
         let proof = 
-            NaiveUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), zero_domain).unwrap();
+            NaiveUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), domain).unwrap();
 
         end_timer!(proof_gen_timer);
         
@@ -267,7 +258,7 @@ mod tests {
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result = NaiveUnivariateZeroCheck::<Fr, Bls12_381>
-            ::verify(inp_evals, proof, zero_domain)
+            ::verify(inp_evals, proof, domain)
             .unwrap();
 
         end_timer!(verify_timer);

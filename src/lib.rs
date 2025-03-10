@@ -5,6 +5,7 @@ use ark_ec::pairing::Pairing;
 /// Import zero check protocol for univariate 
 /// polynomials verified using the quotient polynomial
 pub mod univariate_zc;
+pub mod multiliner_zc;
 
 /// Import utility functions
 pub mod utils; 
