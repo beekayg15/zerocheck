@@ -59,7 +59,7 @@ mod tests {
         let instant = Instant::now();
 
         let proof = (0..repeat)
-            .into_par_iter()
+            // .into_par_iter()
             .map(|_| {
                 OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), domain)
                     .unwrap()
