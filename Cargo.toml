@@ -5,14 +5,16 @@ edition = "2021"
 
 [dependencies]
 anyhow = "*"
-ark-ff = { version = "^0.5.0", default-features = false }
-ark-poly = {version = "^0.5.0"}
-ark-std = { version = "^0.5.0", default-features = false }
-ark-crypto-primitives = {version = "^0.5.0", default-features = false, features = ["crh", "prf"]}
-ark-poly-commit = { version = "^0.5.0", default-features = false}
-ark-ec = { version = "^0.5.0", default-features = false}
+ark-ff = { version = "^0.5.0", default-features = false, features = ["parallel", "std"] }
+ark-poly = {version = "^0.5.0", features = ["parallel", "std"] }
+ark-std = { version = "^0.5.0", default-features = false, features = ["parallel", "std"] }
+ark-crypto-primitives = {version = "^0.5.0", default-features = false, features = ["crh", "prf", "parallel", "std"]}
+ark-poly-commit = { version = "^0.5.0", default-features = false, features = ["parallel", "std"] }
+ark-ec = { version = "^0.5.0", default-features = false, features = ["parallel", "std"] }
 ark-bls12-381 ={ version = "0.5.0", default-features = false, features = [ "curve" ]}
 num-traits = "0.2"
+rayon = "1.8"
+itertools = "0.8"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
