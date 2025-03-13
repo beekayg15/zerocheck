@@ -57,8 +57,8 @@ use ark_std::start_timer;
 fn eg_univar_proof_generation_commit() {
     let test_timer = start_timer!(|| "Proof Generation Test");
 
-    let domain = GeneralEvaluationDomain::<Fr>::new(1 << 10).unwrap();
-    // let domain = GeneralEvaluationDomain::<Fr>::new(1 << 3).unwrap();
+    let deg_size = 10;
+    let domain = GeneralEvaluationDomain::<Fr>::new(1 << deg_size).unwrap();
     // for i in domain.elements() {
     //     println!("domain element: {:?}", i);
     // }
@@ -69,7 +69,7 @@ fn eg_univar_proof_generation_commit() {
     let mut rand_h_coeffs = vec![];
     let mut rand_s_coeffs = vec![];
 
-    for _ in 0..(1 << 10) {
+    for _ in 0..(1 << deg_size) {
         rand_g_coeffs.push(Fr::rand(rng));
         rand_h_coeffs.push(Fr::rand(rng));
         rand_s_coeffs.push(Fr::rand(rng));
