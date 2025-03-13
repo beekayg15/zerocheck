@@ -35,7 +35,7 @@ where
     E: Pairing,
     F: PrimeField + FftField,
 {
-    type InputType = Evaluations<E::ScalarField>;
+    type InputType = Vec<Evaluations<E::ScalarField>>;
     type ZeroDomain = GeneralEvaluationDomain<E::ScalarField>;
     type Proof = Proof<E>;
     type PCS = KZG10<E, DensePolynomial<E::ScalarField>>;
@@ -52,9 +52,9 @@ where
     ///
     /// Returns
     /// Proof - valid proof for the zero-check protocol
-    fn prove<'a>(
-        input_poly: Vec<Self::InputType>,
-        zero_domain: Self::ZeroDomain,
+    fn prove<'a> (
+        input_poly: Self::InputType,
+        zero_domain: Self::ZeroDomain
     ) -> Result<Self::Proof, anyhow::Error> {
         // compute the vanishing polynomial of the zero domain
         // let z_poly = zero_domain.vanishing_polynomial();
@@ -271,8 +271,8 @@ where
     ///
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
-    fn verify<'a>(
-        input_poly: Vec<Self::InputType>,
+    fn verify<'a> (
+        input_poly: Self::InputType,
         proof: Self::Proof,
         zero_domain: Self::ZeroDomain,
     ) -> Result<bool, anyhow::Error> {

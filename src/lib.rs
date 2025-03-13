@@ -5,7 +5,7 @@ use ark_ec::pairing::Pairing;
 /// Import zero check protocol for univariate 
 /// polynomials verified using the quotient polynomial
 pub mod univariate_zc;
-pub mod multiliner_zc;
+pub mod multilinear_zc;
 
 /// Import utility functions
 pub mod utils; 
@@ -39,7 +39,7 @@ pub trait ZeroCheck<F: PrimeField, E: Pairing>: Sized{
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
-        input_poly: Vec<Self::InputType>,
+        input_poly: Self::InputType,
         zero_domain: Self::ZeroDomain
     ) -> Result<Self::Proof, Error>;
 
@@ -55,7 +55,7 @@ pub trait ZeroCheck<F: PrimeField, E: Pairing>: Sized{
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
-        input_poly: Vec<Self::InputType>,
+        input_poly: Self::InputType,
         proof: Self::Proof,
         zero_domain: Self::ZeroDomain
     ) -> Result<bool, Error>;
