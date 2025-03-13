@@ -136,6 +136,32 @@ impl<F, _E> ZeroCheck<F, _E> for NaiveMLZeroCheck<F, _E>
         let lhs = subclaim.expected_evaluation;
         let rhs = inp_hat.evaluate(subclaim.point);
 
-        Ok(lhs == rhs)
+        let result: bool = lhs == rhs;
+        Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use ark_bls12_381::Fr;
+    use ark_bls12_381::Bls12_381;
+
+    use crate::ZeroCheck;
+
+    use super::{rand_zero, NaiveMLZeroCheck};
+
+    #[test]
+    fn test_ml_zerocheck() {
+        let poly = rand_zero::<Fr>(10, (4, 5), 2);
+        let proof = NaiveMLZeroCheck::<Fr, Bls12_381>::prove(poly.clone(), 10).unwrap();
+        println!("Proof Generated: {:?}", proof);
+
+        let valid = NaiveMLZeroCheck::<Fr, Bls12_381>::verify(
+            poly, 
+            proof, 
+            10
+        ).unwrap();
+
+        assert!(valid);
     }
 }

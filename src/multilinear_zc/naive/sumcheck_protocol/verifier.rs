@@ -88,7 +88,7 @@ impl<F: PrimeField> IPforSumCheck<F> {
         for i in 0..verifier_state.num_vars {
             let evaluations = &verifier_state.poly_rcvd[i];
 
-            if evaluations.len() != verifier_state.max_multiplicand + 1 {
+            if evaluations.len() < verifier_state.max_multiplicand + 1 {
                 panic!("incorrect number of evaluations");
             }
 

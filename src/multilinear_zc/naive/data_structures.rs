@@ -214,6 +214,37 @@ fn build_eq_x_r_helper<F: PrimeField> (r: &[F], buf: &mut Vec<F>) -> Result<(), 
     Ok(())
 }
 
+pub fn random_mle_list<F: PrimeField>(
+    nv: usize,
+    degree: usize
+) -> (Vec<Arc<DenseMultilinearExtension<F>>>, F) {
+    let mut rng = thread_rng();
+
+    let mut multiplicands = Vec::with_capacity(degree);
+    for _ in 0..degree {
+        multiplicands.push(Vec::with_capacity(1 << nv))
+    }
+    let mut sum = F::zero();
+
+    for _ in 0..(1 << nv) {
+        let mut product = F::one();
+
+        for e in multiplicands.iter_mut() {
+            let val = F::rand(&mut rng);
+            e.push(val);
+            product *= val;
+        }
+        sum += product;
+    }
+
+    let list = multiplicands
+        .into_iter()
+        .map(|x| Arc::new(DenseMultilinearExtension::from_evaluations_vec(nv, x)))
+        .collect();
+
+    (list, sum)
+}
+
 pub fn random_zero_mle_list<F: PrimeField> (
     nv: usize,
     degree: usize,
@@ -236,6 +267,27 @@ pub fn random_zero_mle_list<F: PrimeField> (
         .map(|x| Arc::new(DenseMultilinearExtension::from_evaluations_vec(nv, x)))
         .collect();
     list
+}
+
+pub fn rand<F: PrimeField>(
+    nv: usize,
+    num_multiplicands_range: (usize, usize),
+    num_products: usize,
+) -> Result<(VirtualPolynomial<F>, F), Error> {
+    let mut rng = thread_rng();
+    let mut sum = F::zero();
+
+    let mut poly = VirtualPolynomial::new(nv);
+    for _ in 0..num_products {
+        let num_multiplicands =
+            rng.gen_range(num_multiplicands_range.0..num_multiplicands_range.1);
+        let (product, product_sum) = random_mle_list(nv, num_multiplicands);
+        let coefficient = F::rand(&mut rng);
+        poly.add_product(product.into_iter(), coefficient);
+        sum += product_sum * coefficient;
+    }
+
+    Ok((poly, sum))
 }
 
 pub fn rand_zero<F: PrimeField> (
