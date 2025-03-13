@@ -1,4 +1,8 @@
-use zerocheck::{univariate_zc::naive::*, univariate_zc::optimized::*, ZeroCheck};
+use zerocheck::{
+    // univariate_zc::naive::*, 
+    univariate_zc::optimized::*, 
+    ZeroCheck
+};
 
 use ark_bls12_381::Bls12_381;
 use ark_bls12_381::Fr;

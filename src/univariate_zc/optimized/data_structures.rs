@@ -9,6 +9,11 @@ use ark_ec::pairing::Pairing;
 ///  
 /// q - stores the commitment to quotient polynomail as Commitment<E>
 /// inp_comms - stores the commitment to the input polynomials as Vec<Commitment<E>>
+/// vk - stores the verifier key required to check the KZG openings
+/// q_opening - stores the opening proof for the evaluation of q(X) at challenge 'r'
+/// inp_opening - stores the opening proof for the evaluation of g, h, and s at challenge 'r'
+/// inp_evals -stores the evaluation of g, h, and s at challenge 'r'
+/// q_eval -stores the evaluation of q(X) at challenge 'r'
 
 #[derive(Clone)]
 pub struct Proof<E: Pairing> {

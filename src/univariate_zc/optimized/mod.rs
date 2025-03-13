@@ -1,10 +1,10 @@
 use std::marker::PhantomData;
 use anyhow::Ok;
 use ark_ff::{FftField, PrimeField};
-use ark_poly::EvaluationDomain;
 use ark_poly::{
     univariate::DensePolynomial, 
-    Evaluations, GeneralEvaluationDomain, Polynomial
+    Evaluations, GeneralEvaluationDomain,
+    EvaluationDomain, Polynomial
 };
 use ark_ec::pairing::Pairing;
 use ark_poly_commit::kzg10::{KZG10, Powers, VerifierKey};
@@ -38,7 +38,7 @@ where
     E: Pairing,
     F: PrimeField + FftField,
 {
-    type InputType = Evaluations<E::ScalarField>;
+    type InputType = Vec<Evaluations<E::ScalarField>>;
     type ZeroDomain = GeneralEvaluationDomain<E::ScalarField>;
     type Proof = Proof<E>;
     type PCS = KZG10<E, DensePolynomial<E::ScalarField>>;
@@ -56,7 +56,7 @@ where
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
-        input_poly: Vec<Self::InputType>,
+        input_poly: Self::InputType,
         zero_domain: Self::ZeroDomain
     ) -> Result<Self::Proof, anyhow::Error> {
         
@@ -286,7 +286,7 @@ where
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
-        input_poly: Vec<Self::InputType>,
+        input_poly: Self::InputType,
         proof: Self::Proof,
         zero_domain: Self::ZeroDomain
     ) -> Result<bool, anyhow::Error> {

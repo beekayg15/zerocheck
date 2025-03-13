@@ -38,7 +38,7 @@ impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E>
     F: PrimeField + FftField,
     E: Pairing
 {
-    type InputType = Evaluations<F>;
+    type InputType = Vec<Evaluations<F>>;
     type Proof = Proof<F>;
     type ZeroDomain = GeneralEvaluationDomain<F>;
     type PCS = std::option::Option<F>;
@@ -54,7 +54,7 @@ impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E>
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
-            input_poly: Vec<Self::InputType>,
+            input_poly: Self::InputType,
             zero_domain: Self::ZeroDomain
         ) -> Result<Self::Proof, Error> {
 
@@ -114,7 +114,7 @@ impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E>
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
-            input_poly: Vec<Self::InputType>,
+            input_poly: Self::InputType,
             proof: Self::Proof,
             zero_domain: Self::ZeroDomain
         ) -> Result<bool, anyhow::Error> {
