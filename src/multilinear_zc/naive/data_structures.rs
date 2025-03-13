@@ -1,7 +1,11 @@
+use anyhow::{Error, Ok};
 use ark_ff::PrimeField;
 use ark_poly::{
     DenseMultilinearExtension,
-    Polynomial
+    Polynomial, MultilinearExtension
+};
+use ark_std::rand::{
+    thread_rng, Rng 
 };
 use std::{
     collections::HashMap, cmp::max,
@@ -82,6 +86,39 @@ impl<F: PrimeField> VirtualPolynomial<F> {
         self.products.push((coefficient, indexed_product));
     }
 
+    pub fn mul_mle(
+        &mut self,
+        mle: Arc<DenseMultilinearExtension<F>>,
+        coefficient: F
+    ) -> Result<(), Error> {
+        assert_eq!(
+            self.poly_info.num_vars, mle.num_vars(),
+            "Mismatch in number of variables"
+        );
+
+        let mle_ptr: *const DenseMultilinearExtension<F> = Arc::as_ptr(&mle);
+
+        let mle_index = match self.raw_pointers_lookup_table.get(&mle_ptr) {
+            Some(&p) => p,
+            _ => {
+                self.raw_pointers_lookup_table
+                    .insert(mle_ptr, self.flat_ml_extensions.len());
+                self.flat_ml_extensions.push(mle);
+                self.flat_ml_extensions.len() - 1
+            },
+        };
+
+        for (prod_coef, indices) in self.products.iter_mut() {
+            // - add the MLE to the MLE list;
+            // - multiple each product by MLE and its coefficient.
+            indices.push(mle_index);
+            *prod_coef *= coefficient;
+        }
+
+        self.poly_info.max_multiplicand += 1;
+        Ok(())
+    }
+
     pub fn evaluate(&self, point: Vec<F>) -> F {
         self.products
             .iter()
@@ -93,4 +130,128 @@ impl<F: PrimeField> VirtualPolynomial<F> {
             })
             .sum()
     }
+
+    pub fn build_f_hat(&self, r: &[F]) -> Result<Self, Error> {
+
+        assert_eq!(
+            self.poly_info.num_vars, r.len(),
+            "Given vector does not match the number of variables"
+        );
+
+        let eq_x_r = build_eq_x_r(r)?;
+        let mut res = self.clone();
+        res.mul_mle(eq_x_r, F::one())?;
+
+        Ok(res)
+    }
+}
+
+pub fn build_eq_x_r<F: PrimeField> (
+    r: &[F],
+) -> Result<Arc<DenseMultilinearExtension<F>>, Error> {
+    let evals = build_eq_x_r_vec(r)?;
+    let mle = DenseMultilinearExtension::from_evaluations_vec(
+        r.len(), 
+        evals
+    );
+
+    Ok(Arc::new(mle))
+}
+
+pub fn build_eq_x_r_vec<F: PrimeField> (r: &[F]) -> Result<Vec<F>, Error> {
+    // we build eq(x,r) from its evaluations
+    // we want to evaluate eq(x,r) over x \in {0, 1}^num_vars
+    // for example, with num_vars = 4, x is a binary vector of 4, then
+    //  0 0 0 0 -> (1-r0)   * (1-r1)    * (1-r2)    * (1-r3)
+    //  1 0 0 0 -> r0       * (1-r1)    * (1-r2)    * (1-r3)
+    //  0 1 0 0 -> (1-r0)   * r1        * (1-r2)    * (1-r3)
+    //  1 1 0 0 -> r0       * r1        * (1-r2)    * (1-r3)
+    //  ....
+    //  1 1 1 1 -> r0       * r1        * r2        * r3
+    // we will need 2^num_var evaluations
+
+    let mut eval = Vec::new();
+    build_eq_x_r_helper(r, &mut eval)?;
+
+    Ok(eval)
+}
+
+fn build_eq_x_r_helper<F: PrimeField> (r: &[F], buf: &mut Vec<F>) -> Result<(), Error> {
+    if r.is_empty() {
+        assert!(!r.is_empty(), "invalid challenge");
+    } else if r.len() == 1 {
+        // initializing the buffer with [1-r_0, r_0]
+        buf.push(F::one() - r[0]);
+        buf.push(r[0]);
+    } else {
+        build_eq_x_r_helper(&r[1..], buf)?;
+
+        // suppose at the previous step we received [b_1, ..., b_k]
+        // for the current step we will need
+        // if x_0 = 0:   (1-r0) * [b_1, ..., b_k]
+        // if x_0 = 1:   r0 * [b_1, ..., b_k]
+        // let mut res = vec![];
+        // for &b_i in buf.iter() {
+        //     let tmp = r[0] * b_i;
+        //     res.push(b_i - tmp);
+        //     res.push(tmp);
+        // }
+        // *buf = res;
+
+        let mut res = vec![F::zero(); buf.len() << 1];
+        res.iter_mut().enumerate().for_each(|(i, val)| {
+            let bi = buf[i >> 1];
+            let tmp = r[0] * bi;
+            if i & 1 == 0 {
+                *val = bi - tmp;
+            } else {
+                *val = tmp;
+            }
+        });
+        *buf = res;
+    }
+
+    Ok(())
+}
+
+pub fn random_zero_mle_list<F: PrimeField> (
+    nv: usize,
+    degree: usize,
+) -> Vec<Arc<DenseMultilinearExtension<F>>> {
+    let mut rng = thread_rng();
+
+    let mut multiplicands = Vec::with_capacity(degree);
+    for _ in 0..degree {
+        multiplicands.push(Vec::with_capacity(1 << nv))
+    }
+    for _ in 0..(1 << nv) {
+        multiplicands[0].push(F::zero());
+        for e in multiplicands.iter_mut().skip(1) {
+            e.push(F::rand(&mut rng));
+        }
+    }
+
+    let list = multiplicands
+        .into_iter()
+        .map(|x| Arc::new(DenseMultilinearExtension::from_evaluations_vec(nv, x)))
+        .collect();
+    list
+}
+
+pub fn rand_zero<F: PrimeField> (
+    nv: usize,
+    num_multiplicands_range: (usize, usize),
+    num_products: usize,
+) -> VirtualPolynomial<F> {
+    let mut rng = thread_rng();
+    let mut poly = VirtualPolynomial::new(nv);
+    for _ in 0..num_products {
+        let num_multiplicands =
+            rng.gen_range(num_multiplicands_range.0..num_multiplicands_range.1);
+        let product = random_zero_mle_list(nv, num_multiplicands);
+        let coefficient = F::rand(&mut rng);
+        poly.add_product(product.into_iter(), coefficient);
+    }
+
+    poly
 }

@@ -40,7 +40,26 @@ impl<F, _E> ZeroCheck<F, _E> for NaiveMLZeroCheck<F, _E>
             "Dimensions of boolean hypercube do not match the given polynomials"
         );
 
-        let mut prover_state = IPforSumCheck::prover_init(input_poly);
+        let mut init_seed = vec![];
+        for (coeff, _) in input_poly.products.clone() {
+            init_seed.push(coeff);
+        }
+        
+        let mut init_inp = vec![];
+        for mle in input_poly.flat_ml_extensions.clone() {
+            init_inp.extend(mle.evaluations.clone());
+        }
+
+        let mut r_point = vec![];
+        for _ in 0..zero_domain {
+            let r = get_randomness(init_seed.clone(), init_inp.clone())[0];
+            r_point.push(r);
+            init_seed.push(r);
+        }
+
+        let inp_hat = input_poly.build_f_hat(&r_point).unwrap();
+
+        let mut prover_state = IPforSumCheck::prover_init(inp_hat);
         let mut verifier_msg = None;
         let mut prover_msgs = vec![];
         let mut inp = vec![];
@@ -78,6 +97,25 @@ impl<F, _E> ZeroCheck<F, _E> for NaiveMLZeroCheck<F, _E>
             "Dimensions of boolean hypercube do not match the given polynomials"
         );
 
+        let mut init_seed = vec![];
+        for (coeff, _) in input_poly.products.clone() {
+            init_seed.push(coeff);
+        }
+        
+        let mut init_inp = vec![];
+        for mle in input_poly.flat_ml_extensions.clone() {
+            init_inp.extend(mle.evaluations.clone());
+        }
+
+        let mut r_point = vec![];
+        for _ in 0..zero_domain {
+            let r = get_randomness(init_seed.clone(), init_inp.clone())[0];
+            r_point.push(r);
+            init_seed.push(r);
+        }
+
+        let inp_hat = input_poly.build_f_hat(&r_point).unwrap();
+
         let mut verifier_state = IPforSumCheck::verifier_init(
             input_poly.poly_info.clone()
         );
@@ -96,7 +134,7 @@ impl<F, _E> ZeroCheck<F, _E> for NaiveMLZeroCheck<F, _E>
         ).unwrap();
 
         let lhs = subclaim.expected_evaluation;
-        let rhs = input_poly.evaluate(subclaim.point);
+        let rhs = inp_hat.evaluate(subclaim.point);
 
         Ok(lhs == rhs)
     }
