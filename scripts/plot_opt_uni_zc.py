@@ -10,7 +10,7 @@ def load_test_from_txt_to_blocks(file_path):
     read the txt, return a list of blocks that a block(list) 
     contain one test (from Start: to ··End:).
     """
-    with open(file_path, 'r') as f:
+    with open(file_path, 'r', encoding="utf-8") as f:
         lines = f.readlines()
         lines = [line.strip() for line in lines if line.strip()]
 
@@ -82,7 +82,6 @@ def parse_test_block_ms(block):
             else:
                 raise ValueError(f"Invalid runtime: {line}")
     result_df = pd.DataFrame(results)
-    # result_df.set_index("Description", inplace=True)
     return result_df
 
 
@@ -93,16 +92,18 @@ def extract_result_by_key(df, keys):
     """
     pattern = "|".join(map(re.escape, keys))
     result = df[df["Description"].str.contains(pattern, regex=True)]
-    # result.set_index("Description", inplace=True)
     return result
 
 
-def merge_dataframes(dataframe1, dataframe2, common_column):
+def merge_dataframes(dataframe1, dataframe2, common_column, merge_column="Runtime (ms)"):
     """
-    Assume both dataframes have one common column, merge them.
+    Assume both dataframes have one common column, merge their merge_column.
     """
     assert np.array_equal(dataframe1[common_column].values, dataframe2[common_column]
                           .values), f"Common column not match, {dataframe1[common_column]} vs {dataframe2[common_column]}"
+    runtime_columns = [col for col in dataframe1.columns if merge_column in col]
+    new_suffix = len(runtime_columns)
+    dataframe2 = dataframe2.rename(columns={merge_column: f"{merge_column} {new_suffix}"})
     merged = pd.merge(dataframe1, dataframe2, on=common_column)
     return merged
 
@@ -143,6 +144,32 @@ if __name__ == '__main__':
         else:
             worksize[focus_result_size] = merge_dataframes(
                 worksize[focus_result_size], focus_result, "Description")
-        print()
 
-    print("hello world")
+    # for each worksize, we have a dataframe of results. Compute a column of average runtime
+    for key, value in worksize.items():
+        # compute the average value in column containing "Runtime (ms)"
+        runtime_columns = [col for col in value.columns if "Runtime (ms)" in col]
+        value[f"Average Runtime (ms)"] = value[runtime_columns].mean(axis=1)
+
+    merge_average = worksize[5][["Description", "Average Runtime (ms)"]].copy()
+    for key, value in worksize.items():
+        if key != 5:
+            merge_average = merge_dataframes(
+                merge_average, value[["Description", "Average Runtime (ms)"]], "Description", "Average Runtime (ms)")
+
+    # draw stacked bar chart for each worksize, using the average runtime, stacked by rows
+    runtime_columns = [col for col in merge_average.columns if "Average Runtime (ms)" in col]
+    stacked_merge_average = merge_average.set_index("Description")[runtime_columns]
+    stacked_merge_average = stacked_merge_average.T
+    stacked_merge_average.plot(kind="bar", stacked=True, figsize=(10, 6))
+    # rename the x-tick labels from 5 to the end
+    plt.xticks(np.arange(len(runtime_columns)), [f"2^{i}" for i in range(5, 5+len(runtime_columns))])
+    plt.xlabel("Test Cases")
+    plt.ylabel("Average Runtime (ms)")
+    plt.title("Univariate Zerocheck Average Runtime")
+    plt.legend(title="Description", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+    print("End...")
