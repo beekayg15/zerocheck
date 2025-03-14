@@ -59,7 +59,7 @@ mod tests {
         let instant = Instant::now();
 
         let proof = (0..repeat)
-            .into_par_iter()
+            // .into_par_iter()
             .map(|_| {
                 OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), domain)
                     .unwrap()
@@ -99,9 +99,9 @@ mod tests {
     #[test]
     fn bench_opt_uni_zc() {
         let repeat = 10;
-        let max_work_size = 16;
+        let max_work_size = 10..11;
 
-        let (sizes, runtimes): (Vec<u32>, Vec<u128>) = (1..max_work_size)
+        let (sizes, runtimes): (Vec<u32>, Vec<u128>) = (max_work_size)
             .map(|size| {
                 let total_runtime: u128 = test_template(size, repeat);
                 (size, total_runtime)
