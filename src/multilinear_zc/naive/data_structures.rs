@@ -19,26 +19,39 @@ use super::sumcheck_protocol::prover::ProverMsg;
 /// evaluates to 0 over a given hypercube
 #[derive(Clone, Debug)]
 pub struct Proof<F: PrimeField> {
+    // list of prover message sent during the interactive sumcheck protocol
     pub(crate) prover_msgs: Vec<ProverMsg<F>>,
 }
 
+/// Struct to store the necessary information about the virtual polynomial,
+/// namely, the number of variables in the MLEs and the max degree of any
+/// variable in the virtual polynomial
 #[derive(Clone, Debug)]
 pub struct PolynomialInfo<F: PrimeField> {
+    // maximum degree of the variables in the output polynomial
     pub max_multiplicand: usize,
+    // number of variables in the MLEs
     pub num_vars: usize,
     #[doc(hidden)]
     pub phantom: PhantomData<F>,
 } 
 
+/// Struct to store the sum of products of MLEs
 #[derive(Clone, Debug)]
 pub struct VirtualPolynomial<F: PrimeField> {
+    // information about the virtual polynomial
     pub poly_info: PolynomialInfo<F>,
+    // list of (indexed) MLEs which are to be multiplied 
+    // together along with a coefficient 
     pub products: Vec<(F, Vec<usize>)>,
+    // list of dense multilinear extensions of multilinear 
+    // polynomials used
     pub flat_ml_extensions: Vec<Arc<DenseMultilinearExtension<F>>>,
     raw_pointers_lookup_table: HashMap<*const DenseMultilinearExtension<F>, usize>,
 }
 
 impl<F: PrimeField> VirtualPolynomial<F> {
+    /// Creates an empty virtual polynomial with `num_variables`
     pub fn new(num_variables: usize) -> Self {
         VirtualPolynomial {
             poly_info: PolynomialInfo {
@@ -52,6 +65,12 @@ impl<F: PrimeField> VirtualPolynomial<F> {
         }
     }
 
+    /// Add a product of list of multilinear extensions to self
+    /// Returns an error if the list is empty, or the MLE has a different
+    /// `num_vars` from self
+    ///
+    /// The MLEs will be multiplied together, and then multiplied by the scalar
+    /// `coefficient`
     pub fn add_product(
         &mut self,
         product: impl IntoIterator<Item = Arc<DenseMultilinearExtension<F>>>,
@@ -86,6 +105,11 @@ impl<F: PrimeField> VirtualPolynomial<F> {
         self.products.push((coefficient, indexed_product));
     }
 
+    /// Multiple the current VirtualPolynomial by an MLE:
+    /// - add the MLE to the MLE list;
+    /// - multiple each product by MLE and its coefficient
+    ///
+    /// Returns an error if the MLE has a different `num_vars` from self
     pub fn mul_mle(
         &mut self,
         mle: Arc<DenseMultilinearExtension<F>>,
@@ -119,6 +143,8 @@ impl<F: PrimeField> VirtualPolynomial<F> {
         Ok(())
     }
 
+    /// Evaluate the virtual polynomial at point `point`
+    /// Returns an error is point.len() does not match `num_variables`
     pub fn evaluate(&self, point: Vec<F>) -> F {
         self.products
             .iter()
@@ -131,6 +157,12 @@ impl<F: PrimeField> VirtualPolynomial<F> {
             .sum()
     }
 
+    // Input poly f(x) and a random vector r, output
+    //      \hat f(x) = \sum_{x_i \in eval_x} f(x_i) eq(x, r)
+    // where
+    //      eq(x,y) = \prod_i=1^num_var (x_i * y_i + (1-x_i)*(1-y_i))
+    //
+    // This function is used in ZeroCheck
     pub fn build_f_hat(&self, r: &[F]) -> Result<Self, Error> {
 
         assert_eq!(
@@ -146,6 +178,12 @@ impl<F: PrimeField> VirtualPolynomial<F> {
     }
 }
 
+/// This function build the eq(x, r) polynomial for any given r.
+///
+/// Evaluate
+///      eq(x,y) = \prod_i=1^num_var (x_i * y_i + (1-x_i)*(1-y_i))
+/// over r, which is
+///      eq(x,y) = \prod_i=1^num_var (x_i * r_i + (1-x_i)*(1-r_i))
 pub fn build_eq_x_r<F: PrimeField> (
     r: &[F],
 ) -> Result<Arc<DenseMultilinearExtension<F>>, Error> {
@@ -158,6 +196,13 @@ pub fn build_eq_x_r<F: PrimeField> (
     Ok(Arc::new(mle))
 }
 
+/// This function build the eq(x, r) polynomial for any given r, and output the
+/// evaluation of eq(x, r) in its vector form.
+///
+/// Evaluate
+///      eq(x,y) = \prod_i=1^num_var (x_i * y_i + (1-x_i)*(1-y_i))
+/// over r, which is
+///      eq(x,y) = \prod_i=1^num_var (x_i * r_i + (1-x_i)*(1-r_i))
 pub fn build_eq_x_r_vec<F: PrimeField> (r: &[F]) -> Result<Vec<F>, Error> {
     // we build eq(x,r) from its evaluations
     // we want to evaluate eq(x,r) over x \in {0, 1}^num_vars
@@ -176,6 +221,9 @@ pub fn build_eq_x_r_vec<F: PrimeField> (r: &[F]) -> Result<Vec<F>, Error> {
     Ok(eval)
 }
 
+/// A helper function to build eq(x, r) recursively.
+/// This function takes `r.len()` steps, and for each step it requires a maximum
+/// `r.len()-1` multiplications.
 fn build_eq_x_r_helper<F: PrimeField> (r: &[F], buf: &mut Vec<F>) -> Result<(), Error> {
     if r.is_empty() {
         assert!(!r.is_empty(), "invalid challenge");
@@ -214,6 +262,10 @@ fn build_eq_x_r_helper<F: PrimeField> (r: &[F], buf: &mut Vec<F>) -> Result<(), 
     Ok(())
 }
 
+/// Sample a random list of multilinear polynomials
+/// Returns
+/// - the list of polynomials,
+/// - its sum of polynomial evaluations over the boolean hypercube
 pub fn random_mle_list<F: PrimeField>(
     nv: usize,
     degree: usize
@@ -239,12 +291,15 @@ pub fn random_mle_list<F: PrimeField>(
 
     let list = multiplicands
         .into_iter()
-        .map(|x| Arc::new(DenseMultilinearExtension::from_evaluations_vec(nv, x)))
+        .map(|x| Arc::new(DenseMultilinearExtension::from_evaluations_vec(
+            nv, 
+            x)))
         .collect();
 
     (list, sum)
 }
 
+// Build a randomize list of mle-s whose sum is zero
 pub fn random_zero_mle_list<F: PrimeField> (
     nv: usize,
     degree: usize,
@@ -269,6 +324,7 @@ pub fn random_zero_mle_list<F: PrimeField> (
     list
 }
 
+/// Sample a random virtual polynomial, return the polynomial and its sum
 pub fn rand<F: PrimeField>(
     nv: usize,
     num_multiplicands_range: (usize, usize),
@@ -290,6 +346,8 @@ pub fn rand<F: PrimeField>(
     Ok((poly, sum))
 }
 
+/// Sample a random virtual polynomial that evaluates to zero everywhere
+/// over the boolean hypercube.
 pub fn rand_zero<F: PrimeField> (
     nv: usize,
     num_multiplicands_range: (usize, usize),

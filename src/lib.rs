@@ -60,9 +60,3 @@ pub trait ZeroCheck<F: PrimeField, E: Pairing>: Sized{
         zero_domain: Self::ZeroDomain
     ) -> Result<bool, Error>;
 }
-
-/// Testing the zero-check protocol
-#[cfg(test)]
-pub mod tests {
-
-}
