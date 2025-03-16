@@ -15,7 +15,8 @@ use zerocheck::ZeroCheck;
 /// This function prepares the random input evaluations for the prover test.
 /// Reuse for the same worksize across multiple repeated tests.
 fn prepare_input_evals_domain(size: u32) -> ([Evaluations<Fr>; 4], GeneralEvaluationDomain<Fr>) {
-    let prepare_timer = start_timer!(|| format!("Preparing input evaluations and domain for 2^{size} work"));
+    println!("Preparing input evaluations and domain for 2^{size} work");
+    let instant = Instant::now();
     let domain = GeneralEvaluationDomain::<Fr>::new(1 << size).unwrap();
 
     let rand_g_coeffs: Vec<_> = (0..(1 << size))
@@ -52,7 +53,8 @@ fn prepare_input_evals_domain(size: u32) -> ([Evaluations<Fr>; 4], GeneralEvalua
     let o_evals = Evaluations::from_vec_and_domain(evals_over_domain_o, domain);
 
     let inp_evals = [g_evals, h_evals, s_evals, o_evals];
-    end_timer!(prepare_timer);
+    let duration = instant.elapsed().as_secs_f64();
+    println!("Preparing input evaluations and domain for 2^{size} work ....{duration}s");
     return (inp_evals, domain);
 }
 
