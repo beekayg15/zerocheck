@@ -109,6 +109,14 @@ struct Args {
     /// Maximum work size exponent (inclusive, 2^max_size)
     #[arg(long, default_value = "20")]
     max_size: u32,
+
+    /// Number of threads to use for prepare input evaluations
+    #[arg(long, default_value = "64")]
+    prepare_threads: u32,
+
+    /// Number of threads to use to run proof and verify tests
+    #[arg(long, default_value = "1")]
+    run_threads: u32,
 }
 
 fn bench_opt_uni_zc() {
@@ -118,13 +126,25 @@ fn bench_opt_uni_zc() {
 
     let (s, tt): (Vec<u32>, Vec<u128>) = (work_sizes)
         .map(|size| {
-            let (input_evals, domain) = prepare_input_evals_domain(size);
-            let total_runtime: u128 = (0..args.repeat)
-                .map(|repeat_time| {
-                    println!("Running test for 2^{} with repeat: {}", size, repeat_time);
-                    opt_univariate_zero_check_multithread_benchmark(&input_evals, domain, size)
-                })
-                .sum();
+            let pool_prepare = rayon::ThreadPoolBuilder::new()
+                .num_threads(args.prepare_threads as usize)
+                .build()
+                .unwrap();
+            let (input_evals, domain) = pool_prepare.install(|| prepare_input_evals_domain(size));
+
+            let pool_run = rayon::ThreadPoolBuilder::new()
+                .num_threads(args.run_threads as usize)
+                .build()
+                .unwrap();
+            let total_runtime: u128 = pool_run.install(|| {
+                (0..args.repeat)
+                    .map(|repeat_time| {
+                        println!("Running test for 2^{} with repeat: {}", size, repeat_time);
+                        opt_univariate_zero_check_multithread_benchmark(&input_evals, domain, size)
+                    })
+                    .sum()
+            });
+
             (size, total_runtime)
         })
         .unzip();

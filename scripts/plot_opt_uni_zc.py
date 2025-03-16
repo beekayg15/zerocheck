@@ -210,7 +210,7 @@ if __name__ == '__main__':
     plt.xticks(np.arange(len(runtime_columns)), [
                f"2^{i}" for i in range(5, 5+len(runtime_columns))])
     plt.xlabel("Test Cases")
-    plt.yticks(np.arange(0, 30, 1))
+    # plt.yticks(np.arange(0, 30, 1))
     plt.ylabel(f"Average Runtime ({target_time_unit})")
     plt.title("Univariate Zerocheck Average Runtime")
     plt.grid(True, axis='y', linestyle='--')

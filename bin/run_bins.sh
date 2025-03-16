@@ -23,8 +23,10 @@ MAX_SIZE=16
 ##############################
 # RAYON_NUM_THREADS=1 cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=8 --max-size=8
 
-CMDS1="RAYON_NUM_THREADS=1 cargo run --release --bin univar_opt_bench_multhr -- --repeat=10 --min-size=11 --max-size=12 >> output_log/univar_opt_bench_multhr_1.log "
-CMDS2="RAYON_NUM_THREADS=1 cargo run --release --bin univar_opt_bench_multhr -- --repeat=10 --min-size=13 --max-size=18 >> output_log/univar_opt_bench_multhr_1.log "
+# CMDS1="RAYON_NUM_THREADS=1 cargo run --release --bin univar_opt_bench_multhr -- --repeat=10 --min-size=11 --max-size=12 >> output_log/univar_opt_bench_multhr_1.log "
+# CMDS2="RAYON_NUM_THREADS=1 cargo run --release --bin univar_opt_bench_multhr -- --repeat=10 --min-size=13 --max-size=18 >> output_log/univar_opt_bench_multhr_1.log "
+
+CMDS1="cargo run --release --bin univar_opt_bench_multhr -- --repeat=10 --min-size=12 --max-size=12 --prepare-threads=64 --run-threads=1 | tee -a output_log/univar_opt_bench_multhr_1.log "
 
 for cmd in "${CMDS[@]}"; do
     echo "Running: $cmd"
