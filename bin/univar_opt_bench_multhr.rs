@@ -12,10 +12,9 @@ use std::time::Instant;
 use zerocheck::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
 use zerocheck::ZeroCheck;
 
-fn opt_univariate_zero_check_multithread_benchmark(size: u32) -> u128 {
-    let test_timer =
-        start_timer!(|| format!("Opt Univariate Proof Generation Test for 2^{size} work"));
-
+/// This function prepares the random input evaluations for the prover test.
+/// Reuse for the same worksize across multiple repeated tests.
+fn prepare_input_evals_domain(size: u32) -> ([Evaluations<Fr>; 4], GeneralEvaluationDomain<Fr>) {
     let domain = GeneralEvaluationDomain::<Fr>::new(1 << size).unwrap();
 
     let rand_g_coeffs: Vec<_> = (0..(1 << size))
@@ -51,18 +50,31 @@ fn opt_univariate_zero_check_multithread_benchmark(size: u32) -> u128 {
     let s_evals = Evaluations::from_vec_and_domain(evals_over_domain_s, domain);
     let o_evals = Evaluations::from_vec_and_domain(evals_over_domain_o, domain);
 
-    let inp_evals = vec![g_evals, h_evals, s_evals, o_evals];
+    let inp_evals = [g_evals, h_evals, s_evals, o_evals];
+    return (inp_evals, domain);
+}
 
-    let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
-
+/// Benchmark function for the optimized univariate zero check proof generation and verification.
+/// `inp_evals` is the input evaluations of g, h, s, o.
+/// `domain` is the domain of the evaluations.
+/// `size` is the work size exponent (2^size).
+fn opt_univariate_zero_check_multithread_benchmark(
+    input_evals: &[Evaluations<Fr>; 4],
+    domain: GeneralEvaluationDomain<Fr>,
+    size: u32,
+) -> u128 {
+    let test_timer =
+        start_timer!(|| format!("Opt Univariate Proof Generation Test for 2^{size} work"));
+        
+    let inp_evals = input_evals.to_vec();
     let instant = Instant::now();
+    let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
     let proof =
         OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), domain).unwrap();
 
-    let runtime = instant.elapsed();
-
     end_timer!(proof_gen_timer);
+    let runtime = instant.elapsed();
 
     // println!("Proof Generated");
 
@@ -102,10 +114,11 @@ fn bench_opt_uni_zc() {
 
     let (s, tt): (Vec<u32>, Vec<u128>) = (work_sizes)
         .map(|size| {
+            let (input_evals, domain) = prepare_input_evals_domain(size);
             let total_runtime: u128 = (0..args.repeat)
                 .map(|repeat_time| {
                     println!("Running test for 2^{} with repeat: {}", size, repeat_time);
-                    opt_univariate_zero_check_multithread_benchmark(size)
+                    opt_univariate_zero_check_multithread_benchmark(&input_evals, domain, size)
                 })
                 .sum();
             (size, total_runtime)
