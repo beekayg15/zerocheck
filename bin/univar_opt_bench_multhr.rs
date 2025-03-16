@@ -1,0 +1,119 @@
+use ark_bls12_381::{Bls12_381, Fr};
+use ark_ff::UniformRand;
+use ark_poly::{
+    univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Evaluations,
+    GeneralEvaluationDomain, Polynomial,
+};
+use ark_std::One;
+use ark_std::{end_timer, start_timer};
+use clap::Parser;
+use rayon::prelude::*;
+use std::time::Instant;
+use zerocheck::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
+use zerocheck::ZeroCheck;
+
+fn opt_univariate_zero_check_multithread_benchmark(size: u32) -> u128 {
+    let test_timer =
+        start_timer!(|| format!("Opt Univariate Proof Generation Test for 2^{size} work"));
+
+    let domain = GeneralEvaluationDomain::<Fr>::new(1 << size).unwrap();
+
+    let rand_g_coeffs: Vec<_> = (0..(1 << size))
+        .into_par_iter()
+        .map(|_| Fr::rand(&mut ark_std::test_rng()))
+        .collect();
+    let rand_h_coeffs: Vec<_> = (0..(1 << size))
+        .into_par_iter()
+        .map(|_| Fr::rand(&mut ark_std::test_rng()))
+        .collect();
+    let rand_s_coeffs: Vec<_> = (0..(1 << size))
+        .into_par_iter()
+        .map(|_| Fr::rand(&mut ark_std::test_rng()))
+        .collect();
+
+    let g = DensePolynomial::from_coefficients_vec(rand_g_coeffs);
+    let h = DensePolynomial::from_coefficients_vec(rand_h_coeffs);
+    let s = DensePolynomial::from_coefficients_vec(rand_s_coeffs);
+
+    let evals_over_domain_g: Vec<_> = domain.elements().map(|f| g.evaluate(&f)).collect();
+    let evals_over_domain_h: Vec<_> = domain.elements().map(|f| h.evaluate(&f)).collect();
+    let evals_over_domain_s: Vec<_> = domain.elements().map(|f| s.evaluate(&f)).collect();
+    let evals_over_domain_o: Vec<_> = domain
+        .elements()
+        .map(|f| {
+            g.evaluate(&f) * h.evaluate(&f) * s.evaluate(&f)
+                + (Fr::one() - s.evaluate(&f)) * (g.evaluate(&f) + h.evaluate(&f))
+        })
+        .collect();
+
+    let g_evals = Evaluations::from_vec_and_domain(evals_over_domain_g, domain);
+    let h_evals = Evaluations::from_vec_and_domain(evals_over_domain_h, domain);
+    let s_evals = Evaluations::from_vec_and_domain(evals_over_domain_s, domain);
+    let o_evals = Evaluations::from_vec_and_domain(evals_over_domain_o, domain);
+
+    let inp_evals = vec![g_evals, h_evals, s_evals, o_evals];
+
+    let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
+
+    let instant = Instant::now();
+
+    let proof =
+        OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), domain).unwrap();
+
+    let runtime = instant.elapsed();
+
+    end_timer!(proof_gen_timer);
+
+    // println!("Proof Generated");
+
+    let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
+
+    let result =
+        OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::verify(inp_evals, proof, domain).unwrap();
+
+    end_timer!(verify_timer);
+
+    // println!("verification result: {:?}", result);
+    assert_eq!(result, true);
+
+    end_timer!(test_timer);
+    return runtime.as_millis();
+}
+
+#[derive(Parser, Debug)]
+struct Args {
+    /// Number of repetitions for each test
+    #[arg(long, default_value = "10")]
+    repeat: u32,
+
+    /// Minimum work size exponent (2^min_size)
+    #[arg(long, default_value = "10")]
+    min_size: u32,
+
+    /// Maximum work size exponent (inclusive, 2^max_size)
+    #[arg(long, default_value = "20")]
+    max_size: u32,
+}
+
+fn bench_opt_uni_zc() {
+    let args = Args::parse();
+
+    let work_sizes = args.min_size..=args.max_size; // 2 ^ max_size_size
+
+    let (s, tt): (Vec<u32>, Vec<u128>) = (work_sizes)
+        .map(|size| {
+            let total_runtime: u128 = (0..args.repeat)
+                .map(|repeat_time| {
+                    println!("Running test for 2^{} with repeat: {}", size, repeat_time);
+                    opt_univariate_zero_check_multithread_benchmark(size)
+                })
+                .sum();
+            (size, total_runtime)
+        })
+        .unzip();
+    println!("size {:?}, total_runtime {:?}", s, tt);
+}
+
+fn main() {
+    bench_opt_uni_zc();
+}

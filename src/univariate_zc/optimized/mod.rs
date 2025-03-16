@@ -52,9 +52,9 @@ where
     ///
     /// Returns
     /// Proof - valid proof for the zero-check protocol
-    fn prove<'a> (
+    fn prove<'a>(
         input_poly: Self::InputType,
-        zero_domain: Self::ZeroDomain
+        zero_domain: Self::ZeroDomain,
     ) -> Result<Self::Proof, anyhow::Error> {
         // compute the vanishing polynomial of the zero domain
         // let z_poly = zero_domain.vanishing_polynomial();
@@ -65,15 +65,22 @@ where
         ));
 
         let ifft_time = start_timer!(|| "IFFT for g,h,s,o from evaluations to coefficients");
-        let g = input_poly[0].clone();  // g_evals
-        let h = input_poly[1].clone();  // h_evals
-        let s = input_poly[2].clone();  // s_evals
-        let o = input_poly[3].clone();  // o_evals
+        let g = input_poly[0].clone(); // g_evals
+        let h = input_poly[1].clone(); // h_evals
+        let s = input_poly[2].clone(); // s_evals
+        let o = input_poly[3].clone(); // o_evals
 
         // compute the polynomials corresponding to g, h, and s using interpolation (IFFT)
-        let [g_coeff, h_coeff, s_coeff, o_coeff] = [&g, &h, &s, &o]
+        let ghso_coeffs: Vec<_> = [&g, &h, &s, &o]
             .par_iter()
-            .map(|evals| (*evals).clone().interpolate())
+            .enumerate()
+            .map(|(i, evals)| (i, (*evals).clone().interpolate()))
+            .collect();
+        let mut ghso_sorted_coeffs = ghso_coeffs;
+        ghso_sorted_coeffs.sort_by_key(|(i, _)| *i);
+        let [g_coeff, h_coeff, s_coeff, o_coeff]: [_; 4] = ghso_sorted_coeffs
+            .into_iter()
+            .map(|(_, coeff)| coeff)
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
@@ -122,17 +129,25 @@ where
         };
 
         // Compute the commitment to the polynomial g(X), h(X), s(X), and o(X)
-        let [(comm_g, r_g), (comm_h, r_h), (comm_s, r_s), (comm_o, r_o)] =
-            [&g_coeff, &h_coeff, &s_coeff, &o_coeff]
-                .par_iter()
-                .enumerate()
-                .map(|(idx, poly)| {
+        let comms_rs = [&g_coeff, &h_coeff, &s_coeff, &o_coeff]
+            .par_iter()
+            .enumerate()
+            .map(|(idx, poly)| {
+                (
+                    idx,
                     KZG10::<E, DensePolynomial<E::ScalarField>>::commit(&powers, poly, None, None)
-                        .expect(format!("Commitment to polynomial {idx}_(X) failed").as_str())
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
+                        .expect(format!("Commitment to polynomial {idx}_(X) failed").as_str()),
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut comms_rs_sorted = comms_rs;
+        comms_rs_sorted.sort_by_key(|(i, _)| *i);
+        let [(comm_g, r_g), (comm_h, r_h), (comm_s, r_s), (comm_o, r_o)] = comms_rs_sorted
+            .into_iter()
+            .map(|(_, (comm, r))| (comm, r))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
 
         assert!(!comm_g.0.is_zero(), "Commitment should not be zero");
         assert!(!r_g.is_hiding(), "Commitment should not be hiding");
@@ -167,7 +182,7 @@ where
         let open_time = start_timer!(|| "KZG open the g,h,s,o poly commit at r");
 
         // Generate the opening proof that g(r), h(r), s(r), and o(r) are the evaluations of the polynomials
-        let [g_opening_proof, h_opening_proof, s_opening_proof, o_opening_proof] = [
+        let opening_proofs = [
             (&g_coeff, &r_g),
             (&h_coeff, &r_h),
             (&s_coeff, &r_s),
@@ -176,15 +191,30 @@ where
         .par_iter()
         .enumerate()
         .map(|(idx, (poly, r_poly))| {
-            Self::PCS::open(&powers, poly, r, r_poly)
-                .expect(format!("Proof generation failed for {idx}_(X)").as_str())
+            (
+                idx,
+                Self::PCS::open(&powers, poly, r, r_poly)
+                    .expect(format!("Proof generation failed for {idx}_(X)").as_str()),
+            )
         })
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
-        
+        .collect::<Vec<_>>();
+        let mut opening_proofs_sorted = opening_proofs;
+        opening_proofs_sorted.sort_by_key(|(i, _)| *i);
+        let [g_opening_proof, h_opening_proof, s_opening_proof, o_opening_proof] =
+            opening_proofs_sorted
+                .into_iter()
+                .map(|(_, proof)| proof)
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap();
+
         // Collect the opening proofs of the input polynomials
-        let inp_opening_proofs = vec![g_opening_proof, h_opening_proof, s_opening_proof, o_opening_proof];
+        let inp_opening_proofs = vec![
+            g_opening_proof,
+            h_opening_proof,
+            s_opening_proof,
+            o_opening_proof,
+        ];
 
         end_timer!(open_time);
 
@@ -246,7 +276,7 @@ where
 
         end_timer!(open_q_time);
         end_timer!(prove_time);
-        
+
         // Send the proof with the necessary commitments and opening proofs
         Ok(Proof {
             q_comm: comm_q,
@@ -271,7 +301,7 @@ where
     ///
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
-    fn verify<'a> (
+    fn verify<'a>(
         input_poly: Self::InputType,
         proof: Self::Proof,
         zero_domain: Self::ZeroDomain,

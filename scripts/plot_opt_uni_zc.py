@@ -109,9 +109,9 @@ def merge_dataframes(dataframe1, dataframe2, common_column, merge_column="Runtim
 
 
 if __name__ == '__main__':
-    # res_blocks = load_test_from_txt("scripts/new.txt")
+    # res_blocks = load_test_from_txt_to_blocks("scripts/new.log")
     res_blocks = load_test_from_txt_to_blocks(
-        "output_log/output_opt_uni_zc_tests_multhr_1.log")
+        "output_log/univar_opt_bench_multhr_1.log")
 
     target_keys_univar = ["IFFT for g,h,s,o from evaluations to coefficients",
                           "Setup KZG10 polynomial commitments global parameters",
@@ -170,6 +170,6 @@ if __name__ == '__main__':
     plt.legend(title="Description", bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.show()
+    plt.savefig("output_log/univar_opt_bench_multhr_1.png")
 
     print("End...")
