@@ -15,6 +15,7 @@ use zerocheck::ZeroCheck;
 /// This function prepares the random input evaluations for the prover test.
 /// Reuse for the same worksize across multiple repeated tests.
 fn prepare_input_evals_domain(size: u32) -> ([Evaluations<Fr>; 4], GeneralEvaluationDomain<Fr>) {
+    let prepare_timer = start_timer!(|| format!("Preparing input evaluations and domain for 2^{size} work"));
     let domain = GeneralEvaluationDomain::<Fr>::new(1 << size).unwrap();
 
     let rand_g_coeffs: Vec<_> = (0..(1 << size))
@@ -51,6 +52,7 @@ fn prepare_input_evals_domain(size: u32) -> ([Evaluations<Fr>; 4], GeneralEvalua
     let o_evals = Evaluations::from_vec_and_domain(evals_over_domain_o, domain);
 
     let inp_evals = [g_evals, h_evals, s_evals, o_evals];
+    end_timer!(prepare_timer);
     return (inp_evals, domain);
 }
 
@@ -65,7 +67,7 @@ fn opt_univariate_zero_check_multithread_benchmark(
 ) -> u128 {
     let test_timer =
         start_timer!(|| format!("Opt Univariate Proof Generation Test for 2^{size} work"));
-        
+
     let inp_evals = input_evals.to_vec();
     let instant = Instant::now();
     let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
