@@ -169,8 +169,8 @@ if __name__ == '__main__':
         "output_log/univar_opt_bench_multhr_1.log")
 
     target_keys_univar = ["IFFT for g,h,s,o from evaluations to coefficients",
-                          "Setup KZG10 polynomial commitments global parameters",
-                          "Setup verifier key",
+                        #   "Setup KZG10 polynomial commitments global parameters",
+                        #   "Setup verifier key",
                           "KZG commit to (g,h,s,o) polynomials",
                           "Get Fiat-Shamir random challenge and evals at challenge",
                           "KZG open the g,h,s,o poly commit at r",
@@ -179,7 +179,7 @@ if __name__ == '__main__':
                           "IFFT for q from evaluations to coefficients",
                           "KZG commit to q polynomial",
                           "KZG open the q poly commit at r",]
-    assert len(target_keys_univar) == 11, "Result timer number not match the code"
+    assert len(target_keys_univar) == 9, "Result timer number not match the code"
 
     # parse the result from text log --> blocks --> a dataframe
     target_time_unit = "s"
