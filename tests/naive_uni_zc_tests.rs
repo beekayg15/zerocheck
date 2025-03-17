@@ -6,7 +6,7 @@ mod tests {
     };
     use ark_std::{end_timer, start_timer};
     use zerocheck::univariate_zc::naive::NaiveUnivariateZeroCheck;
-    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_bls12_381::Fr;
     use ark_std::UniformRand;
     use std::time::Instant;
     use zerocheck::ZeroCheck;
@@ -41,12 +41,17 @@ mod tests {
         inp_evals.push(g_evals);
         inp_evals.push(h_evals);
 
+        let zp= NaiveUnivariateZeroCheck::<Fr>::setup(None).unwrap();
+
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
         let instant = Instant::now();
         
         let proof = 
-            NaiveUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), domain).unwrap();
+            NaiveUnivariateZeroCheck::<Fr>::prove(
+                zp.clone(),
+                inp_evals.clone(), 
+                domain).unwrap();
 
         let runtime = instant.elapsed();
 
@@ -56,9 +61,13 @@ mod tests {
 
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
-        let result = NaiveUnivariateZeroCheck::<Fr, Bls12_381>
-            ::verify(inp_evals, proof, domain)
-            .unwrap();
+        let result = NaiveUnivariateZeroCheck::<Fr>
+            ::verify(
+                zp, 
+                inp_evals, 
+                proof, 
+                domain
+            ).unwrap();
 
         end_timer!(verify_timer);
 

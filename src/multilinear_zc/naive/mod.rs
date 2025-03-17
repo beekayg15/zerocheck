@@ -1,5 +1,4 @@
 use anyhow::Ok;
-use ark_ec::pairing::Pairing;
 use ark_ff::{FftField, PrimeField};
 use ark_std::{start_timer, end_timer};
 use sumcheck_protocol::{verifier::VerifierMsg, IPforSumCheck};
@@ -16,23 +15,29 @@ use crate::{utils::get_randomness, ZeroCheck};
 /// f = sum(product(MLEs)) evaluates to 0
 /// over a boolean hypercube of given dimensions
 #[derive(Clone)]
-pub struct NaiveMLZeroCheck<F: PrimeField + FftField, E: Pairing> {
+pub struct NaiveMLZeroCheck<F: PrimeField + FftField> {
     _field_data: PhantomData<F>,
-    _pairing_data: PhantomData<E>
 }
 
-impl<F, _E> ZeroCheck<F, _E> for NaiveMLZeroCheck<F, _E>
+impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
     where
     F: PrimeField + FftField,
-    _E: Pairing 
 {
     type InputType = VirtualPolynomial<F>;
     
     // size of the boolean hypercube over which the output polynomial evaluates to 0
     type ZeroDomain = usize;
-
-    type PCS = std::option::Option<F>;
     type Proof = Proof<F>;
+    type ZeroCheckParams = ZeroCheckParams<F>;
+    type InputParams = Option<F>;
+
+    fn setup<'a>(
+        _pp: Self::InputParams
+    ) -> Result<Self::ZeroCheckParams, anyhow::Error> {
+        Ok(ZeroCheckParams { 
+            _field_data: PhantomData::<F>,
+        })
+    }
 
     /// function called by the prover to genearte a valid
     /// proof for zero-check protocol
@@ -45,6 +50,7 @@ impl<F, _E> ZeroCheck<F, _E> for NaiveMLZeroCheck<F, _E>
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
+            _zero_params: Self::ZeroCheckParams,
             input_poly: Self::InputType,
             zero_domain: Self::ZeroDomain
         ) -> Result<Self::Proof, anyhow::Error> {
@@ -141,6 +147,7 @@ impl<F, _E> ZeroCheck<F, _E> for NaiveMLZeroCheck<F, _E>
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
+            _zero_params: Self::ZeroCheckParams,
             input_poly: Self::InputType,
             proof: Self::Proof,
             zero_domain: Self::ZeroDomain
@@ -223,7 +230,6 @@ impl<F, _E> ZeroCheck<F, _E> for NaiveMLZeroCheck<F, _E>
 #[cfg(test)]
 mod test {
     use ark_bls12_381::Fr;
-    use ark_bls12_381::Bls12_381;
 
     use crate::ZeroCheck;
 
@@ -232,10 +238,17 @@ mod test {
     #[test]
     fn test_ml_zerocheck() {
         let poly = rand_zero::<Fr>(10, (4, 5), 2);
-        let proof = NaiveMLZeroCheck::<Fr, Bls12_381>::prove(poly.clone(), 10).unwrap();
+        let zp = NaiveMLZeroCheck::<Fr>::setup(None).unwrap();
+
+        let proof = NaiveMLZeroCheck::<Fr>::prove(
+            zp.clone(),
+            poly.clone(), 
+            10
+        ).unwrap();
         println!("Proof Generated: {:?}", proof);
 
-        let valid = NaiveMLZeroCheck::<Fr, Bls12_381>::verify(
+        let valid = NaiveMLZeroCheck::<Fr>::verify(
+            zp, 
             poly, 
             proof, 
             10

@@ -3,7 +3,7 @@ mod tests {
     use std::time::Instant;
     use std::iter::zip;
 
-    use ark_bls12_381::{Bls12_381, Fr};
+    use ark_bls12_381::Fr;
     use zerocheck::{multilinear_zc::naive::{rand_zero, NaiveMLZeroCheck}, ZeroCheck};
 
     fn test_template(
@@ -18,12 +18,17 @@ mod tests {
             num_products
         );
 
+        let zp= NaiveMLZeroCheck::<Fr>::setup(None).unwrap();
+
         let instant = Instant::now();
 
         let proof = (0..repeat)
             .map(|_| {
-                NaiveMLZeroCheck::<Fr, Bls12_381>::prove(poly.clone(), num_vars)
-                    .unwrap()
+                NaiveMLZeroCheck::<Fr>::prove(
+                    zp.clone(),
+                    poly.clone(), 
+                    num_vars
+                ).unwrap()
             })
             .collect::<Vec<_>>()
             .last()
@@ -32,7 +37,8 @@ mod tests {
 
         let runtime = instant.elapsed();
 
-        let result = NaiveMLZeroCheck::<Fr, Bls12_381>::verify(
+        let result = NaiveMLZeroCheck::<Fr>::verify(
+            zp,
             poly, 
             proof, 
             num_vars

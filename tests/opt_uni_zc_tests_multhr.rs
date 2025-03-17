@@ -9,6 +9,8 @@ mod tests {
     use ark_std::UniformRand;
     use ark_std::{end_timer, start_timer};
     use rayon::prelude::*;
+    use zerocheck::univariate_zc::optimized::data_structures::InputParams;
+    use std::iter::zip;
     use std::time::Instant;
     use zerocheck::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
     use zerocheck::ZeroCheck;
@@ -56,9 +58,26 @@ mod tests {
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
+        let max_degree = g.degree() + s.degree() + h.degree();
+        let pp = InputParams{
+            max_degree,
+        };
+
+        let zp = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::setup(pp).unwrap();
+
         let instant = Instant::now();
 
-        let proof = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), domain)
+        let proof = (0..repeat)
+            .map(|_| {
+                OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(
+                    zp.clone(),
+                    inp_evals.clone(), 
+                    domain)
+                    .unwrap()
+            })
+            .collect::<Vec<_>>()
+            .last()
+            .cloned()
             .unwrap();
 
         let runtime = instant.elapsed();
@@ -70,8 +89,12 @@ mod tests {
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result =
-            OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::verify(inp_evals, proof, domain)
-                .unwrap();
+            OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::verify(
+                zp,
+                inp_evals, 
+                proof, 
+                domain
+            ).unwrap();
 
         end_timer!(verify_timer);
 
