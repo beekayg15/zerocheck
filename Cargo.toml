@@ -25,8 +25,12 @@ name = "bench_main"
 harness = false
 path = "benchmarks/bench_main.rs"
 
-
 [[bin]]
 name = "univar_opt_bench_multhr"
 harness = false
 path = "bin/univar_opt_bench_multhr.rs"
+
+[[bin]]
+name = "mullin_naive_bench_multhr"
+harness = false
+path = "bin/mullin_naive_bench_multhr.rs"
