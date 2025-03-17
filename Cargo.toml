@@ -15,6 +15,7 @@ ark-bls12-381 ={ version = "0.5.0", default-features = false, features = [ "curv
 num-traits = "0.2"
 rayon = "1.8"
 itertools = "0.8"
+clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -24,3 +25,12 @@ name = "bench_main"
 harness = false
 path = "benchmarks/bench_main.rs"
 
+[[bin]]
+name = "univar_opt_bench_multhr"
+harness = false
+path = "bin/univar_opt_bench_multhr.rs"
+
+[[bin]]
+name = "mullin_naive_bench_multhr"
+harness = false
+path = "bin/mullin_naive_bench_multhr.rs"
