@@ -1,4 +1,3 @@
-use ark_ec::pairing::Pairing;
 use ark_poly::{EvaluationDomain, Evaluations, GeneralEvaluationDomain, Polynomial};
 use ark_std::marker::PhantomData;
 use ark_ff::{
@@ -25,23 +24,29 @@ pub use data_structures::*;
 /// vanishing polynomial over the zero domain H.
 
 #[derive(Clone)]
-pub struct NaiveUnivariateZeroCheck<F: PrimeField + FftField, E: Pairing> {
+pub struct NaiveUnivariateZeroCheck<F: PrimeField + FftField> {
     _field_data: PhantomData<F>,
-    _pairing_data: PhantomData<E>
 }
 
 /// Zero-Check protocol for univariate polynomials in which the 
 /// input polynomials are provided as evalution of the circuit of
 /// different inputs, and ZeroDomain is a GeneralEvaluationDomain
-impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E> 
-    where 
-    F: PrimeField + FftField,
-    E: Pairing
-{
+impl<F: PrimeField + FftField> ZeroCheck<F> for NaiveUnivariateZeroCheck<F> {
     type InputType = Vec<Evaluations<F>>;
     type Proof = Proof<F>;
     type ZeroDomain = GeneralEvaluationDomain<F>;
-    type PCS = std::option::Option<F>;
+    type ZeroCheckParams = ZeroCheckParams<F>;
+    type InputParams = Option<F>;
+
+    fn setup<'a>(
+        _pp: Self::InputParams
+    ) -> Result<ZeroCheckParams<F>, Error> {
+        let zp = ZeroCheckParams {
+            _field_data: PhantomData::<F>,
+        };
+
+        Ok(zp)
+    }
 
     /// function called by the prover to genearte a valid
     /// proof for zero-check protocol
@@ -54,6 +59,7 @@ impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E>
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
+            _zero_params: Self::ZeroCheckParams,
             input_poly: Self::InputType,
             zero_domain: Self::ZeroDomain
         ) -> Result<Self::Proof, Error> {
@@ -114,6 +120,7 @@ impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E>
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
+            _zero_params: Self::ZeroCheckParams,
             input_poly: Self::InputType,
             proof: Self::Proof,
             zero_domain: Self::ZeroDomain
@@ -158,7 +165,6 @@ impl<F, E> ZeroCheck<F, E> for NaiveUnivariateZeroCheck<F, E>
 mod tests {
     use super::*;
     use ark_bls12_381::Fr;
-    use ark_bls12_381::Bls12_381;
     use ark_ff::UniformRand;
     use ark_poly::{
         univariate::DensePolynomial, 
@@ -198,6 +204,11 @@ mod tests {
 
         let h_evals = random_poly.evaluate_over_domain(domain);
 
+        let zero_params = 
+            NaiveUnivariateZeroCheck::<Fr>::setup(
+                None
+            ).unwrap();
+
         let mut inp_evals = vec![];
         inp_evals.push(g_evals);
         inp_evals.push(h_evals);
@@ -205,7 +216,11 @@ mod tests {
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
         let _proof = 
-            NaiveUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), domain).unwrap();
+            NaiveUnivariateZeroCheck::<Fr>::prove(
+                zero_params,
+                inp_evals.clone(), 
+                domain
+            ).unwrap();
 
         end_timer!(proof_gen_timer);
         
@@ -246,10 +261,19 @@ mod tests {
         inp_evals.push(g_evals);
         inp_evals.push(h_evals);
 
+        let zero_params = 
+            NaiveUnivariateZeroCheck::<Fr>::setup(
+                None
+            ).unwrap();
+
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
         let proof = 
-            NaiveUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), domain).unwrap();
+            NaiveUnivariateZeroCheck::<Fr>::prove(
+                zero_params.clone(),
+                inp_evals.clone(), 
+                domain
+            ).unwrap();
 
         end_timer!(proof_gen_timer);
         
@@ -257,9 +281,12 @@ mod tests {
 
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
-        let result = NaiveUnivariateZeroCheck::<Fr, Bls12_381>
-            ::verify(inp_evals, proof, domain)
-            .unwrap();
+        let result = NaiveUnivariateZeroCheck::<Fr>::verify(
+            zero_params,
+            inp_evals, 
+            proof, 
+            domain
+        ).unwrap();
 
         end_timer!(verify_timer);
 

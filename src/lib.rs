@@ -1,6 +1,5 @@
 use anyhow::Error;
 use ark_ff::PrimeField;
-use ark_ec::pairing::Pairing;
 
 /// Import zero check protocol for univariate 
 /// polynomials verified using the quotient polynomial
@@ -13,7 +12,7 @@ pub mod utils;
 /// Trait for the zero check protocol to prove that 
 /// particular function evaluates to zero on a
 /// given domain.
-pub trait ZeroCheck<F: PrimeField, E: Pairing>: Sized{
+pub trait ZeroCheck<F: PrimeField>: Sized{
     /// Type by which input polynomials are provided.
     ///  eg. dense univariate/multilinear polynomials, evaluations
     type InputType: Clone;
@@ -25,8 +24,18 @@ pub trait ZeroCheck<F: PrimeField, E: Pairing>: Sized{
     /// Type of the proof used in the protocol
     type Proof: Clone;
 
-    /// Type of Polynomial Commitment Scheme used
-    type PCS;
+    /// Type of Zero-check Parameters used in the protocol
+    type ZeroCheckParams: Clone;
+
+    /// Type of Input Parameters to the setup
+    type InputParams: Clone;
+
+    /// function to setup the zerocheck protocol
+    /// such as setting up the PCS and other
+    /// equipments necessary
+    fn setup<'a>(
+        pp: Self::InputParams
+    ) -> Result<Self::ZeroCheckParams, Error>;
 
     /// function called by the prover to genearte a valid
     /// proof for zero-check protocol
@@ -39,6 +48,7 @@ pub trait ZeroCheck<F: PrimeField, E: Pairing>: Sized{
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
+        zero_params: Self::ZeroCheckParams,
         input_poly: Self::InputType,
         zero_domain: Self::ZeroDomain
     ) -> Result<Self::Proof, Error>;
@@ -55,6 +65,7 @@ pub trait ZeroCheck<F: PrimeField, E: Pairing>: Sized{
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
+        zero_params: Self::ZeroCheckParams,
         input_poly: Self::InputType,
         proof: Self::Proof,
         zero_domain: Self::ZeroDomain

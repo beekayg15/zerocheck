@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use ark_ff::PrimeField;
 use ark_poly::univariate::DensePolynomial;
 
@@ -14,4 +15,9 @@ use ark_poly::univariate::DensePolynomial;
 pub struct Proof<F: PrimeField> {
     pub(crate) q: DensePolynomial<F>,
     pub(crate) f: DensePolynomial<F>
+}
+
+#[derive(Clone)]
+pub struct ZeroCheckParams<F: PrimeField> {
+    pub _field_data: PhantomData<F>,
 }

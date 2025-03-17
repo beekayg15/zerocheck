@@ -14,6 +14,11 @@ use std::{
 
 use super::sumcheck_protocol::prover::ProverMsg;
 
+#[derive(Clone)]
+pub struct ZeroCheckParams<F: PrimeField> {
+    pub _field_data: PhantomData<F>,
+}
+
 /// This is the data structure of the proof to be sent to the verifer,
 /// to prove that the output polynomial f(x') = l(x').r(x').s(x')
 /// evaluates to 0 over a given hypercube

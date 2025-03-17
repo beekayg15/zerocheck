@@ -3,7 +3,6 @@ use criterion::{
     Criterion, BatchSize, black_box
 };
 use ark_bls12_381::Fr;
-use ark_bls12_381::Bls12_381;
 use ark_ff::UniformRand;
 use ark_poly::{
     univariate::DensePolynomial, 
@@ -44,6 +43,8 @@ fn naive_univariate_zero_check_benchmark(c: &mut Criterion) {
         inp_evals.push(g_evals);
         inp_evals.push(h_evals);
 
+        let zp = NaiveUnivariateZeroCheck::<Fr>::setup(None).unwrap();
+
         group.bench_with_input(
             BenchmarkId::new("uni_naive_zerocheck", size), &size, |b, &_size| {
                 b.iter_batched(
@@ -51,7 +52,8 @@ fn naive_univariate_zero_check_benchmark(c: &mut Criterion) {
                         inp_evals.clone()
                     },
                     |input_evals| {
-                        let _proof = NaiveUnivariateZeroCheck::<Fr, Bls12_381>::prove(
+                        let _proof = NaiveUnivariateZeroCheck::<Fr>::prove(
+                            black_box(zp.clone()),
                             black_box(input_evals), 
                             black_box(domain)
                         );

@@ -27,18 +27,63 @@ use data_structures::*;
 /// vanishing polynomial over the zero domain H.
 pub struct OptimizedUnivariateZeroCheck<F, E> {
     _field_data: PhantomData<F>,
-    _pairing_data: PhantomData<E>,
+    _pairing_data: PhantomData<E>
 }
 
-impl<F, E> ZeroCheck<F, E> for OptimizedUnivariateZeroCheck<F, E>
+impl<F, E> ZeroCheck<F> for OptimizedUnivariateZeroCheck<F, E>
 where
-    E: Pairing,
     F: PrimeField + FftField,
+    E: Pairing
 {
     type InputType = Vec<Evaluations<E::ScalarField>>;
     type ZeroDomain = GeneralEvaluationDomain<E::ScalarField>;
     type Proof = Proof<E>;
-    type PCS = KZG10<E, DensePolynomial<E::ScalarField>>;
+    type ZeroCheckParams = ZeroCheckParams<E>;
+    type InputParams = InputParams;
+
+    fn setup<'a>(
+        pp: Self::InputParams
+    ) -> Result<Self::ZeroCheckParams, anyhow::Error> {
+        let setup_kzg_time =
+            start_timer!(|| "Setup KZG10 polynomial commitments global parameters");
+
+        // Setting up the KZG(MSM) Polynomial Commitment Scheme
+        let rng = &mut test_rng();
+        let params = KZG10::<E, DensePolynomial<E::ScalarField>>::setup(
+            pp.max_degree, 
+            false, rng
+        ).expect("PCS setup failed");
+
+        end_timer!(setup_kzg_time);
+        let setup_vk_time = start_timer!(|| "Setup verifier key");
+
+        // Computing the verification key
+        let vk: VerifierKey<E> = VerifierKey {
+            g: params.powers_of_g[0],
+            gamma_g: params.powers_of_gamma_g[&0],
+            h: params.h,
+            beta_h: params.beta_h,
+            prepared_h: params.prepared_h.clone(),
+            prepared_beta_h: params.prepared_beta_h.clone(),
+        };
+
+        end_timer!(setup_vk_time);
+        let powers_of_g_time = start_timer!(|| "Computing the powers of G");
+
+        // Computing the powers of the generator 'G'
+        let powers_of_g = params.powers_of_g[..=(pp.max_degree)].to_vec();
+        let powers_of_gamma_g = (0..=(pp.max_degree))
+            .map(|i| params.powers_of_gamma_g[&i])
+            .collect();
+
+        end_timer!(powers_of_g_time);
+
+        Ok(ZeroCheckParams{
+            vk,
+            powers_of_g,
+            powers_of_gamma_g,
+        })
+    }
 
     /// function called by the prover to genearte a valid
     /// proof for zero-check protocol
@@ -53,6 +98,7 @@ where
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
+        zero_params: Self::ZeroCheckParams,
         input_poly: Self::InputType,
         zero_domain: Self::ZeroDomain
     ) -> Result<Self::Proof, anyhow::Error> {
@@ -79,46 +125,11 @@ where
             .unwrap();
 
         end_timer!(ifft_time);
-        let setup_kzg_time =
-            start_timer!(|| "Setup KZG10 polynomial commitments global parameters");
-
-        let g_deg = g_coeff.degree();
-        let h_deg = h_coeff.degree();
-        let s_deg = s_coeff.degree();
-
-        // compute degree of quotient polynomial to
-        let f_deg = g_deg + h_deg + s_deg;
-        let q_deg = f_deg - z_deg;
-
-        // Setting up the KZG(MSM) Polynomial Commitment Scheme
-        let rng = &mut test_rng();
-        let params = KZG10::<E, DensePolynomial<E::ScalarField>>::setup(2 * f_deg, false, rng)
-            .expect("PCS setup failed");
-
-        end_timer!(setup_kzg_time);
-        let setup_vk_time = start_timer!(|| "Setup verifier key");
-
-        // Computing the verification key
-        let vk: VerifierKey<E> = VerifierKey {
-            g: params.powers_of_g[0],
-            gamma_g: params.powers_of_gamma_g[&0],
-            h: params.h,
-            beta_h: params.beta_h,
-            prepared_h: params.prepared_h.clone(),
-            prepared_beta_h: params.prepared_beta_h.clone(),
-        };
-
-        end_timer!(setup_vk_time);
         let commit_time = start_timer!(|| "KZG commit to (g,h,s,o) polynomials");
 
-        // Computing the powers of the generator 'G'
-        let powers_of_g = params.powers_of_g[..=2 * f_deg].to_vec();
-        let powers_of_gamma_g = (0..=2 * f_deg)
-            .map(|i| params.powers_of_gamma_g[&i])
-            .collect();
         let powers = Powers {
-            powers_of_g: ark_std::borrow::Cow::Owned(powers_of_g),
-            powers_of_gamma_g: ark_std::borrow::Cow::Owned(powers_of_gamma_g),
+            powers_of_g: ark_std::borrow::Cow::Owned(zero_params.powers_of_g),
+            powers_of_gamma_g: ark_std::borrow::Cow::Owned(zero_params.powers_of_gamma_g),
         };
 
         // Compute the commitment to the polynomial g(X), h(X), s(X), and o(X)
@@ -127,8 +138,12 @@ where
                 .par_iter()
                 .enumerate()
                 .map(|(idx, poly)| {
-                    KZG10::<E, DensePolynomial<E::ScalarField>>::commit(&powers, poly, None, None)
-                        .expect(format!("Commitment to polynomial {idx}_(X) failed").as_str())
+                    KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
+                        &powers, 
+                        poly, 
+                        None, 
+                        None
+                    ).expect(format!("Commitment to polynomial {idx}_(X) failed").as_str())
                 })
                 .collect::<Vec<_>>()
                 .try_into()
@@ -176,7 +191,7 @@ where
         .par_iter()
         .enumerate()
         .map(|(idx, (poly, r_poly))| {
-            Self::PCS::open(&powers, poly, r, r_poly)
+            KZG10::<E, DensePolynomial<E::ScalarField>>::open(&powers, poly, r, r_poly)
                 .expect(format!("Proof generation failed for {idx}_(X)").as_str())
         })
         .collect::<Vec<_>>()
@@ -189,6 +204,13 @@ where
         end_timer!(open_time);
 
         // Compute the quotient polynomial q(X) = f(X)/z_H(X) = (g.h.s + (1-s)(g+h))/z_H
+        let g_deg = g_coeff.degree();
+        let h_deg = h_coeff.degree();
+        let s_deg = s_coeff.degree();
+
+        // compute degree of quotient polynomial to
+        let f_deg = g_deg + h_deg + s_deg;
+        let q_deg = f_deg - z_deg;
 
         let coset_time = start_timer!(|| "Compute coset domain");
         // Compute the coset domain to interpolate q(X)
@@ -242,7 +264,12 @@ where
 
         // Generate the opening proof that q(r) = t
         let q_opening_proof =
-            Self::PCS::open(&powers, &q_coeff, r, &r_q).expect("Proof generation failed for q(X)");
+        KZG10::<E, DensePolynomial<E::ScalarField>>::open(
+            &powers, 
+            &q_coeff, 
+            r, 
+            &r_q
+        ).expect("Proof generation failed for q(X)");
 
         end_timer!(open_q_time);
         end_timer!(prove_time);
@@ -251,7 +278,6 @@ where
         Ok(Proof {
             q_comm: comm_q,
             inp_comms: inp_comms,
-            vk: vk,
             inp_evals: inp_evals_at_rand,
             inp_openings: inp_opening_proofs,
             q_eval: q_coeff.evaluate(&r),
@@ -272,6 +298,7 @@ where
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
+        zero_params: Self::ZeroCheckParams,
         input_poly: Self::InputType,
         proof: Self::Proof,
         zero_domain: Self::ZeroDomain,
@@ -283,7 +310,7 @@ where
 
         let q_comm = proof.q_comm;
         let inp_comms = proof.inp_comms;
-        let vk = proof.vk;
+        let vk = zero_params.vk;
         let inp_openings = proof.inp_openings;
         let inp_evals = proof.inp_evals;
         let q_opening = proof.q_opening;
@@ -297,7 +324,12 @@ where
         // check openings to input polynomials
         for i in 0..inp_evals.len() {
             assert!(
-                Self::PCS::check(&vk, &inp_comms[i], r, inp_evals[i], &inp_openings[i]).unwrap(),
+                KZG10::<E, DensePolynomial<E::ScalarField>>::check(
+                    &vk, 
+                    &inp_comms[i], 
+                    r, inp_evals[i], 
+                    &inp_openings[i]
+                ).unwrap(),
                 "Opening failed at input polynomial {:?}",
                 i + 1
             );
@@ -305,7 +337,13 @@ where
 
         // check opening to quotient polynomials
         assert!(
-            Self::PCS::check(&vk, &q_comm, r, q_eval, &q_opening).unwrap(),
+            KZG10::<E, DensePolynomial<E::ScalarField>>::check(
+                &vk, 
+                &q_comm, 
+                r, 
+                q_eval, 
+                &q_opening
+            ).unwrap(),
             "Opening failed at quotient polynomial"
         );
 
@@ -387,7 +425,18 @@ mod tests {
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
-        let proof = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(inp_evals.clone(), domain)
+        let max_degree = g.degree() + s.degree() + h.degree();
+        let pp = InputParams{
+            max_degree,
+        };
+
+        let zp = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::setup(pp).unwrap();
+
+        let proof = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(
+            zp.clone(),
+            inp_evals.clone(), 
+            domain
+        )
             .unwrap();
 
         end_timer!(proof_gen_timer);
@@ -397,8 +446,12 @@ mod tests {
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result =
-            OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::verify(inp_evals, proof, domain)
-                .unwrap();
+            OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::verify(
+                zp,
+                inp_evals, 
+                proof, 
+                domain
+            ).unwrap();
 
         end_timer!(verify_timer);
 
