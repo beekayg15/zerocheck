@@ -13,12 +13,24 @@ fn test_template(
     num_products: usize,
     repeat: i32,
 ) -> u128 {
-    let poly = rand_zero::<Fr>(num_vars, num_multiplicands_range, num_products);
+    let poly = rand_zero::<Fr> (
+        num_vars, 
+        num_multiplicands_range, 
+        num_products
+    );
+
+    let zp= NaiveMLZeroCheck::<Fr>::setup(None).unwrap();
 
     let instant = Instant::now();
 
     let proof = (0..repeat)
-        .map(|_| NaiveMLZeroCheck::<Fr, Bls12_381>::prove(poly.clone(), num_vars).unwrap())
+        .map(|_| {
+            NaiveMLZeroCheck::<Fr>::prove(
+                zp.clone(),
+                poly.clone(), 
+                num_vars
+            ).unwrap()
+        })
         .collect::<Vec<_>>()
         .last()
         .cloned()
@@ -26,7 +38,12 @@ fn test_template(
 
     let runtime = instant.elapsed();
 
-    let result = NaiveMLZeroCheck::<Fr, Bls12_381>::verify(poly, proof, num_vars).unwrap();
+    let result = NaiveMLZeroCheck::<Fr>::verify(
+        zp,
+        poly, 
+        proof, 
+        num_vars
+    ).unwrap();
 
     assert_eq!(result, true);
     return runtime.as_millis();
