@@ -5,10 +5,10 @@ from copy import deepcopy
 import re
 
 
-def load_test_from_txt_to_blocks(file_path: str):
+def load_test_from_txt_to_blocks(file_path: str, start_line: str):
     """
     read the txt, return a list of blocks that a block(list) 
-    contain one test (from Start: to ··End:).
+    contain one test (from Start: start_line to ··End:).
     """
     with open(file_path, 'r', encoding="utf-8") as f:
         lines = f.readlines()
@@ -18,11 +18,11 @@ def load_test_from_txt_to_blocks(file_path: str):
     block = []
     title = ""
     for i, line in enumerate(lines):
-        if line.startswith("Start:"):
+        if line.startswith("Start:") and start_line in line:
             title = line.replace("Start:", "").strip()
             block = [line]
             continue
-        if line.startswith("··End:"):
+        if line.startswith("··End:") and start_line in line:
             assert title in line, f"Title not match: {title} vs {line}"
             block.append(line)
             result_blocks.append(deepcopy(block))
@@ -136,7 +136,7 @@ def parse_text_to_dict_dataframe(text_list: list, target_keys: list = [], target
         # Filter the focus result by target keys
         if target_keys:
             focus_result = extract_result_by_key(
-                block_result, target_keys_univar)
+                block_result, target_keys)
             assert len(focus_result) == len(
                 target_keys), f"Result timer number not match the code, only filter out {len(focus_result)}"
         else:
@@ -163,10 +163,9 @@ def dataframe_average_row(dataframe: pd.DataFrame, common_column_name: str = "Ru
     return dataframe
 
 
-if __name__ == '__main__':
-    # res_blocks = load_test_from_txt_to_blocks("scripts/new.log")
+def plot_univar_zc():
     res_blocks = load_test_from_txt_to_blocks(
-        "output_log/univar_opt_bench_multhr_1.log")
+        "output_log/univar_opt_bench_multhr_1.log", "Opt Univariate Proof Generation Test for")
 
     target_keys_univar = ["IFFT for g,h,s,o from evaluations to coefficients",
                         #   "Setup KZG10 polynomial commitments global parameters",
@@ -218,5 +217,58 @@ if __name__ == '__main__':
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.savefig("output_log/univar_opt_bench_multhr_1.png")
+
+
+def plot_multi_lin_zc():
+    res_blocks = load_test_from_txt_to_blocks(
+        "output_log/mullin_naive_bench_multhr_1.log", "Prover starts for 2^")
+
+    target_keys_univar = ["computing inital challenge using which f_hat is computed",
+                          "Build MLE: computing f_hat(X) = sum_{B^m} f(X)",
+                          "running sumcheck proving algorithm for X rounds",]
+    assert len(target_keys_univar) == 3, "Result timer number not match the code"
+
+    # parse the result from text log --> blocks --> a dataframe
+    target_time_unit = "s"
+    worksize = parse_text_to_dict_dataframe(
+        res_blocks, target_keys_univar, target_time_unit)
+
+    # for each worksize, we have a dataframe of results. Compute average value in columns containing "Runtime ()"
+    for key, value in worksize.items():
+        worksize[key] = dataframe_average_row(
+            value, f"Runtime ({target_time_unit})")
+
+    # MultiLin ZC: merge all average results of all worksizes to one dataframe
+    merge_average = worksize[5][["Description",
+                                 f"Average Runtime ({target_time_unit})"]].copy()
+    for key, value in worksize.items():
+        if key != 5:
+            merge_average = merge_dataframes(
+                merge_average, value[["Description", f"Average Runtime ({target_time_unit})"]], "Description", f"Average Runtime ({target_time_unit})")
+
+    # draw stacked bar chart for each worksize, using the average runtime, stacked by rows
+    runtime_columns = [
+        col for col in merge_average.columns if f"Average Runtime ({target_time_unit})" in col]
+    stacked_merge_average = merge_average.set_index("Description")[
+        runtime_columns]
+    stacked_merge_average = stacked_merge_average.T
+    stacked_merge_average.plot(kind="bar", stacked=True, figsize=(10, 6))
+    # rename the x-tick labels from 5 to the end
+    plt.xticks(np.arange(len(runtime_columns)), [
+               f"2^{i}" for i in range(5, 5+len(runtime_columns))])
+    plt.xlabel("Test Cases")
+    # plt.yticks(np.arange(0, 30, 1))
+    plt.ylabel(f"Average Runtime ({target_time_unit})")
+    plt.title("Multilinear Zerocheck Average Runtime")
+    plt.grid(True, axis='y', linestyle='--')
+    plt.legend(title="Description", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig("output_log/mullin_naive_bench_multhr_1.png")
+
+
+if __name__ == '__main__':
+    # plot_univar_zc()
+    plot_multi_lin_zc()
 
     print("End...")

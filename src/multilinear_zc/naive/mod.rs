@@ -60,6 +60,9 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
             "Dimensions of boolean hypercube do not match the given polynomials"
         );
 
+        let prover_start = start_timer!(|| format!(
+            "Prover starts for 2^{:?}.", zero_domain
+        ));
         // set up the seed and input required to generate the initial random challenge
         let initial_challenge_timer = start_timer!(|| 
             "computing inital challenge using which f_hat is computed"
@@ -87,7 +90,7 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
 
         // compute f_hat(X) = sum_{B^m} f(X).eq(X, r)
         let compute_f_hat_timer = start_timer!(|| 
-            "computing f_hat(X) = sum_{B^m} f(X).eq(X, r)"
+            "Build MLE: computing f_hat(X) = sum_{B^m} f(X).eq(X, r)"
         );
 
         let inp_hat = input_poly.build_f_hat(&r_point).unwrap();
@@ -96,7 +99,7 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
 
         // Run sumcheck proving algorithm for #num_var rounds
         let sumcheck_prover_timer = start_timer!(|| format!(
-            "running sumcheck proving algorithm for {:?} rounds", zero_domain
+            "running sumcheck proving algorithm for X rounds"
         ));
 
         let mut prover_state = IPforSumCheck::prover_init(inp_hat);
@@ -129,6 +132,7 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
         }
 
         end_timer!(sumcheck_prover_timer);
+        end_timer!(prover_start);
 
         Ok(Proof{
             prover_msgs: prover_msgs,
