@@ -55,7 +55,7 @@ mod tests {
     }
 
     #[test]
-    fn bench_naive_mle_zc() {
+    fn bench_opt_mle_zc() {
         let repeat = 10;
         let max_work_size = 16;
 
