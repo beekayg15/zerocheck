@@ -370,3 +370,117 @@ pub fn rand_zero<F: PrimeField> (
 
     poly
 }
+
+/// Sample a random virtual polynomial of the form f = ghs + (1-s)(g+h) - o
+/// that evaluates to zero everywhere over the boolean hypercube
+pub fn custom_zero_test_case<F: PrimeField> (
+    nv: usize
+) -> VirtualPolynomial<F> {
+    let mut poly = VirtualPolynomial::<F>::new(nv);
+
+    let rand_g_evals: Vec<F> = (0..(1 << nv))
+            .into_iter()
+            .map(|_| F::rand(&mut ark_std::test_rng()))
+            .collect();
+    let rand_h_evals: Vec<F> = (0..(1 << nv))
+            .into_iter()
+            .map(|_| F::rand(&mut ark_std::test_rng()))
+            .collect();
+    let rand_s_evals: Vec<F> = (0..(1 << nv))
+            .into_iter()
+            .map(|_| F::rand(&mut ark_std::test_rng()))
+            .collect();
+
+    let one_minus_s_evals: Vec<F> = (0..(1 << nv))
+        .into_iter()
+        .map(|i| F::one() - rand_s_evals[i])
+        .collect();
+
+    let g_plus_h_evals: Vec<F> = (0..(1 << nv))
+        .into_iter()
+        .map(|i| rand_h_evals[i] + rand_g_evals[i])
+        .collect();
+
+    let o_evals: Vec<F> = (0..(1 << nv))
+        .into_iter()
+        .map(|i| (
+            rand_g_evals[i] * rand_h_evals[i] * rand_s_evals[i])
+            + (one_minus_s_evals[i] * g_plus_h_evals[i])
+        )
+        .collect();
+
+    let mut e1 = vec![];
+    let mut e2 = vec![];
+    let mut e3 = vec![];
+    let mut e4 = vec![];
+    let mut e5 = vec![];
+    let mut e6 = vec![];
+
+
+    e1.push(rand_g_evals.clone());
+    e1.push(rand_h_evals.clone());
+    e1.push(rand_s_evals.clone());
+
+    e2.push(rand_s_evals.clone());
+    e2.push(rand_g_evals.clone());
+
+    e3.push(rand_s_evals.clone());
+    e3.push(rand_h_evals.clone());
+
+    e4.push(rand_g_evals.clone());
+
+    e5.push(rand_h_evals.clone());
+
+    e6.push(o_evals);
+
+    let p1: Vec<Arc<DenseMultilinearExtension<F>>> = e1
+        .into_iter()
+        .map(|x| Arc::new(
+            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
+        ))
+        .collect();
+
+    let p2: Vec<Arc<DenseMultilinearExtension<F>>> = e2
+        .into_iter()
+        .map(|x| Arc::new(
+            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
+        ))
+        .collect();
+
+    let p3: Vec<Arc<DenseMultilinearExtension<F>>> = e3
+        .into_iter()
+        .map(|x| Arc::new(
+            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
+        ))
+        .collect();
+
+    let p4: Vec<Arc<DenseMultilinearExtension<F>>> = e4
+        .into_iter()
+        .map(|x| Arc::new(
+            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
+        ))
+        .collect();
+
+    let p5: Vec<Arc<DenseMultilinearExtension<F>>> = e5
+        .into_iter()
+        .map(|x| Arc::new(
+            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
+        ))
+        .collect();
+
+    let p6: Vec<Arc<DenseMultilinearExtension<F>>> = e6
+        .into_iter()
+        .map(|x| Arc::new(
+            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
+        ))
+        .collect();
+
+    poly.add_product(p1, F::one());
+    poly.add_product(p2, -F::one());
+    poly.add_product(p3, -F::one());
+    poly.add_product(p4, F::one());
+    poly.add_product(p5, F::one());
+    poly.add_product(p6, -F::one());
+
+    poly
+}

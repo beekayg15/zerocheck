@@ -99,7 +99,7 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
         let mut prover_state = IPforSumCheck::prover_init(inp_hat);
         let mut verifier_msg = None;
         let mut prover_msgs = vec![];
-        let mut inp = vec![];
+        let mut inp = vec![F::zero(); zero_domain + 1];
 
         for _ in 0..zero_domain {
             let prover_msg = IPforSumCheck::prover_round(
@@ -112,8 +112,7 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
                 "verifier sampling a random challenge using the transcripts"
             );
 
-            let mut seed = prover_state.challenges.clone();
-            seed.extend(prover_msg.evaluations.clone());
+            let seed = prover_msg.evaluations.clone();
 
             end_timer!(verifier_challenge_sampling_timer);
 
@@ -121,7 +120,7 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
                 challenge: get_randomness(seed, inp.clone())[0]
             });
 
-            inp.extend(prover_msg.evaluations.clone());
+            inp = prover_msg.evaluations.clone();
             prover_msgs.push(prover_msg);
         }
 
@@ -213,6 +212,9 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
         let lhs = subclaim.expected_evaluation;
         let rhs = inp_hat.evaluate(subclaim.point);
 
+        // println!("lhs: {:?}", lhs);
+        // println!("rhs: {:?}", rhs);
+
         // check if the virtual polynomial evaluates to the 
         // given value over the sampled challenges
         let result: bool = lhs == rhs;
@@ -224,13 +226,35 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
 mod test {
     use ark_bls12_381::Fr;
 
-    use crate::ZeroCheck;
+    use crate::{multilinear_zc::naive::custom_zero_test_case, ZeroCheck};
 
     use super::{rand_zero, NaiveMLZeroCheck};
 
     #[test]
     fn test_ml_zerocheck() {
         let poly = rand_zero::<Fr>(10, (4, 5), 2);
+        let zp = NaiveMLZeroCheck::<Fr>::setup(None).unwrap();
+
+        let proof = NaiveMLZeroCheck::<Fr>::prove(
+            zp.clone(),
+            poly.clone(), 
+            10
+        ).unwrap();
+        println!("Proof Generated: {:?}", proof);
+
+        let valid = NaiveMLZeroCheck::<Fr>::verify(
+            zp, 
+            poly, 
+            proof, 
+            10
+        ).unwrap();
+
+        assert!(valid);
+    }
+
+    #[test]
+    fn test_ml_zerocheck_custom() {
+        let poly = custom_zero_test_case::<Fr>(10);
         let zp = NaiveMLZeroCheck::<Fr>::setup(None).unwrap();
 
         let proof = NaiveMLZeroCheck::<Fr>::prove(

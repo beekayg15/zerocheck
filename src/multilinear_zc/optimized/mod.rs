@@ -3,6 +3,7 @@ use ark_ec::pairing::Pairing;
 use ark_poly::Polynomial;
 use ark_poly_commit::multilinear_pc::MultilinearPC;
 use ark_std::{cfg_into_iter, end_timer, rand::thread_rng, start_timer};
+use ark_poly_commit::multilinear_pc::data_structures::Commitment;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use sumcheck::{verifier::VerifierMsg, IPforSumCheck};
 use std::marker::PhantomData;
@@ -13,7 +14,7 @@ pub use data_structures::*;
 
 mod sumcheck;
 
-use crate::{utils::get_randomness, ZeroCheck};
+use crate::{utils::{get_randomness, get_randomness_from_ecc}, ZeroCheck};
 
 /// Optimized Zero-Check protocol for if a polynomial
 /// f = sum(product(MLEs)) evaluates to 0
@@ -78,7 +79,7 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
 
         let flatten_mle_extensions = input_poly.clone().flat_ml_extensions;
 
-        let inp_commitments = flatten_mle_extensions.clone()
+        let inp_commitments: Vec<Commitment<E>> = flatten_mle_extensions.clone()
             .into_par_iter()
             .map(|mle| {
                 MultilinearPC::<E>::commit(
@@ -100,20 +101,19 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
             "computing inital challenge using which f_hat is computed"
         );
         
-        let mut init_seed = flatten_mle_extensions[0].evaluations.clone();
-        
+        let mut init_seed = vec![];
+        init_seed.push(inp_commitments[0].g_product);
+
         let mut init_inp = vec![];
-        for mle in flatten_mle_extensions.clone() {
-            init_inp.extend(mle.evaluations.clone());
+        for i in 1..inp_commitments.len() {
+            init_inp.push(inp_commitments[i].g_product);
         }
 
 
-        let mut r_point = vec![];
-        for _ in 0..zero_domain {
-            let r = get_randomness(init_seed.clone(), init_inp.clone())[0];
-            r_point.push(r);
-            init_seed.push(r);
-        }
+        let mut r_point = vec![<E::ScalarField>::zero(); zero_domain];
+        let mut r = get_randomness_from_ecc::<E, E::ScalarField>(init_seed, init_inp);
+        r.extend(vec![<E::ScalarField>::zero(); zero_domain]);
+        r_point.copy_from_slice(&r[0..zero_domain]);
 
         end_timer!(initial_challenge_timer);
 
@@ -134,7 +134,7 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
         let mut prover_state = IPforSumCheck::prover_init(inp_hat);
         let mut verifier_msg = None;
         let mut prover_msgs = vec![];
-        let mut inp = vec![];
+        let mut inp = vec![<E::ScalarField>::zero(); zero_domain + 1];
         let mut challenge = <E::ScalarField>::zero();
 
         for _ in 0..zero_domain {
@@ -148,8 +148,7 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
                 "verifier sampling a random challenge using the transcripts"
             );
 
-            let mut seed = prover_state.challenges.clone();
-            seed.extend(prover_msg.evaluations.clone());
+            let seed = prover_msg.evaluations.clone();
 
             challenge = get_randomness(seed, inp.clone())[0];
 
@@ -159,7 +158,7 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
                 challenge: challenge
             });
 
-            inp.extend(prover_msg.evaluations.clone());
+            inp = prover_msg.evaluations.clone();
             prover_msgs.push(prover_msg);
         }
 
@@ -226,26 +225,26 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
             "Dimensions of boolean hypercube do not match the given polynomials"
         );
 
+        let flatten_mle_extensions = input_poly.flat_ml_extensions.clone();
+
         // set up the seed and input required to generate the initial random challenge
         let initial_challenge_timer = start_timer!(|| 
             "computing inital challenge using which f_hat is computed"
         );
 
-        let flatten_mle_extensions = input_poly.flat_ml_extensions.clone();
+        let mut init_seed = vec![];
+        init_seed.push(proof.inp_mle_commitments[0].g_product);
 
-        let mut init_seed = flatten_mle_extensions[0].evaluations.clone();
-        
         let mut init_inp = vec![];
-        for mle in input_poly.flat_ml_extensions.clone() {
-            init_inp.extend(mle.evaluations.clone());
+        for i in 1..proof.inp_mle_commitments.len() {
+            init_inp.push(proof.inp_mle_commitments[i].g_product);
         }
 
-        let mut r_point = vec![];
-        for _ in 0..zero_domain {
-            let r = get_randomness(init_seed.clone(), init_inp.clone())[0];
-            r_point.push(r);
-            init_seed.push(r);
-        }
+
+        let mut r_point = vec![<E::ScalarField>::zero(); zero_domain];
+        let mut r = get_randomness_from_ecc::<E, E::ScalarField>(init_seed, init_inp);
+        r.extend(vec![<E::ScalarField>::zero(); zero_domain]);
+        r_point.copy_from_slice(&r[0..zero_domain]);
 
         end_timer!(initial_challenge_timer);
 
@@ -298,6 +297,9 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
 
         let lhs = subclaim.expected_evaluation;
         let rhs = inp_hat.evaluate(subclaim.point);
+
+        // println!("lhs: {:?}", lhs);
+        // println!("rhs: {:?}", rhs);
 
         // check if the virtual polynomial evaluates to the 
         // given value over the sampled challenges
