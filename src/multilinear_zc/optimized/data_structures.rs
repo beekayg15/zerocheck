@@ -1,8 +1,12 @@
 use anyhow::{Error, Ok};
+use ark_ec::pairing::Pairing;
 use ark_ff::PrimeField;
 use ark_poly::{
     DenseMultilinearExtension,
     Polynomial, MultilinearExtension
+};
+use ark_poly_commit::multilinear_pc::data_structures::{
+    Commitment, CommitterKey, Proof as MPCProof, VerifierKey
 };
 use ark_std::rand::{
     thread_rng, Rng 
@@ -16,17 +20,26 @@ use std::{
 use super::sumcheck::prover::ProverMsg;
 
 #[derive(Clone)]
-pub struct ZeroCheckParams<F: PrimeField> {
-    pub _field_data: PhantomData<F>,
+pub struct ZeroCheckParams<E: Pairing> {
+    pub(crate) vk: VerifierKey<E>,
+    pub(crate) ck: CommitterKey<E>,
+}
+
+#[derive(Clone)]
+pub struct InputParams {
+    pub(crate) num_vars: usize,
 }
 
 /// This is the data structure of the proof to be sent to the verifer,
 /// to prove that the output polynomial f(x') = l(x').r(x').s(x')
 /// evaluates to 0 over a given hypercube
 #[derive(Clone, Debug)]
-pub struct Proof<F: PrimeField> {
+pub struct Proof<E: Pairing> {
     // list of prover message sent during the interactive sumcheck protocol
-    pub(crate) prover_msgs: Vec<ProverMsg<F>>,
+    pub(crate) prover_msgs: Vec<ProverMsg<E::ScalarField>>,
+    pub(crate) inp_mle_commitments: Vec<Commitment<E>>,
+    pub(crate) inp_mle_evals: Vec<E::ScalarField>,
+    pub(crate) inp_mle_openings: Vec<MPCProof<E>>
 }
 
 /// Struct to store the necessary information about the virtual polynomial,
@@ -421,15 +434,26 @@ pub fn custom_zero_test_case<F: PrimeField> (
     let mut e1 = vec![];
     let mut e2 = vec![];
     let mut e3 = vec![];
+    let mut e4 = vec![];
+    let mut e5 = vec![];
+    let mut e6 = vec![];
 
-    e1.push(rand_g_evals);
-    e1.push(rand_h_evals);
-    e1.push(rand_s_evals);
 
-    e2.push(one_minus_s_evals);
-    e2.push(g_plus_h_evals);
+    e1.push(rand_g_evals.clone());
+    e1.push(rand_h_evals.clone());
+    e1.push(rand_s_evals.clone());
 
-    e3.push(o_evals);
+    e2.push(rand_s_evals.clone());
+    e2.push(rand_g_evals.clone());
+
+    e3.push(rand_s_evals.clone());
+    e3.push(rand_h_evals.clone());
+
+    e4.push(rand_g_evals.clone());
+
+    e5.push(rand_h_evals.clone());
+
+    e6.push(o_evals);
 
     let p1: Vec<Arc<DenseMultilinearExtension<F>>> = e1
         .into_iter()
@@ -452,9 +476,33 @@ pub fn custom_zero_test_case<F: PrimeField> (
         ))
         .collect();
 
+    let p4: Vec<Arc<DenseMultilinearExtension<F>>> = e4
+        .into_iter()
+        .map(|x| Arc::new(
+            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
+        ))
+        .collect();
+
+    let p5: Vec<Arc<DenseMultilinearExtension<F>>> = e5
+        .into_iter()
+        .map(|x| Arc::new(
+            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
+        ))
+        .collect();
+
+    let p6: Vec<Arc<DenseMultilinearExtension<F>>> = e6
+        .into_iter()
+        .map(|x| Arc::new(
+            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
+        ))
+        .collect();
+
     poly.add_product(p1, F::one());
-    poly.add_product(p2, F::one());
+    poly.add_product(p2, -F::one());
     poly.add_product(p3, -F::one());
+    poly.add_product(p4, F::one());
+    poly.add_product(p5, F::one());
+    poly.add_product(p6, -F::one());
 
     poly
 }

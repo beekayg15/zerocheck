@@ -65,10 +65,7 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
             "computing inital challenge using which f_hat is computed"
         );
         
-        let mut init_seed = vec![];
-        for (coeff, _) in input_poly.products.clone() {
-            init_seed.push(coeff);
-        }
+        let mut init_seed = input_poly.flat_ml_extensions[0].evaluations.clone();
         
         let mut init_inp = vec![];
         for mle in input_poly.flat_ml_extensions.clone() {
@@ -164,16 +161,12 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
         let initial_challenge_timer = start_timer!(|| 
             "computing inital challenge using which f_hat is computed"
         );
-
-        let mut init_seed = vec![];
-        for (coeff, _) in input_poly.products.clone() {
-            init_seed.push(coeff);
-        }
-        
         let mut init_inp = vec![];
         for mle in input_poly.flat_ml_extensions.clone() {
             init_inp.extend(mle.evaluations.clone());
         }
+
+        let mut init_seed = input_poly.flat_ml_extensions[0].evaluations.clone();
 
         let mut r_point = vec![];
         for _ in 0..zero_domain {
