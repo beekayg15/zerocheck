@@ -1,5 +1,8 @@
 use ark_crypto_primitives::prf::Blake2s;
 use ark_crypto_primitives::prf::PRF;
+use ark_ec::pairing::Pairing;
+use ark_ec::AffineRepr;
+use ark_ff::Field;
 use ark_ff::PrimeField;
 use ark_ff::BigInteger;
 
@@ -61,6 +64,28 @@ pub fn field_vec_to_fixed_bytes<F: PrimeField>(field_elems: Vec<F>) -> [u8; 32] 
     result
 }
 
+/// function to convert a vector of group elements to list of bytes
+/// 
+/// Attributes:
+/// group_elems - vector of group elements
+/// 
+/// Returns
+/// a list of bytes(u8 values) from the vec<F>
+pub fn group_vec_to_fixed_bytes<E: Pairing>(group_elems: Vec<E::G1Affine>) -> [u8; 32] {
+    let mut elem_bytes: Vec<_> = vec![];
+
+    // Convert each field element to bytes using into_bigint().to_le_bytes() and append it to byte_vec
+    for elem in group_elems {
+        if let Some(elem_x) = elem.x() {
+            elem_bytes = elem_x.to_base_prime_field_elements().collect();
+        }
+        if let Some(elem_y) = elem.y() {
+            elem_bytes = elem_y.to_base_prime_field_elements().collect();
+        }
+    }
+    return field_vec_to_fixed_bytes(elem_bytes);
+}
+
 /// function to sample a random value in field F
 /// 
 /// Attributes:
@@ -72,6 +97,20 @@ pub fn field_vec_to_fixed_bytes<F: PrimeField>(field_elems: Vec<F>) -> [u8; 32] 
 pub fn get_randomness<F: PrimeField>(seed: Vec<F>, inp: Vec<F>) -> Vec<F> {
     let seed: [u8; 32] = field_vec_to_fixed_bytes(seed);
     let inp: [u8; 32] = field_vec_to_fixed_bytes(inp);
+    bytes_to_field_vec(Blake2s::evaluate(&seed, &inp).unwrap())
+}
+
+/// function to sample a random value in field F from Group elements
+/// 
+/// Attributes:
+/// seed - seed to the PRF as vec<G>
+/// inp - input to the PRF as vec<G>
+/// 
+/// Returns
+/// a random value in the Field F
+pub fn get_randomness_from_ecc<E: Pairing, F: PrimeField>(seed: Vec<E::G1Affine>, inp: Vec<E::G1Affine>) -> Vec<F> {
+    let seed: [u8; 32] = group_vec_to_fixed_bytes::<E>(seed);
+    let inp: [u8; 32] = group_vec_to_fixed_bytes::<E>(inp);
     bytes_to_field_vec(Blake2s::evaluate(&seed, &inp).unwrap())
 }
 

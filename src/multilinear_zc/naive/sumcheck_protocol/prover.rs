@@ -133,10 +133,13 @@ impl<F: PrimeField> IPforSumCheck<F> {
         let nv = prover_state.num_vars;
         let degree = prover_state.max_multiplicand;
 
-        let zeros = (vec![F::zero(); degree + 1], vec![F::zero(); degree + 1]);
-
         let fold_result = ark_std::cfg_into_iter!(0..(1 << (nv - i)), 1 << 10).fold(
-            zeros,
+            ||{
+                (
+                    vec![F::zero(); degree + 1], 
+                    vec![F::zero(); degree + 1]
+                )
+            },
             |(mut products_sum, mut product), b| {
                 for (coefficient, products) in &prover_state.products {
                     product.fill(*coefficient);
@@ -155,9 +158,15 @@ impl<F: PrimeField> IPforSumCheck<F> {
                 }
                 (products_sum, product)
             }
-        );
+        )
+        .map(|(partial, _)| partial)
+        .reduce(
+            || vec![F::zero(); degree + 1],
+            |_, partial| {
+                partial
+            });
 
-        let products_sum = fold_result.0;
+        let products_sum = fold_result;
 
         end_timer!(bool_hypercube_sum_timer);
         end_timer!(prover_single_round_timer);

@@ -9,14 +9,14 @@ mod tests {
     use ark_std::UniformRand;
     use ark_std::{end_timer, start_timer};
     use rayon::prelude::*;
-    use std::time::Instant;
     use zerocheck::univariate_zc::optimized::data_structures::InputParams;
+    use std::iter::zip;
+    use std::time::Instant;
     use zerocheck::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
     use zerocheck::ZeroCheck;
 
-    fn test_template(size: u32) -> u128 {
-        let test_timer =
-            start_timer!(|| format!("Opt Univariate Proof Generation Test for 2^{size} work"));
+    fn test_template(size: u32, repeat: u32) -> u128 {
+        let test_timer = start_timer!(|| "Proof Generation Test");
 
         let domain = GeneralEvaluationDomain::<Fr>::new(1 << size).unwrap();
 
@@ -58,18 +58,26 @@ mod tests {
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
         let max_degree = g.degree() + s.degree() + h.degree();
-        let pp = InputParams { max_degree };
+        let pp = InputParams{
+            max_degree,
+        };
 
-        let zp = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::setup(pp).unwrap();
+        let zp = OptimizedUnivariateZeroCheck::<Bls12_381>::setup(pp).unwrap();
 
         let instant = Instant::now();
 
-        let proof = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(
-            zp.clone(),
-            inp_evals.clone(),
-            domain,
-        )
-        .unwrap();
+        let proof = (0..repeat)
+            .map(|_| {
+                OptimizedUnivariateZeroCheck::<Bls12_381>::prove(
+                    zp.clone(),
+                    inp_evals.clone(), 
+                    domain)
+                    .unwrap()
+            })
+            .collect::<Vec<_>>()
+            .last()
+            .cloned()
+            .unwrap();
 
         let runtime = instant.elapsed();
 
@@ -80,8 +88,12 @@ mod tests {
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result =
-            OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::verify(zp, inp_evals, proof, domain)
-                .unwrap();
+            OptimizedUnivariateZeroCheck::<Bls12_381>::verify(
+                zp,
+                inp_evals, 
+                proof, 
+                domain
+            ).unwrap();
 
         end_timer!(verify_timer);
 
@@ -94,33 +106,28 @@ mod tests {
 
     #[test]
     fn opt_uni_zc_sample_test() {
-        let x = test_template(15);
+        let x = test_template(10, 1);
         println!("Proving time: {:?}", x);
     }
 
     #[test]
     fn bench_opt_uni_zc() {
         let repeat = 10;
-        let max_work_size = 10..=20; // 2 ^ max_work_size
+        let max_work_size = 10..16;
 
-        let (_, _): (Vec<u32>, Vec<u128>) = (max_work_size)
+        let (sizes, runtimes): (Vec<u32>, Vec<u128>) = (max_work_size)
             .map(|size| {
-                let total_runtime: u128 = (0..repeat)
-                    .map(|repeat_time| {
-                        println!("Running test for 2^{} with repeat: {}", size, repeat_time);
-                        test_template(size)
-                    })
-                    .sum();
+                let total_runtime: u128 = test_template(size, repeat);
                 (size, total_runtime)
             })
             .unzip();
 
-        // for (size, runtime) in zip(sizes, runtimes) {
-        //     println!(
-        //         "Input Polynomial Degree: 2^{:?}\t|| Avg. Runtime: {:?} ms",
-        //         size,
-        //         (runtime as f64) / (repeat as f64),
-        //     );
-        // }
+        for (size, runtime) in zip(sizes, runtimes) {
+            println!(
+                "Input Polynomial Degree: 2^{:?}\t|| Avg. Runtime: {:?} ms",
+                size,
+                (runtime as f64) / (repeat as f64),
+            );
+        }
     }
 }

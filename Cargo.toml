@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "*"
+anyhow = "1.0.97"
 ark-ff = { version = "^0.5.0", default-features = false, features = ["parallel", "std"] }
 ark-poly = {version = "^0.5.0", features = ["parallel", "std"] }
 ark-std = { version = "^0.5.0", default-features = false, features = ["parallel", "std", "print-trace"] }
@@ -13,8 +13,8 @@ ark-poly-commit = { version = "^0.5.0", default-features = false, features = ["p
 ark-ec = { version = "^0.5.0", default-features = false, features = ["parallel", "std"] }
 ark-bls12-381 ={ version = "0.5.0", default-features = false, features = [ "curve" ]}
 num-traits = "0.2"
-rayon = "1.8"
-itertools = "0.8"
+rayon = { version = "1.8", default-features = false, optional = true }
+itertools = { version = "0.14.0", optional = true }
 clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
@@ -24,6 +24,19 @@ criterion = { version = "0.5", features = ["html_reports"] }
 name = "bench_main"
 harness = false
 path = "benchmarks/bench_main.rs"
+
+[features]
+default = ["parallel"]
+# extensive sanity checks that are useful for debugging
+extensive_sanity_checks = [ ]
+parallel = [ 
+    "rayon",
+    "itertools",
+    "ark-std/parallel", 
+    "ark-ff/parallel",  
+    "ark-poly/parallel", 
+    "ark-ec/parallel",
+]
 
 [[bin]]
 name = "univar_opt_bench_multhr"

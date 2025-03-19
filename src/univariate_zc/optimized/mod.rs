@@ -4,7 +4,7 @@ use anyhow::Ok;
 use ark_ec::pairing::Pairing;
 use ark_ec::AffineRepr;
 use ark_ff::One;
-use ark_ff::{FftField, PrimeField};
+use ark_ff::FftField;
 use ark_poly::EvaluationDomain;
 use ark_poly::{univariate::DensePolynomial, Evaluations, GeneralEvaluationDomain, Polynomial};
 use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
@@ -25,14 +25,12 @@ use data_structures::*;
 /// by proving the existence of a quotient polynomial
 /// q, S.T. f(X) = q(X).z_H(X), where z_H(X) is the
 /// vanishing polynomial over the zero domain H.
-pub struct OptimizedUnivariateZeroCheck<F, E> {
-    _field_data: PhantomData<F>,
+pub struct OptimizedUnivariateZeroCheck<E> {
     _pairing_data: PhantomData<E>,
 }
 
-impl<F, E> ZeroCheck<F> for OptimizedUnivariateZeroCheck<F, E>
+impl<E> ZeroCheck<E::ScalarField> for OptimizedUnivariateZeroCheck<E>
 where
-    F: PrimeField + FftField,
     E: Pairing,
 {
     type InputType = Vec<Evaluations<E::ScalarField>>;
@@ -173,10 +171,16 @@ where
             start_timer!(|| "Get Fiat-Shamir random challenge and evals at challenge");
 
         // Sample a random challenge - Fiat-Shamir
-        let mut inp_rand = h.evals;
-        inp_rand.extend(s.evals);
-        inp_rand.extend(o.evals);
-        let r = get_randomness(g.evals, inp_rand)[0];
+        let mut inp_rand = vec![];
+        inp_rand.push(comm_h.0);
+        inp_rand.push(comm_s.0);
+        inp_rand.push(comm_o.0);
+        let mut inp_seed = vec![];
+        inp_seed.push(comm_g.0);
+        let r = get_randomness_from_ecc::<E, <E as Pairing>::ScalarField>(
+            inp_seed, 
+            inp_rand
+        )[0];
 
         // Collect the evalution of the input polynomials at the challenge
         let mut inp_evals_at_rand = vec![];
@@ -317,14 +321,14 @@ where
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a>(
         zero_params: Self::ZeroCheckParams,
-        input_poly: Self::InputType,
+        _input_poly: Self::InputType,
         proof: Self::Proof,
         zero_domain: Self::ZeroDomain,
     ) -> Result<bool, anyhow::Error> {
-        let g = input_poly[0].clone();
-        let h = input_poly[1].clone();
-        let s = input_poly[2].clone();
-        let o = input_poly[2].clone();
+        // let g = input_poly[0].clone();
+        // let h = input_poly[1].clone();
+        // let s = input_poly[2].clone();
+        // let o = input_poly[3].clone();
 
         let q_comm = proof.q_comm;
         let inp_comms = proof.inp_comms;
@@ -334,10 +338,17 @@ where
         let q_opening = proof.q_opening;
         let q_eval = proof.q_eval;
 
-        let mut inp_rand = h.evals;
-        inp_rand.extend(s.evals);
-        inp_rand.extend(o.evals);
-        let r = get_randomness(g.evals, inp_rand)[0];
+        // Sample a random challenge - Fiat-Shamir
+        let mut inp_rand = vec![];
+        inp_rand.push(inp_comms[1].0);
+        inp_rand.push(inp_comms[2].0);
+        inp_rand.push(inp_comms[3].0);
+        let mut inp_seed = vec![];
+        inp_seed.push(inp_comms[0].0);
+        let r = get_randomness_from_ecc::<E, <E as Pairing>::ScalarField>(
+            inp_seed, 
+            inp_rand
+        )[0];
 
         // check openings to input polynomials
         for i in 0..inp_evals.len() {
@@ -370,6 +381,9 @@ where
         // check if q(r) * z_H(r) = g(r).h(r).s(r) + (1 - s(r))(g(r) + h(r))
         let lhs = q_eval * zero_domain.evaluate_vanishing_polynomial(r);
         let rhs = a * b * c + (<E::ScalarField>::one() - c) * (a + b) - d;
+
+        // println!("lhs: {:?}", lhs);
+        // println!("rhs: {:?}", rhs);
 
         Ok(lhs == rhs)
     }
@@ -443,9 +457,9 @@ mod tests {
         let max_degree = g.degree() + s.degree() + h.degree();
         let pp = InputParams { max_degree };
 
-        let zp = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::setup(pp).unwrap();
+        let zp = OptimizedUnivariateZeroCheck::<Bls12_381>::setup(pp).unwrap();
 
-        let proof = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(
+        let proof = OptimizedUnivariateZeroCheck::<Bls12_381>::prove(
             zp.clone(),
             inp_evals.clone(),
             domain,
@@ -459,7 +473,7 @@ mod tests {
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result =
-            OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::verify(zp, inp_evals, proof, domain)
+            OptimizedUnivariateZeroCheck::<Bls12_381>::verify(zp, inp_evals, proof, domain)
                 .unwrap();
 
         end_timer!(verify_timer);
