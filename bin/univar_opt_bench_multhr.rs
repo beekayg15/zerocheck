@@ -45,7 +45,7 @@ fn prepare_input_evals_domain(
 
     let max_degree = g.degree() + s.degree() + h.degree();
     let pp = InputParams { max_degree };
-    let global_params = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::setup(pp).unwrap();
+    let global_params = OptimizedUnivariateZeroCheck::<Bls12_381>::setup(pp).unwrap();
 
     let evals_over_domain_g: Vec<_> = domain.elements().map(|f| g.evaluate(&f)).collect();
     let evals_over_domain_h: Vec<_> = domain.elements().map(|f| h.evaluate(&f)).collect();
@@ -86,7 +86,7 @@ fn opt_univariate_zero_check_multithread_benchmark(
     let instant = Instant::now();
     let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
-    let proof = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(
+    let proof = OptimizedUnivariateZeroCheck::<Bls12_381>::prove(
         global_params.clone(),
         inp_evals.clone(),
         domain,
@@ -100,7 +100,7 @@ fn opt_univariate_zero_check_multithread_benchmark(
 
     let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
-    let result = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::verify(
+    let result = OptimizedUnivariateZeroCheck::<Bls12_381>::verify(
         global_params,
         inp_evals,
         proof,

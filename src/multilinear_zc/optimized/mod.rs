@@ -1,6 +1,5 @@
 use anyhow::Ok;
 use ark_ec::pairing::Pairing;
-use ark_ff::{FftField, PrimeField};
 use ark_poly::Polynomial;
 use ark_poly_commit::multilinear_pc::MultilinearPC;
 use ark_std::{cfg_into_iter, end_timer, rand::thread_rng, start_timer};
@@ -20,15 +19,13 @@ use crate::{utils::get_randomness, ZeroCheck};
 /// f = sum(product(MLEs)) evaluates to 0
 /// over a boolean hypercube of given dimensions
 #[derive(Clone)]
-pub struct OptMLZeroCheck<F: PrimeField + FftField, E: Pairing> {
-    _field_data: PhantomData<F>,
+pub struct OptMLZeroCheck<E: Pairing> {
     _pairing_data: PhantomData<E>
 }
 
-impl<F, E> ZeroCheck<F> for OptMLZeroCheck<F, E>
+impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
     where
     E: Pairing,
-    F: PrimeField,
 {
     type InputType = VirtualPolynomial<E::ScalarField>;
     
@@ -323,16 +320,16 @@ mod test {
         let inp_params = InputParams{
             num_vars: 10
         };
-        let zp = OptMLZeroCheck::<Fr, Bls12_381>::setup(inp_params).unwrap();
+        let zp = OptMLZeroCheck::<Bls12_381>::setup(inp_params).unwrap();
 
-        let proof = OptMLZeroCheck::<Fr, Bls12_381>::prove(
+        let proof = OptMLZeroCheck::<Bls12_381>::prove(
             zp.clone(),
             poly.clone(), 
             10
         ).unwrap();
         println!("Proof Generated: {:?}", proof);
 
-        let valid = OptMLZeroCheck::<Fr, Bls12_381>::verify(
+        let valid = OptMLZeroCheck::<Bls12_381>::verify(
             zp, 
             poly, 
             proof, 
@@ -348,16 +345,16 @@ mod test {
         let inp_params = InputParams{
             num_vars: 10
         };
-        let zp = OptMLZeroCheck::<Fr, Bls12_381>::setup(inp_params).unwrap();
+        let zp = OptMLZeroCheck::<Bls12_381>::setup(inp_params).unwrap();
 
-        let proof = OptMLZeroCheck::<Fr, Bls12_381>::prove(
+        let proof = OptMLZeroCheck::<Bls12_381>::prove(
             zp.clone(),
             poly.clone(), 
             10
         ).unwrap();
         println!("Proof Generated: {:?}", proof);
 
-        let valid = OptMLZeroCheck::<Fr, Bls12_381>::verify(
+        let valid = OptMLZeroCheck::<Bls12_381>::verify(
             zp, 
             poly, 
             proof, 

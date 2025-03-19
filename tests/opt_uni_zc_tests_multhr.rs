@@ -60,11 +60,11 @@ mod tests {
         let max_degree = g.degree() + s.degree() + h.degree();
         let pp = InputParams { max_degree };
 
-        let zp = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::setup(pp).unwrap();
+        let zp = OptimizedUnivariateZeroCheck::<Bls12_381>::setup(pp).unwrap();
 
         let instant = Instant::now();
 
-        let proof = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(
+        let proof = OptimizedUnivariateZeroCheck::<Bls12_381>::prove(
             zp.clone(),
             inp_evals.clone(),
             domain,
@@ -80,7 +80,7 @@ mod tests {
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result =
-            OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::verify(zp, inp_evals, proof, domain)
+            OptimizedUnivariateZeroCheck::<Bls12_381>::verify(zp, inp_evals, proof, domain)
                 .unwrap();
 
         end_timer!(verify_timer);

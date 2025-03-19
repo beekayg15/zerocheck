@@ -27,7 +27,7 @@ pub struct ZeroCheckParams<E: Pairing> {
 
 #[derive(Clone)]
 pub struct InputParams {
-    pub(crate) num_vars: usize,
+    pub num_vars: usize,
 }
 
 /// This is the data structure of the proof to be sent to the verifer,

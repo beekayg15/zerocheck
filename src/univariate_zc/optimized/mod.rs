@@ -4,7 +4,7 @@ use anyhow::Ok;
 use ark_ec::pairing::Pairing;
 use ark_ec::AffineRepr;
 use ark_ff::One;
-use ark_ff::{FftField, PrimeField};
+use ark_ff::FftField;
 use ark_poly::EvaluationDomain;
 use ark_poly::{univariate::DensePolynomial, Evaluations, GeneralEvaluationDomain, Polynomial};
 use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
@@ -25,14 +25,12 @@ use data_structures::*;
 /// by proving the existence of a quotient polynomial
 /// q, S.T. f(X) = q(X).z_H(X), where z_H(X) is the
 /// vanishing polynomial over the zero domain H.
-pub struct OptimizedUnivariateZeroCheck<F, E> {
-    _field_data: PhantomData<F>,
+pub struct OptimizedUnivariateZeroCheck<E> {
     _pairing_data: PhantomData<E>,
 }
 
-impl<F, E> ZeroCheck<F> for OptimizedUnivariateZeroCheck<F, E>
+impl<E> ZeroCheck<E::ScalarField> for OptimizedUnivariateZeroCheck<E>
 where
-    F: PrimeField + FftField,
     E: Pairing,
 {
     type InputType = Vec<Evaluations<E::ScalarField>>;
@@ -443,9 +441,9 @@ mod tests {
         let max_degree = g.degree() + s.degree() + h.degree();
         let pp = InputParams { max_degree };
 
-        let zp = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::setup(pp).unwrap();
+        let zp = OptimizedUnivariateZeroCheck::<Bls12_381>::setup(pp).unwrap();
 
-        let proof = OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::prove(
+        let proof = OptimizedUnivariateZeroCheck::<Bls12_381>::prove(
             zp.clone(),
             inp_evals.clone(),
             domain,
@@ -459,7 +457,7 @@ mod tests {
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result =
-            OptimizedUnivariateZeroCheck::<Fr, Bls12_381>::verify(zp, inp_evals, proof, domain)
+            OptimizedUnivariateZeroCheck::<Bls12_381>::verify(zp, inp_evals, proof, domain)
                 .unwrap();
 
         end_timer!(verify_timer);
