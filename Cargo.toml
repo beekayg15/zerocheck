@@ -15,6 +15,7 @@ ark-bls12-381 ={ version = "0.5.0", default-features = false, features = [ "curv
 num-traits = "0.2"
 rayon = { version = "1.8", default-features = false, optional = true }
 itertools = { version = "0.14.0", optional = true }
+clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -36,3 +37,13 @@ parallel = [
     "ark-poly/parallel", 
     "ark-ec/parallel",
 ]
+
+[[bin]]
+name = "univar_opt_bench_multhr"
+harness = false
+path = "bin/univar_opt_bench_multhr.rs"
+
+[[bin]]
+name = "mullin_naive_bench_multhr"
+harness = false
+path = "bin/mullin_naive_bench_multhr.rs"
