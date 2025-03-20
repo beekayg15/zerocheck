@@ -9,8 +9,8 @@ use ark_std::{end_timer, start_timer};
 use clap::Parser;
 use rayon::prelude::*;
 use std::time::Instant;
-use zerocheck::univariate_zc::optimized::data_structures::{InputParams, ZeroCheckParams};
-use zerocheck::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
+use zerocheck::zc::univariate_zc::optimized::data_structures::{InputParams, ZeroCheckParams};
+use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
 use zerocheck::ZeroCheck;
 
 /// This function prepares the random input evaluations for the prover test.

@@ -431,71 +431,49 @@ pub fn custom_zero_test_case<F: PrimeField> (
         )
         .collect();
 
-    let mut e1 = vec![];
-    let mut e2 = vec![];
-    let mut e3 = vec![];
-    let mut e4 = vec![];
-    let mut e5 = vec![];
-    let mut e6 = vec![];
+    let mut p1 = vec![];
+    let mut p2 = vec![];
+    let mut p3 = vec![];
+    let mut p4 = vec![];
+    let mut p5 = vec![];
+    let mut p6 = vec![];
+
+    let g_mle = Arc::new(DenseMultilinearExtension::<F>::from_evaluations_vec(
+        nv, 
+        rand_g_evals
+    ));
+
+    let h_mle = Arc::new(DenseMultilinearExtension::<F>::from_evaluations_vec(
+        nv, 
+        rand_h_evals
+    ));
+
+    let s_mle = Arc::new(DenseMultilinearExtension::<F>::from_evaluations_vec(
+        nv, 
+        rand_s_evals
+    ));
+
+    let o_mle = Arc::new(DenseMultilinearExtension::<F>::from_evaluations_vec(
+        nv, 
+        o_evals
+    ));
 
 
-    e1.push(rand_g_evals.clone());
-    e1.push(rand_h_evals.clone());
-    e1.push(rand_s_evals.clone());
+    p1.push(g_mle.clone());
+    p1.push(h_mle.clone());
+    p1.push(s_mle.clone());
 
-    e2.push(rand_s_evals.clone());
-    e2.push(rand_g_evals.clone());
+    p2.push(s_mle.clone());
+    p2.push(g_mle.clone());
 
-    e3.push(rand_s_evals.clone());
-    e3.push(rand_h_evals.clone());
+    p3.push(s_mle.clone());
+    p3.push(h_mle.clone());
 
-    e4.push(rand_g_evals.clone());
+    p4.push(g_mle.clone());
 
-    e5.push(rand_h_evals.clone());
+    p5.push(h_mle.clone());
 
-    e6.push(o_evals);
-
-    let p1: Vec<Arc<DenseMultilinearExtension<F>>> = e1
-        .into_iter()
-        .map(|x| Arc::new(
-            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
-        ))
-        .collect();
-
-    let p2: Vec<Arc<DenseMultilinearExtension<F>>> = e2
-        .into_iter()
-        .map(|x| Arc::new(
-            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
-        ))
-        .collect();
-
-    let p3: Vec<Arc<DenseMultilinearExtension<F>>> = e3
-        .into_iter()
-        .map(|x| Arc::new(
-            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
-        ))
-        .collect();
-
-    let p4: Vec<Arc<DenseMultilinearExtension<F>>> = e4
-        .into_iter()
-        .map(|x| Arc::new(
-            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
-        ))
-        .collect();
-
-    let p5: Vec<Arc<DenseMultilinearExtension<F>>> = e5
-        .into_iter()
-        .map(|x| Arc::new(
-            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
-        ))
-        .collect();
-
-    let p6: Vec<Arc<DenseMultilinearExtension<F>>> = e6
-        .into_iter()
-        .map(|x| Arc::new(
-            DenseMultilinearExtension::<F>::from_evaluations_vec(nv, x)
-        ))
-        .collect();
+    p6.push(o_mle.clone());
 
     poly.add_product(p1, F::one());
     poly.add_product(p2, -F::one());

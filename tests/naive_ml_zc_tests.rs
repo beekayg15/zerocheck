@@ -4,7 +4,10 @@ mod tests {
     use std::iter::zip;
 
     use ark_bls12_381::Fr;
-    use zerocheck::{multilinear_zc::naive::{rand_zero, NaiveMLZeroCheck}, ZeroCheck};
+    use zerocheck::{
+        zc::multilinear_zc::naive::{rand_zero, NaiveMLZeroCheck}, 
+        ZeroCheck
+    };
 
     fn test_template(
         num_vars: usize,

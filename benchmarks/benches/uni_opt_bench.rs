@@ -10,8 +10,8 @@ use ark_poly::{
     DenseUVPolynomial, EvaluationDomain, 
     Evaluations, GeneralEvaluationDomain
 };
-use zerocheck::univariate_zc::optimized::data_structures::InputParams;
-use zerocheck::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
+use zerocheck::zc::univariate_zc::optimized::data_structures::InputParams;
+use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
 use zerocheck::ZeroCheck;
 use ark_std::One;
 

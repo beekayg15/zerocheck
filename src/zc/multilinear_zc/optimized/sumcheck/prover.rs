@@ -9,7 +9,7 @@ use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator};
 #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
-use crate::multilinear_zc::optimized::VirtualPolynomial;
+use crate::zc::multilinear_zc::optimized::VirtualPolynomial;
 
 use super::{verifier::VerifierMsg, IPforSumCheck};
 

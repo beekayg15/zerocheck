@@ -9,7 +9,7 @@ use ark_poly::{
     DenseUVPolynomial, EvaluationDomain, 
     Evaluations, GeneralEvaluationDomain
 };
-use zerocheck::univariate_zc::naive::NaiveUnivariateZeroCheck;
+use zerocheck::zc::univariate_zc::naive::NaiveUnivariateZeroCheck;
 use zerocheck::ZeroCheck;
 
 fn naive_univariate_zero_check_benchmark(c: &mut Criterion) {
