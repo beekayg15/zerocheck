@@ -5,7 +5,7 @@ mod tests {
         GeneralEvaluationDomain, Evaluations, EvaluationDomain
     };
     use ark_std::{end_timer, start_timer};
-    use zerocheck::univariate_zc::naive::NaiveUnivariateZeroCheck;
+    use zerocheck::zc::univariate_zc::naive::NaiveUnivariateZeroCheck;
     use ark_bls12_381::Fr;
     use ark_std::UniformRand;
     use std::time::Instant;

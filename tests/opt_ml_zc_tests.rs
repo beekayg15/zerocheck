@@ -4,7 +4,12 @@ mod tests {
     use std::iter::zip;
 
     use ark_bls12_381::{Fr, Bls12_381};
-    use zerocheck::{multilinear_zc::optimized::{custom_zero_test_case, InputParams, OptMLZeroCheck}, ZeroCheck};
+    use zerocheck::{
+        zc::multilinear_zc::optimized::{
+            custom_zero_test_case, InputParams, OptMLZeroCheck
+        }, 
+        ZeroCheck
+    };
 
     fn test_template(
         num_vars: usize,

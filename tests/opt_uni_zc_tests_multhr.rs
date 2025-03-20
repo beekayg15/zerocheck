@@ -9,10 +9,10 @@ mod tests {
     use ark_std::UniformRand;
     use ark_std::{end_timer, start_timer};
     use rayon::prelude::*;
-    use zerocheck::univariate_zc::optimized::data_structures::InputParams;
+    use zerocheck::zc::univariate_zc::optimized::data_structures::InputParams;
     use std::iter::zip;
     use std::time::Instant;
-    use zerocheck::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
+    use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
     use zerocheck::ZeroCheck;
 
     fn test_template(size: u32, repeat: u32) -> u128 {

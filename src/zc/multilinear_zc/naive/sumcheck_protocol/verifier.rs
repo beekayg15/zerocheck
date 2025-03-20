@@ -2,7 +2,7 @@ use ark_ff::PrimeField;
 use ark_std::{end_timer, start_timer};
 
 use crate::{
-    multilinear_zc::naive::PolynomialInfo, 
+    zc::multilinear_zc::naive::PolynomialInfo, 
     utils::get_randomness
 };
 
@@ -312,7 +312,7 @@ fn u64_factorial(a: usize) -> u64 {
 
 #[cfg(test)]
 mod test {
-    use crate::multilinear_zc::naive::sumcheck_protocol::verifier::interpolate_uni_poly;
+    use crate::zc::multilinear_zc::naive::sumcheck_protocol::verifier::interpolate_uni_poly;
     use ark_poly::{
         univariate::DensePolynomial, 
         DenseUVPolynomial, Polynomial};

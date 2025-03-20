@@ -6,7 +6,7 @@ use ark_poly::{
 use ark_std::{cfg_iter_mut, end_timer, start_timer, vec::Vec};
 use rayon::prelude::*;
 
-use crate::multilinear_zc::naive::VirtualPolynomial;
+use crate::zc::multilinear_zc::naive::VirtualPolynomial;
 
 use super::{verifier::VerifierMsg, IPforSumCheck};
 

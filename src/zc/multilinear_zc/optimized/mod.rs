@@ -14,7 +14,13 @@ pub use data_structures::*;
 
 mod sumcheck;
 
-use crate::{utils::{get_randomness, get_randomness_from_ecc}, ZeroCheck};
+use crate::{
+    utils::{
+        get_randomness, 
+        get_randomness_from_ecc
+    }, 
+    ZeroCheck
+};
 
 /// Optimized Zero-Check protocol for if a polynomial
 /// f = sum(product(MLEs)) evaluates to 0
@@ -312,7 +318,7 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
 mod test {
     use ark_bls12_381::{Fr, Bls12_381};
 
-    use crate::{multilinear_zc::optimized::{custom_zero_test_case, InputParams}, ZeroCheck};
+    use crate::{zc::multilinear_zc::optimized::{custom_zero_test_case, InputParams}, ZeroCheck};
 
     use super::{rand_zero, OptMLZeroCheck};
 
@@ -347,6 +353,9 @@ mod test {
         let inp_params = InputParams{
             num_vars: 10
         };
+
+        println!("Unique input MLEs: {:?}", poly.flat_ml_extensions.len());
+
         let zp = OptMLZeroCheck::<Bls12_381>::setup(inp_params).unwrap();
 
         let proof = OptMLZeroCheck::<Bls12_381>::prove(

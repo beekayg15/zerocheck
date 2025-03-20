@@ -1,13 +1,17 @@
-use anyhow::Error;
-use ark_ff::PrimeField;
-
-/// Import zero check protocol for univariate 
-/// polynomials verified using the quotient polynomial
-pub mod univariate_zc;
-pub mod multilinear_zc;
+/// Import transcripts structure
+pub mod transcripts;
 
 /// Import utility functions
 pub mod utils; 
+
+/// Import polynomial commitment schemes
+pub mod pcs;
+
+/// Import implemented zerocheck protocols
+pub mod zc;
+
+use anyhow::Error;
+use ark_ff::PrimeField;
 
 /// Trait for the zero check protocol to prove that 
 /// particular function evaluates to zero on a

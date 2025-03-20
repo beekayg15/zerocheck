@@ -226,7 +226,7 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
 mod test {
     use ark_bls12_381::Fr;
 
-    use crate::{multilinear_zc::naive::custom_zero_test_case, ZeroCheck};
+    use crate::{zc::multilinear_zc::naive::custom_zero_test_case, ZeroCheck};
 
     use super::{rand_zero, NaiveMLZeroCheck};
 

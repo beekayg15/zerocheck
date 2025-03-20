@@ -9,8 +9,8 @@ mod tests {
     };
     use ark_std::{start_timer, end_timer};
     use ark_std::UniformRand;
-    use zerocheck::univariate_zc::optimized::data_structures::InputParams;
-    use zerocheck::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
+    use zerocheck::zc::univariate_zc::optimized::data_structures::InputParams;
+    use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
     use std::time::Instant;
     use ark_std::One;
     use zerocheck::ZeroCheck;
