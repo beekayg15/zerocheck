@@ -1,7 +1,7 @@
-use zerocheck::univariate_zc::optimized::data_structures::InputParams;
+use zerocheck::zc::univariate_zc::optimized::data_structures::InputParams;
 use zerocheck::{
     // univariate_zc::naive::*, 
-    univariate_zc::optimized::*, 
+    zc::univariate_zc::optimized::*, 
     ZeroCheck
 };
 

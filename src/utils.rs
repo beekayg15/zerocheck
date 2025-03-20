@@ -5,6 +5,7 @@ use ark_ec::AffineRepr;
 use ark_ff::Field;
 use ark_ff::PrimeField;
 use ark_ff::BigInteger;
+use sha3::{Digest, Sha3_256};
 
 /// function to convert a vector of field elements to list of bytes
 /// 
@@ -97,7 +98,11 @@ pub fn group_vec_to_fixed_bytes<E: Pairing>(group_elems: Vec<E::G1Affine>) -> [u
 pub fn get_randomness<F: PrimeField>(seed: Vec<F>, inp: Vec<F>) -> Vec<F> {
     let seed: [u8; 32] = field_vec_to_fixed_bytes(seed);
     let inp: [u8; 32] = field_vec_to_fixed_bytes(inp);
-    bytes_to_field_vec(Blake2s::evaluate(&seed, &inp).unwrap())
+    let mut hasher = Sha3_256::new();
+    hasher.update(inp);
+    hasher.update(seed);
+    let hash_value: [u8; 32] = hasher.finalize().into();
+    bytes_to_field_vec(hash_value)
 }
 
 /// function to sample a random value in field F from Group elements
@@ -111,7 +116,11 @@ pub fn get_randomness<F: PrimeField>(seed: Vec<F>, inp: Vec<F>) -> Vec<F> {
 pub fn get_randomness_from_ecc<E: Pairing, F: PrimeField>(seed: Vec<E::G1Affine>, inp: Vec<E::G1Affine>) -> Vec<F> {
     let seed: [u8; 32] = group_vec_to_fixed_bytes::<E>(seed);
     let inp: [u8; 32] = group_vec_to_fixed_bytes::<E>(inp);
-    bytes_to_field_vec(Blake2s::evaluate(&seed, &inp).unwrap())
+    let mut hasher = Sha3_256::new();
+    hasher.update(inp);
+    hasher.update(seed);
+    let hash_value: [u8; 32] = hasher.finalize().into();
+    bytes_to_field_vec(hash_value)
 }
 
 /// function to generate random indices
