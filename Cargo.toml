@@ -47,3 +47,8 @@ path = "bin/univar_opt_bench_multhr.rs"
 name = "mullin_naive_bench_multhr"
 harness = false
 path = "bin/mullin_naive_bench_multhr.rs"
+
+[[bin]]
+name = "mullin_opt_bench_multhr"
+harness = false
+path = "bin/mullin_opt_bench_multhr.rs"
