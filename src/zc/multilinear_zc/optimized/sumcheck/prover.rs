@@ -165,23 +165,23 @@ impl<F: PrimeField> IPforSumCheck<F> {
                     )
                     },
                     |(mut buf, mut acc), b| {
-                        buf.iter_mut()
+                        buf.iter_mut() // buf of a products (term): [(g_eval_b, g_step_b)],..,[(h_eval_b, h_step_b)];
                             .zip(products.iter())
                             .for_each(|((eval, step), f)| {
                                 let table = &flattened_ml_extensions[*f];
                                 *eval = table[b << 1];
                                 *step = table[(b << 1) + 1] - table[b << 1];
                             });
-                        acc[0] += buf.iter().map(|(eval, _)| eval).product::<F>();
+                        acc[0] += buf.iter().map(|(eval, _)| eval).product::<F>(); // product: f_term0(0,0,0); (b=1)product: f_term0(0,1,0); (b=2)product: f_term0(1,0,0);
                         acc[1..].iter_mut().for_each(|acc| {
-                            buf.iter_mut().for_each(|(eval, step)| *eval += step as &_);
-                            *acc += buf.iter().map(|(eval, _)| eval).product::<F>();
+                            buf.iter_mut().for_each(|(eval, step)| *eval += step as &_); // buf_eval: [g(0,0,1),h(0,0,1)],...,[g(0,0,4),h(0,0,4)]; (b=1)buf_eval: [g(0,1,1),h(0,1,1)],[g(0,1,4),h(0,1,4)]; (b=2)buf_eval: [g(1,0,1),h(1,0,1)],[g(1,0,4),h(1,0,4)];
+                            *acc += buf.iter().map(|(eval, _)| eval).product::<F>(); // product: f_term0(0,0,1),f_term0(0,0,2),f_term0(0,0,4); (b=1)product: f_term0(0,1,1),f_term0(0,1,2),f_term0(0,1,4); (b=2)product: f_term0(1,0,1),f_term0(1,0,2),f_term0(1,0,4);
                         });
                         (buf, acc)
-                    }
+                    } // acc[1] (H_1_term0(1)): f_term0(0,0,1)+f_term0(0,1,1)+f_term0(1,0,1)+f_term0(1,1,1),..acc[4] (H_1_term0(4)): f_term0(0,0,4)+f_term0(0,1,4)+f_term0(1,0,4)+f_term0(1,1,4)
                 )
-                .map(|(_, partial)| partial)
-                .reduce(
+                .map(|(_, partial)| partial) // partial (acc[0..4]): eval points to represent a poly term. size(acc)=deg(term)+1
+                .reduce( // save acc[0..4] as sum[0..4]
                     || vec![F::zero(); products.len() + 1],
                     |mut sum, partial| {
                         sum.iter_mut()
@@ -201,7 +201,7 @@ impl<F: PrimeField> IPforSumCheck<F> {
             products_sum
                 .iter_mut()
                 .zip(sum.iter().chain(extraploation.iter()))
-                .for_each(|(products_sum, sum)| *products_sum += sum);
+                .for_each(|(products_sum, sum)| *products_sum += sum); // accumulate Hpoints of a term into products_sum
         });
 
         prover_state.flat_ml_extensions = flattened_ml_extensions

@@ -32,3 +32,9 @@ for cmd in "${CMDS[@]}"; do
     echo "Running: $cmd"
     eval "$cmd"
 done
+
+
+##############################
+
+# CMDS1="RAYON_NUM_THREADS=1 cargo run --release --bin mullin_naive_bench_multhr -- --repeat=10 --min-size=5 --max-size=12 | tee -a output_log/mullin_naive_bench_multhr_1.log "
+CMDS1="RAYON_NUM_THREADS=1 cargo run --release --bin mullin_opt_bench_multhr -- --repeat=10 --min-size=5 --max-size=12 | tee -a output_log/mullin_opt_bench_multhr_1.log "

@@ -402,15 +402,15 @@ pub fn custom_zero_test_case<F: PrimeField> (
 
     let rand_g_evals: Vec<F> = (0..(1 << nv))
             .into_par_iter()
-            .map(|_| F::rand(&mut ark_std::test_rng()))
+            .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
             .collect();
     let rand_h_evals: Vec<F> = (0..(1 << nv))
             .into_par_iter()
-            .map(|_| F::rand(&mut ark_std::test_rng()))
+            .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
             .collect();
     let rand_s_evals: Vec<F> = (0..(1 << nv))
             .into_par_iter()
-            .map(|_| F::rand(&mut ark_std::test_rng()))
+            .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
             .collect();
 
     let one_minus_s_evals: Vec<F> = (0..(1 << nv))
