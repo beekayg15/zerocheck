@@ -10,7 +10,8 @@ use ark_poly::{
     DenseUVPolynomial, EvaluationDomain, 
     Evaluations, GeneralEvaluationDomain
 };
-use zerocheck::zc::univariate_zc::optimized::data_structures::InputParams;
+use zerocheck::pcs::univariate_pcs::kzg::KZG;
+use zerocheck::transcripts::ZCTranscript;
 use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
 use zerocheck::ZeroCheck;
 use ark_std::One;
@@ -87,11 +88,10 @@ fn opt_univariate_zero_check_benchmark(c: &mut Criterion) {
         inp_evals.push(o_evals);
 
         let max_degree = g.degree() + s.degree() + h.degree();
-        let pp = InputParams{
-            max_degree,
-        };
+        let pp = max_degree;
 
-        let zp = OptimizedUnivariateZeroCheck::<Bls12_381>::setup(pp).unwrap();
+
+        let zp = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::setup(&pp).unwrap();
 
         group.bench_with_input(
             BenchmarkId::new("uni_opt_zerocheck", size), &size, |b, &_size| {
@@ -100,10 +100,11 @@ fn opt_univariate_zero_check_benchmark(c: &mut Criterion) {
                         inp_evals.clone()
                     },
                     |input_evals| {
-                        let _proof = OptimizedUnivariateZeroCheck::<Bls12_381>::prove(
-                            black_box(zp.clone()),
-                            black_box(input_evals), 
-                            black_box(domain)
+                        let _proof = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::prove(
+                            black_box(&zp.clone()),
+                            black_box(&input_evals), 
+                            black_box(&domain),
+                            &mut ZCTranscript::init_transcript()
                         );
                     },
                     BatchSize::LargeInput

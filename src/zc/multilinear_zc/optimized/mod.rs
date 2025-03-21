@@ -15,11 +15,10 @@ pub use data_structures::*;
 mod sumcheck;
 
 use crate::{
-    utils::{
+    transcripts::ZCTranscript, utils::{
         get_randomness, 
         get_randomness_from_ecc
-    }, 
-    ZeroCheck
+    }, ZeroCheck
 };
 
 /// Optimized Zero-Check protocol for if a polynomial
@@ -39,12 +38,13 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
     // size of the boolean hypercube over which the output polynomial evaluates to 0
     type ZeroDomain = usize;
     type Proof = Proof<E>;
-    type ZeroCheckParams = ZeroCheckParams<E>;
+    type ZeroCheckParams<'a> = ZeroCheckParams<E>;
     type InputParams = InputParams;
+    type Transcripts = ZCTranscript<E::ScalarField>;
 
     fn setup<'a>(
-        pp: Self::InputParams
-    ) -> Result<Self::ZeroCheckParams, anyhow::Error> {
+        pp: &Self::InputParams
+    ) -> Result<Self::ZeroCheckParams<'_>, anyhow::Error> {
         let setup_mpc_time =
             start_timer!(|| "Setup KZG10 polynomial commitments global parameters");
 
@@ -75,9 +75,10 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
-            zero_params: Self::ZeroCheckParams,
-            input_poly: Self::InputType,
-            zero_domain: Self::ZeroDomain
+            zero_params: &Self::ZeroCheckParams<'_>,
+            input_poly: &Self::InputType,
+            zero_domain: &Self::ZeroDomain,
+            _transcript: &mut Self::Transcripts
         ) -> Result<Self::Proof, anyhow::Error> {
 
         //compute the commitments to the MLEs in the Virtual Polynomial
@@ -98,7 +99,7 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
         end_timer!(inp_commitment_timer);
 
         assert_eq!(
-            input_poly.poly_info.num_vars, zero_domain, 
+            input_poly.poly_info.num_vars, *zero_domain, 
             "Dimensions of boolean hypercube do not match the given polynomials"
         );
 
@@ -116,10 +117,10 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
         }
 
 
-        let mut r_point = vec![<E::ScalarField>::zero(); zero_domain];
+        let mut r_point = vec![<E::ScalarField>::zero(); *zero_domain];
         let mut r = get_randomness_from_ecc::<E, E::ScalarField>(init_seed, init_inp);
-        r.extend(vec![<E::ScalarField>::zero(); zero_domain]);
-        r_point.copy_from_slice(&r[0..zero_domain]);
+        r.extend(vec![<E::ScalarField>::zero(); *zero_domain]);
+        r_point.copy_from_slice(&r[0..*zero_domain]);
 
         end_timer!(initial_challenge_timer);
 
@@ -143,7 +144,7 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
         let mut inp = vec![<E::ScalarField>::zero(); zero_domain + 1];
         let mut challenge = <E::ScalarField>::zero();
 
-        for _ in 0..zero_domain {
+        for _ in 0..*zero_domain {
             let prover_msg = IPforSumCheck::prover_round(
                 &mut prover_state, 
                 &verifier_msg
@@ -218,16 +219,17 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
-            zero_params: Self::ZeroCheckParams,
-            input_poly: Self::InputType,
-            proof: Self::Proof,
-            zero_domain: Self::ZeroDomain
+            zero_params: &Self::ZeroCheckParams<'_>,
+            input_poly: &Self::InputType,
+            proof: &Self::Proof,
+            zero_domain: &Self::ZeroDomain,
+            _transcript: &mut Self::Transcripts
         ) -> Result<bool, anyhow::Error> {
 
         // check if the zero domain (dimensions of boolean hypercube) 
         // is same as the number of variables
         assert_eq!(
-            input_poly.poly_info.num_vars, zero_domain, 
+            input_poly.poly_info.num_vars, *zero_domain, 
             "Dimensions of boolean hypercube do not match the given polynomials"
         );
 
@@ -247,10 +249,10 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
         }
 
 
-        let mut r_point = vec![<E::ScalarField>::zero(); zero_domain];
+        let mut r_point = vec![<E::ScalarField>::zero(); *zero_domain];
         let mut r = get_randomness_from_ecc::<E, E::ScalarField>(init_seed, init_inp);
-        r.extend(vec![<E::ScalarField>::zero(); zero_domain]);
-        r_point.copy_from_slice(&r[0..zero_domain]);
+        r.extend(vec![<E::ScalarField>::zero(); *zero_domain]);
+        r_point.copy_from_slice(&r[0..*zero_domain]);
 
         end_timer!(initial_challenge_timer);
 
@@ -272,7 +274,7 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
             inp_hat.poly_info.clone()
         );
 
-        for i in 0..zero_domain {
+        for i in 0..*zero_domain {
             let prover_msg = proof.prover_msgs.get(i).expect("proof is incomplete");
             let _verifier_msg = IPforSumCheck::verifier_round(
                 (*prover_msg).clone(), 
@@ -318,7 +320,7 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
 mod test {
     use ark_bls12_381::{Fr, Bls12_381};
 
-    use crate::{zc::multilinear_zc::optimized::{custom_zero_test_case, InputParams}, ZeroCheck};
+    use crate::{transcripts::ZCTranscript, zc::multilinear_zc::optimized::{custom_zero_test_case, InputParams}, ZeroCheck};
 
     use super::{rand_zero, OptMLZeroCheck};
 
@@ -328,20 +330,22 @@ mod test {
         let inp_params = InputParams{
             num_vars: 10
         };
-        let zp = OptMLZeroCheck::<Bls12_381>::setup(inp_params).unwrap();
+        let zp = OptMLZeroCheck::<Bls12_381>::setup(&inp_params).unwrap();
 
         let proof = OptMLZeroCheck::<Bls12_381>::prove(
-            zp.clone(),
-            poly.clone(), 
-            10
+            &zp.clone(),
+            &poly.clone(), 
+            &10,
+            &mut ZCTranscript::init_transcript()
         ).unwrap();
         println!("Proof Generated: {:?}", proof);
 
         let valid = OptMLZeroCheck::<Bls12_381>::verify(
-            zp, 
-            poly, 
-            proof, 
-            10
+            &zp, 
+            &poly, 
+            &proof, 
+            &10,
+            &mut ZCTranscript::init_transcript()
         ).unwrap();
 
         assert!(valid);
@@ -356,20 +360,22 @@ mod test {
 
         println!("Unique input MLEs: {:?}", poly.flat_ml_extensions.len());
 
-        let zp = OptMLZeroCheck::<Bls12_381>::setup(inp_params).unwrap();
+        let zp = OptMLZeroCheck::<Bls12_381>::setup(&inp_params).unwrap();
 
         let proof = OptMLZeroCheck::<Bls12_381>::prove(
-            zp.clone(),
-            poly.clone(), 
-            10
+            &zp.clone(),
+            &poly.clone(), 
+            &10,
+            &mut ZCTranscript::init_transcript()
         ).unwrap();
         println!("Proof Generated: {:?}", proof);
 
         let valid = OptMLZeroCheck::<Bls12_381>::verify(
-            zp, 
-            poly, 
-            proof, 
-            10
+            &zp, 
+            &poly, 
+            &proof, 
+            &10,
+            &mut ZCTranscript::init_transcript()
         ).unwrap();
 
         assert!(valid);

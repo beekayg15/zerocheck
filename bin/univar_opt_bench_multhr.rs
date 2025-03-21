@@ -8,19 +8,21 @@ use ark_std::One;
 use ark_std::{end_timer, start_timer};
 use clap::Parser;
 use rayon::prelude::*;
+use zerocheck::pcs::univariate_pcs::kzg::KZG;
+use zerocheck::transcripts::ZCTranscript;
 use std::time::Instant;
-use zerocheck::zc::univariate_zc::optimized::data_structures::{InputParams, ZeroCheckParams};
+use zerocheck::zc::univariate_zc::optimized::data_structures::ZeroCheckParams;
 use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
 use zerocheck::ZeroCheck;
 
 /// This function prepares the random input evaluations for the prover test.
 /// Reuse for the same worksize across multiple repeated tests.
-fn prepare_input_evals_domain(
+fn prepare_input_evals_domain<'a> (
     size: u32,
 ) -> (
     [Evaluations<Fr>; 4],
     GeneralEvaluationDomain<Fr>,
-    ZeroCheckParams<Bls12_381>,
+    usize,
 ) {
     println!("Preparing input evaluations and domain for 2^{size} work");
     let instant = Instant::now();
@@ -44,8 +46,6 @@ fn prepare_input_evals_domain(
     let s = DensePolynomial::from_coefficients_vec(rand_s_coeffs);
 
     let max_degree = g.degree() + s.degree() + h.degree();
-    let pp = InputParams { max_degree };
-    let global_params = OptimizedUnivariateZeroCheck::<Bls12_381>::setup(pp).unwrap();
 
     let evals_over_domain_g: Vec<_> = domain.elements().map(|f| g.evaluate(&f)).collect();
     let evals_over_domain_h: Vec<_> = domain.elements().map(|f| h.evaluate(&f)).collect();
@@ -66,7 +66,7 @@ fn prepare_input_evals_domain(
     let inp_evals = [g_evals, h_evals, s_evals, o_evals];
     let duration = instant.elapsed().as_secs_f64();
     println!("Preparing input evaluations and domain for 2^{size} work ....{duration}s");
-    return (inp_evals, domain, global_params);
+    return (inp_evals, domain, max_degree);
 }
 
 /// Benchmark function for the optimized univariate zero check proof generation and verification.
@@ -76,7 +76,7 @@ fn prepare_input_evals_domain(
 fn opt_univariate_zero_check_multithread_benchmark(
     input_evals: &[Evaluations<Fr>; 4],
     domain: GeneralEvaluationDomain<Fr>,
-    global_params: ZeroCheckParams<Bls12_381>,
+    global_params: ZeroCheckParams<KZG<Bls12_381>>,
     size: u32,
 ) -> u128 {
     let test_timer =
@@ -86,10 +86,11 @@ fn opt_univariate_zero_check_multithread_benchmark(
     let instant = Instant::now();
     let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
-    let proof = OptimizedUnivariateZeroCheck::<Bls12_381>::prove(
-        global_params.clone(),
-        inp_evals.clone(),
-        domain,
+    let proof = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::prove(
+        &global_params.clone(),
+        &inp_evals.clone(),
+        &domain,
+        &mut ZCTranscript::init_transcript()
     )
     .unwrap();
 
@@ -100,11 +101,12 @@ fn opt_univariate_zero_check_multithread_benchmark(
 
     let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
-    let result = OptimizedUnivariateZeroCheck::<Bls12_381>::verify(
-        global_params,
-        inp_evals,
-        proof,
-        domain,
+    let result = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::verify(
+        &global_params,
+        &inp_evals,
+        &proof,
+        &domain,
+        &mut ZCTranscript::init_transcript()
     )
     .unwrap();
 
@@ -152,6 +154,7 @@ fn bench_opt_uni_zc() {
                 .build()
                 .unwrap();
             let (input_evals, domain, pp) = pool_prepare.install(|| prepare_input_evals_domain(size));
+            let global_params = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::setup(&pp).unwrap();
 
             let pool_run = rayon::ThreadPoolBuilder::new()
                 .num_threads(args.run_threads as usize)
@@ -161,7 +164,7 @@ fn bench_opt_uni_zc() {
                 (0..args.repeat)
                     .map(|repeat_time| {
                         println!("Running test for 2^{} with repeat: {}", size, repeat_time);
-                        opt_univariate_zero_check_multithread_benchmark(&input_evals, domain, pp.clone(), size)
+                        opt_univariate_zero_check_multithread_benchmark(&input_evals, domain, global_params.clone(), size)
                     })
                     .sum()
             });

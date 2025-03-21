@@ -9,7 +9,8 @@ mod tests {
     };
     use ark_std::{start_timer, end_timer};
     use ark_std::UniformRand;
-    use zerocheck::zc::univariate_zc::optimized::data_structures::InputParams;
+    use zerocheck::pcs::univariate_pcs::kzg::KZG;
+    use zerocheck::transcripts::ZCTranscript;
     use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
     use std::time::Instant;
     use ark_std::One;
@@ -86,21 +87,20 @@ mod tests {
         inp_evals.push(o_evals);
 
         let max_degree = g.degree() + s.degree() + h.degree();
-        let pp = InputParams{
-            max_degree,
-        };
+        let pp = max_degree;
 
-        let zp = OptimizedUnivariateZeroCheck::<Bls12_381>::setup(pp).unwrap();
+        let zp = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::setup(&pp).unwrap();
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
         let instant = Instant::now();
 
         let proof = 
-            OptimizedUnivariateZeroCheck::<Bls12_381>::prove(
-                zp.clone(),
-                inp_evals.clone(), 
-                domain
+            OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::prove(
+                &zp.clone(),
+                &inp_evals.clone(), 
+                &domain,
+                &mut ZCTranscript::init_transcript()
             ).unwrap();
 
         let runtime = instant.elapsed();
@@ -111,11 +111,12 @@ mod tests {
 
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
-        let result = OptimizedUnivariateZeroCheck::<Bls12_381>::verify(
-            zp, 
-            inp_evals, 
-            proof, 
-            domain
+        let result = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::verify(
+            &zp, 
+            &inp_evals, 
+            &proof, 
+            &domain,
+            &mut ZCTranscript::init_transcript()
         ).unwrap();
 
         end_timer!(verify_timer);

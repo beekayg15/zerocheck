@@ -3,14 +3,12 @@ use clap::Parser;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::{
+    transcripts::ZCTranscript,
     zc::multilinear_zc::optimized::{custom_zero_test_case, InputParams, OptMLZeroCheck},
     ZeroCheck,
 };
 
-fn test_template(
-    num_vars: usize,
-    repeat: u32,
-) -> u128 {
+fn test_template(num_vars: usize, repeat: u32) -> u128 {
     let instant = Instant::now();
 
     // Generate a random polynomial.
@@ -23,7 +21,7 @@ fn test_template(
     let poly = custom_zero_test_case::<Fr>(num_vars);
 
     let inp_params = InputParams { num_vars };
-    let zp = OptMLZeroCheck::<Bls12_381>::setup(inp_params).unwrap();
+    let zp = OptMLZeroCheck::<Bls12_381>::setup(&inp_params).unwrap();
 
     let duration = instant.elapsed().as_millis();
     print!("Polynomial terms: ");
@@ -34,7 +32,15 @@ fn test_template(
     println!("Preparing input evaluations and domain for 2^{num_vars} work ....{duration}ms");
 
     let proof = (0..repeat)
-        .map(|_| OptMLZeroCheck::<Bls12_381>::prove(zp.clone(), poly.clone(), num_vars).unwrap())
+        .map(|_| {
+            OptMLZeroCheck::<Bls12_381>::prove(
+                &zp.clone(),
+                &poly.clone(),
+                &num_vars,
+                &mut ZCTranscript::init_transcript(),
+            )
+            .unwrap()
+        })
         .collect::<Vec<_>>()
         .last()
         .cloned()
@@ -42,8 +48,14 @@ fn test_template(
 
     let runtime = instant.elapsed();
 
-    let result = OptMLZeroCheck::<Bls12_381>::verify(zp, poly, proof, num_vars).unwrap();
-
+    let result = OptMLZeroCheck::<Bls12_381>::verify(
+        &zp,
+        &poly,
+        &proof,
+        &num_vars,
+        &mut ZCTranscript::init_transcript(),
+    )
+    .unwrap();
     assert_eq!(result, true);
     return runtime.as_millis();
 }

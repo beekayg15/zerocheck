@@ -9,7 +9,7 @@ pub use data_structures::*;
 
 mod sumcheck_protocol;
 
-use crate::{utils::get_randomness, ZeroCheck};
+use crate::{transcripts::ZCTranscript, utils::get_randomness, ZeroCheck};
 
 /// Optimized Zero-Check protocol for if a polynomial
 /// f = sum(product(MLEs)) evaluates to 0
@@ -28,12 +28,13 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
     // size of the boolean hypercube over which the output polynomial evaluates to 0
     type ZeroDomain = usize;
     type Proof = Proof<F>;
-    type ZeroCheckParams = ZeroCheckParams<F>;
+    type ZeroCheckParams<'a> = ZeroCheckParams<F>;
     type InputParams = Option<F>;
+    type Transcripts = ZCTranscript<F>;
 
     fn setup<'a>(
-        _pp: Self::InputParams
-    ) -> Result<Self::ZeroCheckParams, anyhow::Error> {
+        _pp: &Self::InputParams
+    ) -> Result<Self::ZeroCheckParams<'_>, anyhow::Error> {
         Ok(ZeroCheckParams { 
             _field_data: PhantomData::<F>,
         })
@@ -50,13 +51,14 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
-            _zero_params: Self::ZeroCheckParams,
-            input_poly: Self::InputType,
-            zero_domain: Self::ZeroDomain
+            _zero_params: &Self::ZeroCheckParams<'_>,
+            input_poly: &Self::InputType,
+            zero_domain: &Self::ZeroDomain,
+            _transcript: &mut Self::Transcripts
         ) -> Result<Self::Proof, anyhow::Error> {
             
         assert_eq!(
-            input_poly.poly_info.num_vars, zero_domain, 
+            input_poly.poly_info.num_vars, *zero_domain, 
             "Dimensions of boolean hypercube do not match the given polynomials"
         );
 
@@ -77,7 +79,7 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
 
 
         let mut r_point = vec![];
-        for _ in 0..zero_domain {
+        for _ in 0..*zero_domain {
             let r = get_randomness(init_seed.clone(), init_inp.clone())[0];
             r_point.push(r);
             init_seed.push(r);
@@ -104,7 +106,7 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
         let mut prover_msgs = vec![];
         let mut inp = vec![F::zero(); zero_domain + 1];
 
-        for _ in 0..zero_domain {
+        for _ in 0..*zero_domain {
             let prover_msg = IPforSumCheck::prover_round(
                 &mut prover_state, 
                 &verifier_msg
@@ -147,16 +149,17 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
-            _zero_params: Self::ZeroCheckParams,
-            input_poly: Self::InputType,
-            proof: Self::Proof,
-            zero_domain: Self::ZeroDomain
+            _zero_params: &Self::ZeroCheckParams<'_>,
+            input_poly: &Self::InputType,
+            proof: &Self::Proof,
+            zero_domain: &Self::ZeroDomain,
+            _transcript: &mut Self::Transcripts
         ) -> Result<bool, anyhow::Error> {
 
         // check if the zero domain (dimensions of boolean hypercube) 
         // is same as the number of variables
         assert_eq!(
-            input_poly.poly_info.num_vars, zero_domain, 
+            input_poly.poly_info.num_vars, *zero_domain, 
             "Dimensions of boolean hypercube do not match the given polynomials"
         );
 
@@ -172,7 +175,7 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
         let mut init_seed = input_poly.flat_ml_extensions[0].evaluations.clone();
 
         let mut r_point = vec![];
-        for _ in 0..zero_domain {
+        for _ in 0..*zero_domain {
             let r = get_randomness(init_seed.clone(), init_inp.clone())[0];
             r_point.push(r);
             init_seed.push(r);
@@ -198,7 +201,7 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
             input_poly.poly_info.clone()
         );
 
-        for i in 0..zero_domain {
+        for i in 0..*zero_domain {
             let prover_msg = proof.prover_msgs.get(i).expect("proof is incomplete");
             let _verifier_msg = IPforSumCheck::verifier_round(
                 (*prover_msg).clone(), 
@@ -230,27 +233,29 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
 mod test {
     use ark_bls12_381::Fr;
 
-    use crate::{zc::multilinear_zc::naive::custom_zero_test_case, ZeroCheck};
+    use crate::{transcripts::ZCTranscript, zc::multilinear_zc::naive::custom_zero_test_case, ZeroCheck};
 
     use super::{rand_zero, NaiveMLZeroCheck};
 
     #[test]
     fn test_ml_zerocheck() {
         let poly = rand_zero::<Fr>(10, (4, 5), 2);
-        let zp = NaiveMLZeroCheck::<Fr>::setup(None).unwrap();
+        let zp = NaiveMLZeroCheck::<Fr>::setup(&None).unwrap();
 
         let proof = NaiveMLZeroCheck::<Fr>::prove(
-            zp.clone(),
-            poly.clone(), 
-            10
+            &zp.clone(),
+            &poly.clone(), 
+            &10,
+            &mut ZCTranscript::init_transcript()
         ).unwrap();
         println!("Proof Generated: {:?}", proof);
 
         let valid = NaiveMLZeroCheck::<Fr>::verify(
-            zp, 
-            poly, 
-            proof, 
-            10
+            &zp, 
+            &poly, 
+            &proof, 
+            &10,
+            &mut ZCTranscript::init_transcript()
         ).unwrap();
 
         assert!(valid);
@@ -259,20 +264,22 @@ mod test {
     #[test]
     fn test_ml_zerocheck_custom() {
         let poly = custom_zero_test_case::<Fr>(10);
-        let zp = NaiveMLZeroCheck::<Fr>::setup(None).unwrap();
+        let zp = NaiveMLZeroCheck::<Fr>::setup(&None).unwrap();
 
         let proof = NaiveMLZeroCheck::<Fr>::prove(
-            zp.clone(),
-            poly.clone(), 
-            10
+            &zp.clone(),
+            &poly.clone(), 
+            &10,
+            &mut ZCTranscript::init_transcript()
         ).unwrap();
         println!("Proof Generated: {:?}", proof);
 
         let valid = NaiveMLZeroCheck::<Fr>::verify(
-            zp, 
-            poly, 
-            proof, 
-            10
+            &zp, 
+            &poly, 
+            &proof, 
+            &10,
+            &mut ZCTranscript::init_transcript()
         ).unwrap();
 
         assert!(valid);
