@@ -221,12 +221,16 @@ def plot_univar_zc():
 
 def plot_multi_lin_zc():
     res_blocks = load_test_from_txt_to_blocks(
-        "output_log/mullin_naive_bench_multhr_1.log", "Prover starts for 2^")
+        "output_log/mullin_opt_bench_multhr_1.log", "Prover starts Opt multilinear for 2^")
 
-    target_keys_univar = ["computing inital challenge using which f_hat is computed",
+    target_keys_univar = ["commit to (g,h,s,o) input MLEs",
+                          "computing inital challenge using which f_hat is computed",
                           "Build MLE: computing f_hat(X) = sum_{B^m} f(X)",
-                          "running sumcheck proving algorithm for X rounds",]
-    assert len(target_keys_univar) == 3, "Result timer number not match the code"
+                          "running sumcheck proving algorithm for X rounds",
+                          "open proof g,h,s,o input MLEs at r",
+                          "computing evaluations of input MLEs at challenges",
+                          ]
+    assert len(target_keys_univar) == 6, "Result timer number not match the code"
 
     # parse the result from text log --> blocks --> a dataframe
     target_time_unit = "s"
@@ -264,7 +268,7 @@ def plot_multi_lin_zc():
     plt.legend(title="Description", bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig("output_log/mullin_naive_bench_multhr_1.png")
+    plt.savefig("output_log/mullin_opt_bench_multhr_1.png")
 
 
 if __name__ == '__main__':
