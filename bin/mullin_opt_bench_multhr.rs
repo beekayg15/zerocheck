@@ -3,7 +3,7 @@ use clap::Parser;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::{
-    multilinear_zc::optimized::{custom_zero_test_case, InputParams, OptMLZeroCheck},
+    zc::multilinear_zc::optimized::{custom_zero_test_case, InputParams, OptMLZeroCheck},
     ZeroCheck,
 };
 
