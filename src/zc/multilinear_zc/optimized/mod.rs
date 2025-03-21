@@ -1,10 +1,8 @@
 use anyhow::Ok;
 use ark_ec::pairing::Pairing;
-use ark_poly::Polynomial;
-use ark_poly_commit::multilinear_pc::MultilinearPC;
-use ark_std::{cfg_into_iter, end_timer, rand::thread_rng, start_timer};
-use ark_poly_commit::multilinear_pc::data_structures::Commitment;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use ark_poly::{DenseMultilinearExtension, Polynomial};
+use ark_std::{end_timer, start_timer};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use sumcheck::{verifier::VerifierMsg, IPforSumCheck};
 use std::marker::PhantomData;
 use ark_ff::Zero;
@@ -15,46 +13,45 @@ pub use data_structures::*;
 mod sumcheck;
 
 use crate::{
-    transcripts::ZCTranscript, utils::{
-        get_randomness, 
-        get_randomness_from_ecc
-    }, ZeroCheck
+    pcs::PolynomialCommitmentScheme, transcripts::ZCTranscript, ZeroCheck
 };
 
 /// Optimized Zero-Check protocol for if a polynomial
 /// f = sum(product(MLEs)) evaluates to 0
 /// over a boolean hypercube of given dimensions
 #[derive(Clone)]
-pub struct OptMLZeroCheck<E: Pairing> {
-    _pairing_data: PhantomData<E>
+pub struct OptMLZeroCheck<E: Pairing, PCS: PolynomialCommitmentScheme> {
+    _pairing_data: PhantomData<E>,
+    _pcs_data: PhantomData<PCS>,
 }
 
-impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
+impl<E, PCS> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E, PCS>
     where
     E: Pairing,
+    PCS: PolynomialCommitmentScheme<
+        Polynomial = DenseMultilinearExtension<E::ScalarField>,
+        PolynomialInput = Vec<E::ScalarField>,
+        PolynomialOutput = E::ScalarField,
+    >,
 {
     type InputType = VirtualPolynomial<E::ScalarField>;
     
     // size of the boolean hypercube over which the output polynomial evaluates to 0
     type ZeroDomain = usize;
-    type Proof = Proof<E>;
-    type ZeroCheckParams<'a> = ZeroCheckParams<E>;
-    type InputParams = InputParams;
+    type Proof = Proof<PCS>;
+    type ZeroCheckParams<'a> = ZeroCheckParams<'a, PCS>;
+    type InputParams = PCS::PCSParams;
     type Transcripts = ZCTranscript<E::ScalarField>;
 
     fn setup<'a>(
         pp: &Self::InputParams
     ) -> Result<Self::ZeroCheckParams<'_>, anyhow::Error> {
         let setup_mpc_time =
-            start_timer!(|| "Setup KZG10 polynomial commitments global parameters");
+            start_timer!(|| "Setup MPC polynomial commitments global parameters");
 
-        let rng = &mut thread_rng();
-        let params = MultilinearPC::<E>::setup(pp.num_vars, rng);
-
-        let (ck, vk) = MultilinearPC::<E>::trim(
-            &params, 
-            pp.num_vars,
-        );
+        let (ck, vk) = PCS::setup(
+            pp,
+        ).unwrap();
         
         end_timer!(setup_mpc_time);
 
@@ -78,7 +75,7 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
             zero_params: &Self::ZeroCheckParams<'_>,
             input_poly: &Self::InputType,
             zero_domain: &Self::ZeroDomain,
-            _transcript: &mut Self::Transcripts
+            transcript: &mut Self::Transcripts
         ) -> Result<Self::Proof, anyhow::Error> {
 
         //compute the commitments to the MLEs in the Virtual Polynomial
@@ -86,13 +83,14 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
 
         let flatten_mle_extensions = input_poly.clone().flat_ml_extensions;
 
-        let inp_commitments: Vec<Commitment<E>> = flatten_mle_extensions.clone()
+        let inp_commitments: Vec<<PCS as PolynomialCommitmentScheme>::Commitment> = flatten_mle_extensions.clone()
             .into_par_iter()
             .map(|mle| {
-                MultilinearPC::<E>::commit(
+                let comm = PCS::commit(
                     &zero_params.ck, 
                     &mle.as_ref().clone(),
-                )
+                ).unwrap();
+                comm
             })
             .collect();
             
@@ -107,20 +105,25 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
         let initial_challenge_timer = start_timer!(|| 
             "computing inital challenge using which f_hat is computed"
         );
+
+        let _: Vec<_> = inp_commitments.clone()
+            .into_iter()
+            .map(|comm| {
+                transcript.append_serializable_element(b"comm_mle", &comm).unwrap();
+            })
+            .collect();
         
-        let mut init_seed = vec![];
-        init_seed.push(inp_commitments[0].g_product);
-
-        let mut init_inp = vec![];
-        for i in 1..inp_commitments.len() {
-            init_inp.push(inp_commitments[i].g_product);
-        }
-
-
-        let mut r_point = vec![<E::ScalarField>::zero(); *zero_domain];
-        let mut r = get_randomness_from_ecc::<E, E::ScalarField>(init_seed, init_inp);
-        r.extend(vec![<E::ScalarField>::zero(); *zero_domain]);
-        r_point.copy_from_slice(&r[0..*zero_domain]);
+        let r_point: Vec<<E as Pairing>::ScalarField> = (0..*zero_domain)
+            .into_iter()
+            .map(|_| {
+                let r = transcript.get_and_append_challenge(
+                    b"init_challenge"
+                ).unwrap();
+                r
+            })
+            .collect();
+        
+        
 
         end_timer!(initial_challenge_timer);
 
@@ -141,13 +144,13 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
         let mut prover_state = IPforSumCheck::prover_init(inp_hat);
         let mut verifier_msg = None;
         let mut prover_msgs = vec![];
-        let mut inp = vec![<E::ScalarField>::zero(); zero_domain + 1];
         let mut challenge = <E::ScalarField>::zero();
 
         for _ in 0..*zero_domain {
             let prover_msg = IPforSumCheck::prover_round(
                 &mut prover_state, 
-                &verifier_msg
+                &verifier_msg,
+                transcript
             );
 
             // compute the seed and input required to generate the random challenge
@@ -155,17 +158,13 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
                 "verifier sampling a random challenge using the transcripts"
             );
 
-            let seed = prover_msg.evaluations.clone();
-
-            challenge = get_randomness(seed, inp.clone())[0];
+            challenge = transcript.get_and_append_challenge(b"round_challenge").unwrap();
 
             end_timer!(verifier_challenge_sampling_timer);
 
             verifier_msg = Some(VerifierMsg{
                 challenge: challenge
             });
-
-            inp = prover_msg.evaluations.clone();
             prover_msgs.push(prover_msg);
         }
 
@@ -177,12 +176,14 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
 
         let inp_openings = flatten_mle_extensions.clone()
             .into_par_iter()
-            .map(|mle| {
-                MultilinearPC::<E>::open(
+            .enumerate()
+            .map(|(i, mle)| {
+                PCS::open(
                     &zero_params.ck, 
+                    &inp_commitments[i],
                     &mle.as_ref().clone(),
-                    &prover_state.challenges,
-                )
+                    prover_state.challenges.clone(),
+                ).unwrap()
             })
             .collect();
 
@@ -223,7 +224,7 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
             input_poly: &Self::InputType,
             proof: &Self::Proof,
             zero_domain: &Self::ZeroDomain,
-            _transcript: &mut Self::Transcripts
+            transcript: &mut Self::Transcripts
         ) -> Result<bool, anyhow::Error> {
 
         // check if the zero domain (dimensions of boolean hypercube) 
@@ -240,19 +241,22 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
             "computing inital challenge using which f_hat is computed"
         );
 
-        let mut init_seed = vec![];
-        init_seed.push(proof.inp_mle_commitments[0].g_product);
-
-        let mut init_inp = vec![];
-        for i in 1..proof.inp_mle_commitments.len() {
-            init_inp.push(proof.inp_mle_commitments[i].g_product);
-        }
-
-
-        let mut r_point = vec![<E::ScalarField>::zero(); *zero_domain];
-        let mut r = get_randomness_from_ecc::<E, E::ScalarField>(init_seed, init_inp);
-        r.extend(vec![<E::ScalarField>::zero(); *zero_domain]);
-        r_point.copy_from_slice(&r[0..*zero_domain]);
+        let _: Vec<_> = proof.inp_mle_commitments.clone()
+            .into_iter()
+            .map(|comm| {
+                transcript.append_serializable_element(b"comm_mle", &comm).unwrap();
+            })
+            .collect();
+        
+        let r_point: Vec<<E as Pairing>::ScalarField> = (0..*zero_domain)
+            .into_iter()
+            .map(|_| {
+                let r = transcript.get_and_append_challenge(
+                    b"init_challenge"
+                ).unwrap();
+                r
+            })
+            .collect();
 
         end_timer!(initial_challenge_timer);
 
@@ -278,7 +282,8 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
             let prover_msg = proof.prover_msgs.get(i).expect("proof is incomplete");
             let _verifier_msg = IPforSumCheck::verifier_round(
                 (*prover_msg).clone(), 
-                &mut verifier_state
+                &mut verifier_state,
+                transcript
             );
         }
 
@@ -290,15 +295,16 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
         end_timer!(sumcheck_verifier_timer);
 
         //Check opening proofs of input polynomials
-        let _ = cfg_into_iter!(0..flatten_mle_extensions.len())
+        let _ = (0..flatten_mle_extensions.len())
+            .into_iter()
             .map( |i| {
-                let checked = MultilinearPC::<E>::check(
+                let checked = PCS::check(
                     &zero_params.vk,
-                    &proof.inp_mle_commitments[i], 
-                    &subclaim.point, 
-                    proof.inp_mle_evals[i], 
                     &proof.inp_mle_openings[i],
-                );
+                    &proof.inp_mle_commitments[i], 
+                    subclaim.point.clone(), 
+                    proof.inp_mle_evals[i], 
+                ).unwrap();
                 assert_eq!(checked, true, "invalid opening proof");
             }
         );
@@ -320,27 +326,25 @@ impl<E> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E>
 mod test {
     use ark_bls12_381::{Fr, Bls12_381};
 
-    use crate::{transcripts::ZCTranscript, zc::multilinear_zc::optimized::{custom_zero_test_case, InputParams}, ZeroCheck};
+    use crate::{pcs::multilinear_pcs::mpc::MPC, transcripts::ZCTranscript, zc::multilinear_zc::optimized::custom_zero_test_case, ZeroCheck};
 
     use super::{rand_zero, OptMLZeroCheck};
 
     #[test]
     fn test_ml_zerocheck() {
         let poly = rand_zero::<Fr>(10, (4, 5), 2);
-        let inp_params = InputParams{
-            num_vars: 10
-        };
-        let zp = OptMLZeroCheck::<Bls12_381>::setup(&inp_params).unwrap();
+        let num_vars = 10;
+        let zp = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::setup(&num_vars).unwrap();
 
-        let proof = OptMLZeroCheck::<Bls12_381>::prove(
+        let proof = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::prove(
             &zp.clone(),
             &poly.clone(), 
             &10,
             &mut ZCTranscript::init_transcript()
         ).unwrap();
-        println!("Proof Generated: {:?}", proof);
+        // println!("Proof Generated: {:?}", proof);
 
-        let valid = OptMLZeroCheck::<Bls12_381>::verify(
+        let valid = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::verify(
             &zp, 
             &poly, 
             &proof, 
@@ -354,15 +358,13 @@ mod test {
     #[test]
     fn test_custom_ml_zerocheck() {
         let poly = custom_zero_test_case::<Fr>(10);
-        let inp_params = InputParams{
-            num_vars: 10
-        };
+        let num_vars = 10;
 
         println!("Unique input MLEs: {:?}", poly.flat_ml_extensions.len());
 
-        let zp = OptMLZeroCheck::<Bls12_381>::setup(&inp_params).unwrap();
+        let zp = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::setup(&num_vars).unwrap();
 
-        let proof = OptMLZeroCheck::<Bls12_381>::prove(
+        let proof = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::prove(
             &zp.clone(),
             &poly.clone(), 
             &10,
@@ -370,7 +372,7 @@ mod test {
         ).unwrap();
         println!("Proof Generated: {:?}", proof);
 
-        let valid = OptMLZeroCheck::<Bls12_381>::verify(
+        let valid = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::verify(
             &zp, 
             &poly, 
             &proof, 

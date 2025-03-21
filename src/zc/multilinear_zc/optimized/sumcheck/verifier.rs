@@ -2,15 +2,15 @@ use ark_ff::PrimeField;
 use ark_std::{end_timer, start_timer};
 
 use crate::{
-    zc::multilinear_zc::optimized::PolynomialInfo, 
-    utils::get_randomness
+    transcripts::ZCTranscript, zc::multilinear_zc::optimized::PolynomialInfo
 };
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 use super::{prover::ProverMsg, IPforSumCheck};
 
 /// Struct to store the verifier message sent during 
 /// eah round of the sumcheck protocol
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, CanonicalDeserialize, CanonicalSerialize)]
 pub struct VerifierMsg<F: PrimeField> {
     // challenge sampled by the verifier 
     pub(crate) challenge: F,
@@ -75,6 +75,7 @@ impl<F: PrimeField> IPforSumCheck<F> {
     pub fn verifier_round(
         prover_msg: ProverMsg<F>,
         verifier_state: &mut VerifierState<F>,
+        transcript: &mut ZCTranscript<F>,
     ) -> Option<VerifierMsg<F>> {
         let verifier_single_round_timer = start_timer!(|| format!(
             "Interative verifier for sumcheck at round {:?}", verifier_state.round
@@ -90,17 +91,11 @@ impl<F: PrimeField> IPforSumCheck<F> {
             "verifier sampling a random challenge using the transcripts"
         );
 
-        let inp: Vec<F>;
-        if verifier_state.round == 1 {
-            inp = vec![F::zero(); verifier_state.num_vars + 1];
-        } else {
-            inp = verifier_state.poly_rcvd[verifier_state.round - 2].clone();
-        }
-
-        let seed = prover_msg.evaluations.clone();
+        transcript.append_serializable_element(b"prover_msg", &prover_msg).unwrap();
+        let challenge = transcript.get_and_append_challenge(b"round_challenge").unwrap();
 
         let msg = VerifierMsg{
-            challenge: get_randomness(seed, inp)[0]
+            challenge: challenge
         };
 
         end_timer!(verifier_challenge_sampling_timer);

@@ -5,11 +5,12 @@ use ark_poly::{
 };
 use ark_std::{cfg_into_iter, end_timer, start_timer, vec::Vec};
 use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
-use crate::zc::multilinear_zc::optimized::VirtualPolynomial;
+use crate::{transcripts::ZCTranscript, zc::multilinear_zc::optimized::VirtualPolynomial};
 
 use super::{verifier::VerifierMsg, IPforSumCheck};
 
@@ -17,7 +18,7 @@ use super::{verifier::VerifierMsg, IPforSumCheck};
 /// at the end of each round of the interactive sum-check
 /// protocol. The prover sends the evaluations of the univarite 
 /// polynomial at points (0..=max_degree)
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, CanonicalDeserialize, CanonicalSerialize)]
 pub struct ProverMsg<F: PrimeField> {
     // Evaluations of the univariate polynomial at any round
     // evaluated a points (0..=max_degree)
@@ -97,7 +98,8 @@ impl<F: PrimeField> IPforSumCheck<F> {
     /// over max_degree + 1 points
     pub fn prover_round(
         prover_state: &mut ProverState<F>, 
-        verifier_msg: &Option<VerifierMsg<F>>
+        verifier_msg: &Option<VerifierMsg<F>>,
+        transcripts: &mut ZCTranscript<F>,
     ) -> ProverMsg<F> {
         let prover_single_round_timer = start_timer!(|| format!(
             "Interative prover for sumcheck at round {:?}", prover_state.round
@@ -213,9 +215,13 @@ impl<F: PrimeField> IPforSumCheck<F> {
         end_timer!(prover_single_round_timer);
 
         // Send the evalutions on the max_degree + 1 points as the prover message
-        ProverMsg {
+        let prover_msg = ProverMsg {
             evaluations: products_sum
-        }
+        };
+
+        transcripts.append_serializable_element(b"prover_msg", &prover_msg).unwrap();
+
+        prover_msg
     }
 }
 

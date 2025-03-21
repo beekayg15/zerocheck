@@ -3,9 +3,7 @@ use clap::Parser;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::{
-    transcripts::ZCTranscript,
-    zc::multilinear_zc::optimized::{custom_zero_test_case, InputParams, OptMLZeroCheck},
-    ZeroCheck,
+    pcs::multilinear_pcs::mpc::MPC, transcripts::ZCTranscript, zc::multilinear_zc::optimized::{custom_zero_test_case, OptMLZeroCheck}, ZeroCheck
 };
 
 fn test_template(num_vars: usize, repeat: u32) -> u128 {
@@ -20,8 +18,8 @@ fn test_template(num_vars: usize, repeat: u32) -> u128 {
 
     let poly = custom_zero_test_case::<Fr>(num_vars);
 
-    let inp_params = InputParams { num_vars };
-    let zp = OptMLZeroCheck::<Bls12_381>::setup(&inp_params).unwrap();
+    let inp_params = num_vars;
+    let zp = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::setup(&inp_params).unwrap();
 
     let duration = instant.elapsed().as_millis();
     print!("Polynomial terms: ");
@@ -33,7 +31,7 @@ fn test_template(num_vars: usize, repeat: u32) -> u128 {
 
     let proof = (0..repeat)
         .map(|_| {
-            OptMLZeroCheck::<Bls12_381>::prove(
+            OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::prove(
                 &zp.clone(),
                 &poly.clone(),
                 &num_vars,
@@ -48,7 +46,7 @@ fn test_template(num_vars: usize, repeat: u32) -> u128 {
 
     let runtime = instant.elapsed();
 
-    let result = OptMLZeroCheck::<Bls12_381>::verify(
+    let result = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::verify(
         &zp,
         &poly,
         &proof,

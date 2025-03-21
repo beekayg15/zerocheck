@@ -1,3 +1,4 @@
+use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use anyhow::Error;
 use std::fmt::Debug;
@@ -13,7 +14,7 @@ pub trait PolynomialCommitmentScheme: Clone + Sized {
     type PCSParams: Clone;
     type Polynomial: Clone;
     type PolynomialInput: Clone;
-    type PolynomialOutput: Clone;
+    type PolynomialOutput: Clone + PrimeField;
 
     fn setup<'a> (
         pp: &'a Self::PCSParams

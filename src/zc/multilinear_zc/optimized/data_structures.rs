@@ -1,12 +1,8 @@
 use anyhow::{Error, Ok};
-use ark_ec::pairing::Pairing;
 use ark_ff::PrimeField;
 use ark_poly::{
     DenseMultilinearExtension,
     Polynomial, MultilinearExtension
-};
-use ark_poly_commit::multilinear_pc::data_structures::{
-    Commitment, CommitterKey, Proof as MPCProof, VerifierKey
 };
 use ark_std::rand::{
     thread_rng, Rng 
@@ -17,29 +13,26 @@ use std::{
     marker::PhantomData, sync::Arc
 };
 
+use crate::pcs::PolynomialCommitmentScheme;
+
 use super::sumcheck::prover::ProverMsg;
 
 #[derive(Clone)]
-pub struct ZeroCheckParams<E: Pairing> {
-    pub(crate) vk: VerifierKey<E>,
-    pub(crate) ck: CommitterKey<E>,
-}
-
-#[derive(Clone)]
-pub struct InputParams {
-    pub num_vars: usize,
+pub struct ZeroCheckParams<'a, PCS: PolynomialCommitmentScheme> {
+    pub(crate) vk: PCS::VerifierKey,
+    pub(crate) ck: PCS::CommitterKey<'a>,
 }
 
 /// This is the data structure of the proof to be sent to the verifer,
 /// to prove that the output polynomial f(x') = l(x').r(x').s(x')
 /// evaluates to 0 over a given hypercube
 #[derive(Clone, Debug)]
-pub struct Proof<E: Pairing> {
+pub struct Proof<PCS: PolynomialCommitmentScheme> {
     // list of prover message sent during the interactive sumcheck protocol
-    pub(crate) prover_msgs: Vec<ProverMsg<E::ScalarField>>,
-    pub(crate) inp_mle_commitments: Vec<Commitment<E>>,
-    pub(crate) inp_mle_evals: Vec<E::ScalarField>,
-    pub(crate) inp_mle_openings: Vec<MPCProof<E>>
+    pub(crate) prover_msgs: Vec<ProverMsg<PCS::PolynomialOutput>>,
+    pub(crate) inp_mle_commitments: Vec<PCS::Commitment>,
+    pub(crate) inp_mle_evals: Vec<PCS::PolynomialOutput>,
+    pub(crate) inp_mle_openings: Vec<PCS::OpeningProof>
 }
 
 /// Struct to store the necessary information about the virtual polynomial,

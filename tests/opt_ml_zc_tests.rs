@@ -5,8 +5,8 @@ mod tests {
 
     use ark_bls12_381::{Fr, Bls12_381};
     use zerocheck::{
-        transcripts::ZCTranscript, zc::multilinear_zc::optimized::{
-            custom_zero_test_case, InputParams, OptMLZeroCheck
+        pcs::multilinear_pcs::mpc::MPC, transcripts::ZCTranscript, zc::multilinear_zc::optimized::{
+            custom_zero_test_case, OptMLZeroCheck
         }, ZeroCheck
     };
 
@@ -18,17 +18,15 @@ mod tests {
             num_vars
         );
 
-        let inp_params = InputParams {
-            num_vars
-        };
+        let inp_params = num_vars;
 
-        let zp= OptMLZeroCheck::<Bls12_381>::setup(&inp_params).unwrap();
+        let zp= OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::setup(&inp_params).unwrap();
 
         let instant = Instant::now();
 
         let proof = (0..repeat)
             .map(|_| {
-                OptMLZeroCheck::<Bls12_381>::prove(
+                OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::prove(
                     &zp.clone(),
                     &poly.clone(), 
                     &num_vars,
@@ -42,7 +40,7 @@ mod tests {
 
         let runtime = instant.elapsed();
 
-        let result = OptMLZeroCheck::<Bls12_381>::verify(
+        let result = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::verify(
             &zp,
             &poly, 
             &proof, 
