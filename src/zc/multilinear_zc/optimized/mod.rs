@@ -326,7 +326,12 @@ impl<E, PCS> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E, PCS>
 mod test {
     use ark_bls12_381::{Fr, Bls12_381};
 
-    use crate::{pcs::multilinear_pcs::mpc::MPC, transcripts::ZCTranscript, zc::multilinear_zc::optimized::custom_zero_test_case, ZeroCheck};
+    use crate::{
+        pcs::multilinear_pcs::mpc::MPC, 
+        transcripts::ZCTranscript, 
+        zc::multilinear_zc::optimized::custom_zero_test_case, 
+        ZeroCheck
+    };
 
     use super::{rand_zero, OptMLZeroCheck};
 

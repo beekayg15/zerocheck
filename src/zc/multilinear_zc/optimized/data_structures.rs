@@ -468,12 +468,12 @@ pub fn custom_zero_test_case<F: PrimeField> (
 
     p6.push(o_mle.clone());
 
-    poly.add_product(p1, F::one());
-    poly.add_product(p2, -F::one());
-    poly.add_product(p3, -F::one());
-    poly.add_product(p4, F::one());
-    poly.add_product(p5, F::one());
-    poly.add_product(p6, -F::one());
+    poly.add_product(p1, F::from(1));
+    poly.add_product(p2, F::from(-1));
+    poly.add_product(p3, F::from(-1));
+    poly.add_product(p4, F::from(1));
+    poly.add_product(p5, F::from(1));
+    poly.add_product(p6, F::from(-1));
 
     poly
 }
