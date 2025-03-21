@@ -29,17 +29,20 @@ pub trait ZeroCheck<F: PrimeField>: Sized{
     type Proof: Clone;
 
     /// Type of Zero-check Parameters used in the protocol
-    type ZeroCheckParams: Clone;
+    type ZeroCheckParams<'a>: Clone;
 
     /// Type of Input Parameters to the setup
     type InputParams: Clone;
+
+    /// Type of transcripts to be used to record the interactions
+    type Transcripts: Clone;
 
     /// function to setup the zerocheck protocol
     /// such as setting up the PCS and other
     /// equipments necessary
     fn setup<'a>(
-        pp: Self::InputParams
-    ) -> Result<Self::ZeroCheckParams, Error>;
+        pp: &'a Self::InputParams
+    ) -> Result<Self::ZeroCheckParams<'_>, Error>;
 
     /// function called by the prover to genearte a valid
     /// proof for zero-check protocol
@@ -52,9 +55,10 @@ pub trait ZeroCheck<F: PrimeField>: Sized{
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
-        zero_params: Self::ZeroCheckParams,
-        input_poly: Self::InputType,
-        zero_domain: Self::ZeroDomain
+        zero_params: &'a Self::ZeroCheckParams<'_>,
+        input_poly: &'a Self::InputType,
+        zero_domain: &'a Self::ZeroDomain,
+        transcript: &'a mut Self::Transcripts, 
     ) -> Result<Self::Proof, Error>;
 
     /// function called by the verifier to check if the proof for the 
@@ -69,9 +73,10 @@ pub trait ZeroCheck<F: PrimeField>: Sized{
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
-        zero_params: Self::ZeroCheckParams,
-        input_poly: Self::InputType,
-        proof: Self::Proof,
-        zero_domain: Self::ZeroDomain
+        zero_params: &'a Self::ZeroCheckParams<'_>,
+        input_poly: &'a Self::InputType,
+        proof: &'a Self::Proof,
+        zero_domain: &'a Self::ZeroDomain,
+        transcript: &'a mut Self::Transcripts, 
     ) -> Result<bool, Error>;
 }

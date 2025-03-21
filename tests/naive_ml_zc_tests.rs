@@ -5,8 +5,7 @@ mod tests {
 
     use ark_bls12_381::Fr;
     use zerocheck::{
-        zc::multilinear_zc::naive::{rand_zero, NaiveMLZeroCheck}, 
-        ZeroCheck
+        transcripts::ZCTranscript, zc::multilinear_zc::naive::{rand_zero, NaiveMLZeroCheck}, ZeroCheck
     };
 
     fn test_template(
@@ -21,16 +20,17 @@ mod tests {
             num_products
         );
 
-        let zp= NaiveMLZeroCheck::<Fr>::setup(None).unwrap();
+        let zp= NaiveMLZeroCheck::<Fr>::setup(&None).unwrap();
 
         let instant = Instant::now();
 
         let proof = (0..repeat)
             .map(|_| {
                 NaiveMLZeroCheck::<Fr>::prove(
-                    zp.clone(),
-                    poly.clone(), 
-                    num_vars
+                    &zp.clone(),
+                    &poly.clone(), 
+                    &num_vars,
+                    &mut ZCTranscript::init_transcript()
                 ).unwrap()
             })
             .collect::<Vec<_>>()
@@ -41,10 +41,11 @@ mod tests {
         let runtime = instant.elapsed();
 
         let result = NaiveMLZeroCheck::<Fr>::verify(
-            zp,
-            poly, 
-            proof, 
-            num_vars
+            &zp,
+            &poly, 
+            &proof, 
+            &num_vars,
+            &mut ZCTranscript::init_transcript()
         ).unwrap();
 
         assert_eq!(result, true);

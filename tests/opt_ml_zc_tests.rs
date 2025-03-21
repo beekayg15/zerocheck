@@ -5,10 +5,9 @@ mod tests {
 
     use ark_bls12_381::{Fr, Bls12_381};
     use zerocheck::{
-        zc::multilinear_zc::optimized::{
+        transcripts::ZCTranscript, zc::multilinear_zc::optimized::{
             custom_zero_test_case, InputParams, OptMLZeroCheck
-        }, 
-        ZeroCheck
+        }, ZeroCheck
     };
 
     fn test_template(
@@ -23,16 +22,17 @@ mod tests {
             num_vars
         };
 
-        let zp= OptMLZeroCheck::<Bls12_381>::setup(inp_params).unwrap();
+        let zp= OptMLZeroCheck::<Bls12_381>::setup(&inp_params).unwrap();
 
         let instant = Instant::now();
 
         let proof = (0..repeat)
             .map(|_| {
                 OptMLZeroCheck::<Bls12_381>::prove(
-                    zp.clone(),
-                    poly.clone(), 
-                    num_vars
+                    &zp.clone(),
+                    &poly.clone(), 
+                    &num_vars,
+                    &mut ZCTranscript::init_transcript()
                 ).unwrap()
             })
             .collect::<Vec<_>>()
@@ -43,10 +43,11 @@ mod tests {
         let runtime = instant.elapsed();
 
         let result = OptMLZeroCheck::<Bls12_381>::verify(
-            zp,
-            poly, 
-            proof, 
-            num_vars
+            &zp,
+            &poly, 
+            &proof, 
+            &num_vars,
+            &mut ZCTranscript::init_transcript()
         ).unwrap();
 
         assert_eq!(result, true);

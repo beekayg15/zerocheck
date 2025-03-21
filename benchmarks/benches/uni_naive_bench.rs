@@ -43,7 +43,7 @@ fn naive_univariate_zero_check_benchmark(c: &mut Criterion) {
         inp_evals.push(g_evals);
         inp_evals.push(h_evals);
 
-        let zp = NaiveUnivariateZeroCheck::<Fr>::setup(None).unwrap();
+        let zp = NaiveUnivariateZeroCheck::<Fr>::setup(&None).unwrap();
 
         group.bench_with_input(
             BenchmarkId::new("uni_naive_zerocheck", size), &size, |b, &_size| {
@@ -53,9 +53,10 @@ fn naive_univariate_zero_check_benchmark(c: &mut Criterion) {
                     },
                     |input_evals| {
                         let _proof = NaiveUnivariateZeroCheck::<Fr>::prove(
-                            black_box(zp.clone()),
-                            black_box(input_evals), 
-                            black_box(domain)
+                            black_box(&zp.clone()),
+                            black_box(&input_evals), 
+                            black_box(&domain),
+                            &mut None
                         );
                     },
                     BatchSize::LargeInput

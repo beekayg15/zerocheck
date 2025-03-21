@@ -1,7 +1,4 @@
-use ark_poly_commit::kzg10::{
-    Commitment, Proof as KZGProof, 
-    VerifierKey};
-use ark_ec::pairing::Pairing;
+use crate::pcs::PolynomialCommitmentScheme;
 
 /// This is the data structure of the proof to be sent to the verifer,
 /// to prove that there exists a quotient polynomial q(X), for which,
@@ -18,23 +15,17 @@ use ark_ec::pairing::Pairing;
 /// q_eval -stores the evaluation of q(X) at challenge 'r'
 
 #[derive(Clone)]
-pub struct Proof<E: Pairing> {
-    pub(crate) q_comm: Commitment<E>,
-    pub(crate) inp_comms: Vec<Commitment<E>>,
-    pub(crate) q_opening: KZGProof<E>,
-    pub(crate) inp_openings: Vec<KZGProof<E>>,
-    pub(crate) inp_evals: Vec<E::ScalarField>,
-    pub(crate) q_eval: E::ScalarField
+pub struct Proof<PCS: PolynomialCommitmentScheme> {
+    pub(crate) q_comm: PCS::Commitment,
+    pub(crate) inp_comms: Vec<PCS::Commitment>,
+    pub(crate) q_opening: PCS::OpeningProof,
+    pub(crate) inp_openings: Vec<PCS::OpeningProof>,
+    pub(crate) inp_evals: Vec<PCS::PolynomialOutput>,
+    pub(crate) q_eval: PCS::PolynomialOutput
 }
 
 #[derive(Clone)]
-pub struct ZeroCheckParams<E: Pairing> {
-    pub(crate) vk: VerifierKey<E>,
-    pub(crate) powers_of_g: Vec<E::G1Affine>,
-    pub(crate) powers_of_gamma_g: Vec<E::G1Affine>,
-}
-
-#[derive(Clone)]
-pub struct InputParams {
-    pub max_degree: usize,
+pub struct ZeroCheckParams<'a, PCS: PolynomialCommitmentScheme> {
+    pub(crate) ck: PCS::CommitterKey<'a>,
+    pub(crate) vk: PCS::VerifierKey,
 }

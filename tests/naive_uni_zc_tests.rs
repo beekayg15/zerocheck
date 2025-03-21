@@ -41,7 +41,7 @@ mod tests {
         inp_evals.push(g_evals);
         inp_evals.push(h_evals);
 
-        let zp= NaiveUnivariateZeroCheck::<Fr>::setup(None).unwrap();
+        let zp= NaiveUnivariateZeroCheck::<Fr>::setup(&None).unwrap();
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
@@ -49,9 +49,11 @@ mod tests {
         
         let proof = 
             NaiveUnivariateZeroCheck::<Fr>::prove(
-                zp.clone(),
-                inp_evals.clone(), 
-                domain).unwrap();
+                &zp.clone(),
+                &inp_evals.clone(), 
+                &domain,
+            &mut None
+        ).unwrap();
 
         let runtime = instant.elapsed();
 
@@ -63,10 +65,11 @@ mod tests {
 
         let result = NaiveUnivariateZeroCheck::<Fr>
             ::verify(
-                zp, 
-                inp_evals, 
-                proof, 
-                domain
+                &zp, 
+                &inp_evals, 
+                &proof, 
+                &domain,
+                &mut None
             ).unwrap();
 
         end_timer!(verify_timer);

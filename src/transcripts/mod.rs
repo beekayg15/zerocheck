@@ -23,6 +23,10 @@ impl<F: PrimeField> ZCTranscript<F> {
         }
     }
 
+    pub fn init_transcript() -> Self {
+        Self::new(b"Initializing ZeroCheck transcript")
+    }
+
     // Append the message to the transcript.
     pub fn append_message(
         &mut self,

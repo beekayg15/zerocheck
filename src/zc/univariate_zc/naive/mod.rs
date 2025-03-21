@@ -7,6 +7,7 @@ use ark_ff::Zero;
 use anyhow::{Error, Ok};
 use ark_std::{end_timer, start_timer};
 
+use crate::transcripts::ZCTranscript;
 use crate::ZeroCheck;
 use crate::utils::*;
 
@@ -35,11 +36,12 @@ impl<F: PrimeField + FftField> ZeroCheck<F> for NaiveUnivariateZeroCheck<F> {
     type InputType = Vec<Evaluations<F>>;
     type Proof = Proof<F>;
     type ZeroDomain = GeneralEvaluationDomain<F>;
-    type ZeroCheckParams = ZeroCheckParams<F>;
+    type ZeroCheckParams<'a> = ZeroCheckParams<F>;
     type InputParams = Option<F>;
+    type Transcripts = Option<ZCTranscript<F>>;
 
     fn setup<'a>(
-        _pp: Self::InputParams
+        _pp: &Self::InputParams
     ) -> Result<ZeroCheckParams<F>, Error> {
         let zp = ZeroCheckParams {
             _field_data: PhantomData::<F>,
@@ -59,9 +61,10 @@ impl<F: PrimeField + FftField> ZeroCheck<F> for NaiveUnivariateZeroCheck<F> {
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a> (
-            _zero_params: Self::ZeroCheckParams,
-            input_poly: Self::InputType,
-            zero_domain: Self::ZeroDomain
+            _zero_params: &Self::ZeroCheckParams<'_>,
+            input_poly: &Self::InputType,
+            zero_domain: &Self::ZeroDomain,
+            _transcript: &mut Self::Transcripts,
         ) -> Result<Self::Proof, Error> {
 
         let inp_interpolation_time = start_timer!(|| "Interpolating input evaluations");
@@ -91,7 +94,7 @@ impl<F: PrimeField + FftField> ZeroCheck<F> for NaiveUnivariateZeroCheck<F> {
         // the vanishing polynomial over domain `zero_domain`
         let (q_poly, r_poly) = 
             f_poly
-            .divide_by_vanishing_poly(zero_domain);
+            .divide_by_vanishing_poly(*zero_domain);
 
         end_timer!(q_poly_timer);
 
@@ -120,16 +123,17 @@ impl<F: PrimeField + FftField> ZeroCheck<F> for NaiveUnivariateZeroCheck<F> {
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a> (
-            _zero_params: Self::ZeroCheckParams,
-            input_poly: Self::InputType,
-            proof: Self::Proof,
-            zero_domain: Self::ZeroDomain
+            _zero_params: &Self::ZeroCheckParams<'_>,
+            input_poly: &Self::InputType,
+            proof: &Self::Proof,
+            zero_domain: &Self::ZeroDomain,
+            _transcript: &mut Self::Transcripts,
         ) -> Result<bool, anyhow::Error> {
         let g = input_poly[0].clone();
         let h = input_poly[1].clone();
 
-        let q_poly = proof.q;
-        let f_poly = proof.f;
+        let q_poly = &proof.q;
+        let f_poly = &proof.f;
 
         // compute the vanishing polynomial over the `zero_domain`
         let z_poly = zero_domain.vanishing_polynomial();
@@ -206,7 +210,7 @@ mod tests {
 
         let zero_params = 
             NaiveUnivariateZeroCheck::<Fr>::setup(
-                None
+                &None
             ).unwrap();
 
         let mut inp_evals = vec![];
@@ -217,9 +221,10 @@ mod tests {
 
         let _proof = 
             NaiveUnivariateZeroCheck::<Fr>::prove(
-                zero_params,
-                inp_evals.clone(), 
-                domain
+                &zero_params,
+                &inp_evals.clone(), 
+                &domain,
+                &mut None
             ).unwrap();
 
         end_timer!(proof_gen_timer);
@@ -263,16 +268,17 @@ mod tests {
 
         let zero_params = 
             NaiveUnivariateZeroCheck::<Fr>::setup(
-                None
+                &None
             ).unwrap();
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
         let proof = 
             NaiveUnivariateZeroCheck::<Fr>::prove(
-                zero_params.clone(),
-                inp_evals.clone(), 
-                domain
+                &zero_params.clone(),
+                &inp_evals.clone(), 
+                &domain,
+                &mut None
             ).unwrap();
 
         end_timer!(proof_gen_timer);
@@ -282,10 +288,11 @@ mod tests {
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result = NaiveUnivariateZeroCheck::<Fr>::verify(
-            zero_params,
-            inp_evals, 
-            proof, 
-            domain
+            &zero_params,
+            &inp_evals, 
+            &proof, 
+            &domain,
+            &mut None
         ).unwrap();
 
         end_timer!(verify_timer);

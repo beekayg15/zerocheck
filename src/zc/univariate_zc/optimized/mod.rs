@@ -1,19 +1,19 @@
-use crate::utils::*;
-use crate::ZeroCheck;
 use anyhow::Ok;
 use ark_ec::pairing::Pairing;
-use ark_ec::AffineRepr;
 use ark_ff::One;
 use ark_ff::FftField;
 use ark_poly::EvaluationDomain;
 use ark_poly::{univariate::DensePolynomial, Evaluations, GeneralEvaluationDomain, Polynomial};
-use ark_poly_commit::kzg10::{Powers, VerifierKey, KZG10};
-use ark_std::{end_timer, start_timer, test_rng};
+use ark_std::{end_timer, start_timer};
 use rayon::prelude::*;
 use std::marker::PhantomData;
 
 pub mod data_structures;
 use data_structures::*;
+
+use crate::pcs::PolynomialCommitmentScheme;
+use crate::transcripts::ZCTranscript;
+use crate::ZeroCheck;
 
 /// Optimized Zero-Check protocol for if a polynomial
 /// f = g*h*s + (1 - s)(g + h) - o evaluates to 0
@@ -25,57 +25,38 @@ use data_structures::*;
 /// by proving the existence of a quotient polynomial
 /// q, S.T. f(X) = q(X).z_H(X), where z_H(X) is the
 /// vanishing polynomial over the zero domain H.
-pub struct OptimizedUnivariateZeroCheck<E> {
+pub struct OptimizedUnivariateZeroCheck<E, PCS> {
     _pairing_data: PhantomData<E>,
+    _pcs_data: PhantomData<PCS>,
 }
 
-impl<E> ZeroCheck<E::ScalarField> for OptimizedUnivariateZeroCheck<E>
+impl<E, PCS> ZeroCheck<E::ScalarField> for OptimizedUnivariateZeroCheck<E, PCS>
 where
     E: Pairing,
+    PCS: PolynomialCommitmentScheme<
+        Polynomial = DensePolynomial<E::ScalarField>,
+        PolynomialInput = E::ScalarField,
+        PolynomialOutput = E::ScalarField
+    >,
 {
     type InputType = Vec<Evaluations<E::ScalarField>>;
     type ZeroDomain = GeneralEvaluationDomain<E::ScalarField>;
-    type Proof = Proof<E>;
-    type ZeroCheckParams = ZeroCheckParams<E>;
-    type InputParams = InputParams;
+    type Proof = Proof<PCS>;
+    type ZeroCheckParams<'a> = ZeroCheckParams<'a, PCS>;
+    type InputParams = PCS::PCSParams;
+    type Transcripts = ZCTranscript<E::ScalarField>;
 
-    fn setup<'a>(pp: Self::InputParams) -> Result<Self::ZeroCheckParams, anyhow::Error> {
+    fn setup(pp: &Self::InputParams) -> Result<Self::ZeroCheckParams<'_>, anyhow::Error> {
         let setup_kzg_time =
             start_timer!(|| "Setup KZG10 polynomial commitments global parameters");
 
-        // Setting up the KZG(MSM) Polynomial Commitment Scheme
-        let rng = &mut test_rng();
-        let params = KZG10::<E, DensePolynomial<E::ScalarField>>::setup(pp.max_degree, false, rng)
-            .expect("PCS setup failed");
+        let (ck, vk) = PCS::setup(pp).unwrap();
 
         end_timer!(setup_kzg_time);
-        let setup_vk_time = start_timer!(|| "Setup verifier key");
-
-        // Computing the verification key
-        let vk: VerifierKey<E> = VerifierKey {
-            g: params.powers_of_g[0],
-            gamma_g: params.powers_of_gamma_g[&0],
-            h: params.h,
-            beta_h: params.beta_h,
-            prepared_h: params.prepared_h.clone(),
-            prepared_beta_h: params.prepared_beta_h.clone(),
-        };
-
-        end_timer!(setup_vk_time);
-        let powers_of_g_time = start_timer!(|| "Computing the powers of G");
-
-        // Computing the powers of the generator 'G'
-        let powers_of_g = params.powers_of_g[..=(pp.max_degree)].to_vec();
-        let powers_of_gamma_g = (0..=(pp.max_degree))
-            .map(|i| params.powers_of_gamma_g[&i])
-            .collect();
-
-        end_timer!(powers_of_g_time);
 
         Ok(ZeroCheckParams {
+            ck,
             vk,
-            powers_of_g,
-            powers_of_gamma_g,
         })
     }
 
@@ -92,9 +73,10 @@ where
     /// Returns
     /// Proof - valid proof for the zero-check protocol
     fn prove<'a>(
-        zero_params: Self::ZeroCheckParams,
-        input_poly: Self::InputType,
-        zero_domain: Self::ZeroDomain,
+        zero_params: &Self::ZeroCheckParams<'_>,
+        input_poly: &Self::InputType,
+        zero_domain: &Self::ZeroDomain,
+        transcript: &mut Self::Transcripts, 
     ) -> Result<Self::Proof, anyhow::Error> {
         // compute the vanishing polynomial of the zero domain
         // let z_poly = zero_domain.vanishing_polynomial();
@@ -128,59 +110,54 @@ where
         end_timer!(ifft_time);
         let commit_time = start_timer!(|| "KZG commit to (g,h,s,o) polynomials");
 
-        let powers = Powers {
-            powers_of_g: ark_std::borrow::Cow::Owned(zero_params.powers_of_g),
-            powers_of_gamma_g: ark_std::borrow::Cow::Owned(zero_params.powers_of_gamma_g),
-        };
-
         // Compute the commitment to the polynomial g(X), h(X), s(X), and o(X)
-        let comms_rs = [&g_coeff, &h_coeff, &s_coeff, &o_coeff]
+        let comms_rs = [
+                g_coeff.clone(), 
+                h_coeff.clone(), 
+                s_coeff.clone(), 
+                o_coeff.clone()
+            ]
             .par_iter()
             .enumerate()
             .map(|(idx, poly)| {
                 (
                     idx,
-                    KZG10::<E, DensePolynomial<E::ScalarField>>::commit(&powers, poly, None, None)
-                        .expect(format!("Commitment to polynomial {idx}_(X) failed").as_str()),
+                    PCS::commit(
+                        &zero_params.ck, 
+                        poly, 
+                    ).expect(format!("Commitment to polynomial {idx}_(X) failed").as_str()),
                 )
             })
             .collect::<Vec<_>>();
+        
         let mut comms_rs_sorted = comms_rs;
         comms_rs_sorted.sort_by_key(|(i, _)| *i);
-        let [(comm_g, r_g), (comm_h, r_h), (comm_s, r_s), (comm_o, r_o)] = comms_rs_sorted
+
+        let [comm_g, comm_h, comm_s, comm_o] = comms_rs_sorted
             .into_iter()
-            .map(|(_, (comm, r))| (comm, r))
+            .map(|(_, comm)| comm)
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
 
-        assert!(!comm_g.0.is_zero(), "Commitment should not be zero");
-        assert!(!r_g.is_hiding(), "Commitment should not be hiding");
-        assert!(!comm_h.0.is_zero(), "Commitment should not be zero");
-        assert!(!r_h.is_hiding(), "Commitment should not be hiding");
-        assert!(!comm_s.0.is_zero(), "Commitment should not be zero");
-        assert!(!r_s.is_hiding(), "Commitment should not be hiding");
-        assert!(!comm_o.0.is_zero(), "Commitment should not be zero");
-        assert!(!r_o.is_hiding(), "Commitment should not be hiding");
-
         // Collect the commitment to the input polynomials
-        let inp_comms = vec![comm_g, comm_h, comm_s, comm_o];
+        let inp_comms = vec![
+            comm_g.clone(), 
+            comm_h.clone(), 
+            comm_s.clone(), 
+            comm_o.clone()
+        ];
 
         end_timer!(commit_time);
         let get_r_eval_time =
             start_timer!(|| "Get Fiat-Shamir random challenge and evals at challenge");
 
         // Sample a random challenge - Fiat-Shamir
-        let mut inp_rand = vec![];
-        inp_rand.push(comm_h.0);
-        inp_rand.push(comm_s.0);
-        inp_rand.push(comm_o.0);
-        let mut inp_seed = vec![];
-        inp_seed.push(comm_g.0);
-        let r = get_randomness_from_ecc::<E, <E as Pairing>::ScalarField>(
-            inp_seed, 
-            inp_rand
-        )[0];
+        transcript.append_serializable_element(b"comm_g",&comm_g).unwrap();
+        transcript.append_serializable_element(b"comm_h",&comm_h).unwrap();
+        transcript.append_serializable_element(b"comm_s",&comm_s).unwrap();
+        transcript.append_serializable_element(b"comm_o",&comm_o).unwrap();
+        let r = transcript.get_and_append_challenge(b"sampling r").unwrap();
 
         // Collect the evalution of the input polynomials at the challenge
         let mut inp_evals_at_rand = vec![];
@@ -194,18 +171,22 @@ where
 
         // Generate the opening proof that g(r), h(r), s(r), and o(r) are the evaluations of the polynomials
         let opening_proofs = [
-            (&g_coeff, &r_g),
-            (&h_coeff, &r_h),
-            (&s_coeff, &r_s),
-            (&o_coeff, &r_o),
+            (&g_coeff, &comm_g),
+            (&h_coeff, &comm_h),
+            (&s_coeff, &comm_s),
+            (&o_coeff, &comm_o),
         ]
         .par_iter()
         .enumerate()
-        .map(|(idx, (poly, r_poly))| {
+        .map(|(idx, (poly, poly_comm))| {
             (
                 idx,
-                KZG10::<E, DensePolynomial<E::ScalarField>>::open(&powers, poly, r, r_poly)
-                    .expect(format!("Proof generation failed for {idx}_(X)").as_str()),
+                PCS::open(
+                    &zero_params.ck, 
+                    poly_comm, 
+                    poly, 
+                    r,
+                ).expect(format!("Proof generation failed for {idx}_(X)").as_str()),
             )
         })
         .collect::<Vec<_>>();
@@ -278,20 +259,23 @@ where
         let comm_q_time = start_timer!(|| "KZG commit to q polynomial");
 
         // Compute the commitment to the polynomial q(X)
-        let (comm_q, r_q) =
-            KZG10::<E, DensePolynomial<E::ScalarField>>::commit(&powers, &q_coeff, None, None)
-                .expect("Commitment to polynomial q(X) failed");
-
-        assert!(!comm_q.0.is_zero(), "Commitment should not be zero");
-        assert!(!r_q.is_hiding(), "Commitment should not be hiding");
+        let comm_q =
+            PCS::commit(
+                &zero_params.ck, 
+                &q_coeff
+            ).expect("Commitment to polynomial q(X) failed");
 
         end_timer!(comm_q_time);
         let open_q_time = start_timer!(|| "KZG open the q poly commit at r");
 
         // Generate the opening proof that q(r) = t
         let q_opening_proof =
-            KZG10::<E, DensePolynomial<E::ScalarField>>::open(&powers, &q_coeff, r, &r_q)
-                .expect("Proof generation failed for q(X)");
+            PCS::open(
+                &zero_params.ck, 
+                &comm_q, 
+                &q_coeff, 
+                r
+            ).expect("Proof generation failed for q(X)");
 
         end_timer!(open_q_time);
         end_timer!(prove_time);
@@ -320,45 +304,42 @@ where
     /// Returns
     /// 'true' if the proof is valid, 'false' otherwise
     fn verify<'a>(
-        zero_params: Self::ZeroCheckParams,
-        _input_poly: Self::InputType,
-        proof: Self::Proof,
-        zero_domain: Self::ZeroDomain,
+        zero_params: &Self::ZeroCheckParams<'_>,
+        _input_poly: &Self::InputType,
+        proof: &Self::Proof,
+        zero_domain: &Self::ZeroDomain,
+        transcript: &'a mut Self::Transcripts, 
     ) -> Result<bool, anyhow::Error> {
         // let g = input_poly[0].clone();
         // let h = input_poly[1].clone();
         // let s = input_poly[2].clone();
         // let o = input_poly[3].clone();
 
-        let q_comm = proof.q_comm;
-        let inp_comms = proof.inp_comms;
-        let vk = zero_params.vk;
-        let inp_openings = proof.inp_openings;
-        let inp_evals = proof.inp_evals;
-        let q_opening = proof.q_opening;
+        let q_comm = &proof.q_comm;
+        let inp_comms = &proof.inp_comms;
+        let vk = &zero_params.vk;
+        let inp_openings = &proof.inp_openings;
+        let inp_evals = &proof.inp_evals;
+        let q_opening = &proof.q_opening;
         let q_eval = proof.q_eval;
 
         // Sample a random challenge - Fiat-Shamir
-        let mut inp_rand = vec![];
-        inp_rand.push(inp_comms[1].0);
-        inp_rand.push(inp_comms[2].0);
-        inp_rand.push(inp_comms[3].0);
-        let mut inp_seed = vec![];
-        inp_seed.push(inp_comms[0].0);
-        let r = get_randomness_from_ecc::<E, <E as Pairing>::ScalarField>(
-            inp_seed, 
-            inp_rand
-        )[0];
+        // Sample a random challenge - Fiat-Shamir
+        transcript.append_serializable_element(b"comm_g",&inp_comms[0]).unwrap();
+        transcript.append_serializable_element(b"comm_h",&inp_comms[1]).unwrap();
+        transcript.append_serializable_element(b"comm_s",&inp_comms[2]).unwrap();
+        transcript.append_serializable_element(b"comm_o",&inp_comms[3]).unwrap();
+        let r = transcript.get_and_append_challenge(b"sampling r").unwrap();
 
         // check openings to input polynomials
         for i in 0..inp_evals.len() {
             assert!(
-                KZG10::<E, DensePolynomial<E::ScalarField>>::check(
+                PCS::check(
                     &vk,
+                    &inp_openings[i],
                     &inp_comms[i],
                     r,
                     inp_evals[i],
-                    &inp_openings[i]
                 )
                 .unwrap(),
                 "Opening failed at input polynomial {:?}",
@@ -368,8 +349,13 @@ where
 
         // check opening to quotient polynomials
         assert!(
-            KZG10::<E, DensePolynomial<E::ScalarField>>::check(&vk, &q_comm, r, q_eval, &q_opening)
-                .unwrap(),
+            PCS::check(
+                &zero_params.vk, 
+                &q_opening,
+                &q_comm, 
+                r, 
+                q_eval
+            ).unwrap(),
             "Opening failed at quotient polynomial"
         );
 
@@ -391,6 +377,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::pcs::univariate_pcs::kzg::KZG;
+
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_bls12_381::Fr;
@@ -455,14 +443,15 @@ mod tests {
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
         let max_degree = g.degree() + s.degree() + h.degree();
-        let pp = InputParams { max_degree };
+        let pp = max_degree;
 
-        let zp = OptimizedUnivariateZeroCheck::<Bls12_381>::setup(pp).unwrap();
+        let zp = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::setup(&pp).unwrap();
 
-        let proof = OptimizedUnivariateZeroCheck::<Bls12_381>::prove(
-            zp.clone(),
-            inp_evals.clone(),
-            domain,
+        let proof = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::prove(
+            &zp.clone(),
+            &inp_evals.clone(),
+            &domain,
+            &mut ZCTranscript::init_transcript()
         )
         .unwrap();
 
@@ -473,8 +462,13 @@ mod tests {
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result =
-            OptimizedUnivariateZeroCheck::<Bls12_381>::verify(zp, inp_evals, proof, domain)
-                .unwrap();
+            OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::verify(
+                &zp, 
+                &inp_evals, 
+                &proof, 
+                &domain,
+                &mut ZCTranscript::init_transcript()
+            ).unwrap();
 
         end_timer!(verify_timer);
 
