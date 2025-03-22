@@ -108,6 +108,53 @@ where
             .unwrap();
 
         end_timer!(ifft_time);
+        let coset_time = start_timer!(|| "Compute coset domain");
+        
+        // Compute the quotient polynomial q(X) = f(X)/z_H(X) = (g.h.s + (1-s)(g+h))/z_H
+        let g_deg = g_coeff.degree();
+        let h_deg = h_coeff.degree();
+        let s_deg = s_coeff.degree();
+
+        // compute degree of quotient polynomial to
+        let f_deg = g_deg + h_deg + s_deg;
+        let q_deg = f_deg - z_deg;
+
+        // Compute the coset domain to interpolate q(X)
+        let q_domain = GeneralEvaluationDomain::<E::ScalarField>::new(q_deg + 1).unwrap();
+        let offset = <E::ScalarField>::GENERATOR;
+        let coset_domain = q_domain.get_coset(offset).unwrap();
+
+        end_timer!(coset_time);
+        let coset_eval_time = start_timer!(|| "Compute g,h,s,o,z,q evaluations over coset domain");
+
+        // Evaluate the values of g(X), h(X), s(X), and z_h(X) over the coset domain
+        let g_evals = g_coeff.clone().evaluate_over_domain(coset_domain).evals;
+        let h_evals = h_coeff.clone().evaluate_over_domain(coset_domain).evals;
+        let s_evals = s_coeff.clone().evaluate_over_domain(coset_domain).evals;
+        let o_evals = o_coeff.clone().evaluate_over_domain(coset_domain).evals;
+        let z_evals = zero_domain
+            .vanishing_polynomial()
+            .evaluate_over_domain(coset_domain)
+            .evals;
+
+        // Find the value of q(X) over the coset domain
+        let mut q_evals = vec![];
+        for i in 0..g_evals.len() {
+            q_evals.push(
+                ((g_evals[i] * h_evals[i] * s_evals[i])
+                    + (<E::ScalarField>::one() - s_evals[i]) * (g_evals[i] + h_evals[i])
+                    - o_evals[i])
+                    / z_evals[i],
+            )
+        }
+
+        end_timer!(coset_eval_time);
+        let ifft_q_time = start_timer!(|| "IFFT for q from evaluations to coefficients");
+
+        // Interpolate q(X) using the evaluations
+        let q_coeff = Evaluations::from_vec_and_domain(q_evals, coset_domain).interpolate();
+
+        end_timer!(ifft_q_time);
         let commit_time = start_timer!(|| "KZG commit to (g,h,s,o) polynomials");
 
         // Compute the commitment to the polynomial g(X), h(X), s(X), and o(X)
@@ -149,6 +196,16 @@ where
         ];
 
         end_timer!(commit_time);
+        let comm_q_time = start_timer!(|| "KZG commit to q polynomial");
+
+        // Compute the commitment to the polynomial q(X)
+        let comm_q =
+            PCS::commit(
+                &zero_params.ck, 
+                &q_coeff
+            ).expect("Commitment to polynomial q(X) failed");
+
+        end_timer!(comm_q_time);
         let get_r_eval_time =
             start_timer!(|| "Get Fiat-Shamir random challenge and evals at challenge");
 
@@ -157,6 +214,7 @@ where
         transcript.append_serializable_element(b"comm_h",&comm_h).unwrap();
         transcript.append_serializable_element(b"comm_s",&comm_s).unwrap();
         transcript.append_serializable_element(b"comm_o",&comm_o).unwrap();
+        transcript.append_serializable_element(b"comm_q",&comm_q).unwrap();
         let r = transcript.get_and_append_challenge(b"sampling r").unwrap();
 
         // Collect the evalution of the input polynomials at the challenge
@@ -209,63 +267,6 @@ where
         ];
 
         end_timer!(open_time);
-        let coset_time = start_timer!(|| "Compute coset domain");
-        
-        // Compute the quotient polynomial q(X) = f(X)/z_H(X) = (g.h.s + (1-s)(g+h))/z_H
-        let g_deg = g_coeff.degree();
-        let h_deg = h_coeff.degree();
-        let s_deg = s_coeff.degree();
-
-        // compute degree of quotient polynomial to
-        let f_deg = g_deg + h_deg + s_deg;
-        let q_deg = f_deg - z_deg;
-
-        // Compute the coset domain to interpolate q(X)
-        let q_domain = GeneralEvaluationDomain::<E::ScalarField>::new(q_deg + 1).unwrap();
-        let offset = <E::ScalarField>::GENERATOR;
-        let coset_domain = q_domain.get_coset(offset).unwrap();
-
-        end_timer!(coset_time);
-        let coset_eval_time = start_timer!(|| "Compute g,h,s,o,z,q evaluations over coset domain");
-
-        // Evaluate the values of g(X), h(X), s(X), and z_h(X) over the coset domain
-        let g_evals = g_coeff.evaluate_over_domain(coset_domain).evals;
-        let h_evals = h_coeff.evaluate_over_domain(coset_domain).evals;
-        let s_evals = s_coeff.evaluate_over_domain(coset_domain).evals;
-        let o_evals = o_coeff.evaluate_over_domain(coset_domain).evals;
-        let z_evals = zero_domain
-            .vanishing_polynomial()
-            .evaluate_over_domain(coset_domain)
-            .evals;
-
-        // Find the value of q(X) over the coset domain
-        let mut q_evals = vec![];
-        for i in 0..g_evals.len() {
-            q_evals.push(
-                ((g_evals[i] * h_evals[i] * s_evals[i])
-                    + (<E::ScalarField>::one() - s_evals[i]) * (g_evals[i] + h_evals[i])
-                    - o_evals[i])
-                    / z_evals[i],
-            )
-        }
-
-        end_timer!(coset_eval_time);
-        let ifft_q_time = start_timer!(|| "IFFT for q from evaluations to coefficients");
-
-        // Interpolate q(X) using the evaluations
-        let q_coeff = Evaluations::from_vec_and_domain(q_evals, coset_domain).interpolate();
-
-        end_timer!(ifft_q_time);
-        let comm_q_time = start_timer!(|| "KZG commit to q polynomial");
-
-        // Compute the commitment to the polynomial q(X)
-        let comm_q =
-            PCS::commit(
-                &zero_params.ck, 
-                &q_coeff
-            ).expect("Commitment to polynomial q(X) failed");
-
-        end_timer!(comm_q_time);
         let open_q_time = start_timer!(|| "KZG open the q poly commit at r");
 
         // Generate the opening proof that q(r) = t
@@ -324,11 +325,11 @@ where
         let q_eval = proof.q_eval;
 
         // Sample a random challenge - Fiat-Shamir
-        // Sample a random challenge - Fiat-Shamir
         transcript.append_serializable_element(b"comm_g",&inp_comms[0]).unwrap();
         transcript.append_serializable_element(b"comm_h",&inp_comms[1]).unwrap();
         transcript.append_serializable_element(b"comm_s",&inp_comms[2]).unwrap();
         transcript.append_serializable_element(b"comm_o",&inp_comms[3]).unwrap();
+        transcript.append_serializable_element(b"comm_q",q_comm).unwrap();
         let r = transcript.get_and_append_challenge(b"sampling r").unwrap();
 
         // check openings to input polynomials
