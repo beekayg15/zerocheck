@@ -1,12 +1,11 @@
 use anyhow::Ok;
-use ark_ec::pairing::Pairing;
-use ark_ff::One;
 use ark_ff::FftField;
 use ark_poly::EvaluationDomain;
 use ark_poly::{univariate::DensePolynomial, Evaluations, GeneralEvaluationDomain, Polynomial};
 use ark_std::{end_timer, start_timer};
 use rayon::prelude::*;
 use std::marker::PhantomData;
+use ark_ff::PrimeField;
 
 pub mod data_structures;
 use data_structures::*;
@@ -25,26 +24,26 @@ use crate::ZeroCheck;
 /// by proving the existence of a quotient polynomial
 /// q, S.T. f(X) = q(X).z_H(X), where z_H(X) is the
 /// vanishing polynomial over the zero domain H.
-pub struct OptimizedUnivariateZeroCheck<E, PCS> {
-    _pairing_data: PhantomData<E>,
+pub struct OptimizedUnivariateZeroCheck<F, PCS> {
+    _field_data: PhantomData<F>,
     _pcs_data: PhantomData<PCS>,
 }
 
-impl<E, PCS> ZeroCheck<E::ScalarField> for OptimizedUnivariateZeroCheck<E, PCS>
+impl<F, PCS> ZeroCheck<F> for OptimizedUnivariateZeroCheck<F, PCS>
 where
-    E: Pairing,
+    F: PrimeField + FftField,
     PCS: PolynomialCommitmentScheme<
-        Polynomial = DensePolynomial<E::ScalarField>,
-        PolynomialInput = E::ScalarField,
-        PolynomialOutput = E::ScalarField
+        Polynomial = DensePolynomial<F>,
+        PolynomialInput = F,
+        PolynomialOutput = F
     >,
 {
-    type InputType = Vec<Evaluations<E::ScalarField>>;
-    type ZeroDomain = GeneralEvaluationDomain<E::ScalarField>;
+    type InputType = Vec<Evaluations<F>>;
+    type ZeroDomain = GeneralEvaluationDomain<F>;
     type Proof = Proof<PCS>;
     type ZeroCheckParams<'a> = ZeroCheckParams<'a, PCS>;
     type InputParams = PCS::PCSParams;
-    type Transcripts = ZCTranscript<E::ScalarField>;
+    type Transcripts = ZCTranscript<F>;
 
     fn setup(pp: &Self::InputParams) -> Result<Self::ZeroCheckParams<'_>, anyhow::Error> {
         let setup_kzg_time =
@@ -120,8 +119,8 @@ where
         let q_deg = f_deg - z_deg;
 
         // Compute the coset domain to interpolate q(X)
-        let q_domain = GeneralEvaluationDomain::<E::ScalarField>::new(q_deg + 1).unwrap();
-        let offset = <E::ScalarField>::GENERATOR;
+        let q_domain = GeneralEvaluationDomain::<F>::new(q_deg + 1).unwrap();
+        let offset = F::GENERATOR;
         let coset_domain = q_domain.get_coset(offset).unwrap();
 
         end_timer!(coset_time);
@@ -142,7 +141,7 @@ where
         for i in 0..g_evals.len() {
             q_evals.push(
                 ((g_evals[i] * h_evals[i] * s_evals[i])
-                    + (<E::ScalarField>::one() - s_evals[i]) * (g_evals[i] + h_evals[i])
+                    + (F::one() - s_evals[i]) * (g_evals[i] + h_evals[i])
                     - o_evals[i])
                     / z_evals[i],
             )
@@ -327,7 +326,7 @@ where
 
         // check if q(r) * z_H(r) = g(r).h(r).s(r) + (1 - s(r))(g(r) + h(r))
         let lhs = q_eval * zero_domain.evaluate_vanishing_polynomial(r);
-        let rhs = a * b * c + (<E::ScalarField>::one() - c) * (a + b) - d;
+        let rhs = a * b * c + (F::one() - c) * (a + b) - d;
 
         // println!("lhs: {:?}", lhs);
         // println!("rhs: {:?}", rhs);
@@ -350,6 +349,7 @@ mod tests {
     };
     use ark_std::end_timer;
     use ark_std::start_timer;
+    use ark_ff::One;
 
     #[test]
     fn test_proof_generation_verification_op_uni() {
@@ -406,9 +406,9 @@ mod tests {
         let max_degree = g.degree() + s.degree() + h.degree();
         let pp = max_degree;
 
-        let zp = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::setup(&pp).unwrap();
+        let zp = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
 
-        let proof = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::prove(
+        let proof = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
             &zp.clone(),
             &inp_evals.clone(),
             &domain,
@@ -423,7 +423,7 @@ mod tests {
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result =
-            OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::verify(
+            OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
                 &zp, 
                 &inp_evals, 
                 &proof, 

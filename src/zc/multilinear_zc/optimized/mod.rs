@@ -1,11 +1,10 @@
 use anyhow::Ok;
-use ark_ec::pairing::Pairing;
 use ark_poly::{DenseMultilinearExtension, Polynomial};
 use ark_std::{end_timer, start_timer};
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use sumcheck::{verifier::VerifierMsg, IPforSumCheck};
 use std::marker::PhantomData;
-use ark_ff::Zero;
+use ark_ff::PrimeField;
 
 mod data_structures;
 pub use data_structures::*;
@@ -20,28 +19,28 @@ use crate::{
 /// f = sum(product(MLEs)) evaluates to 0
 /// over a boolean hypercube of given dimensions
 #[derive(Clone)]
-pub struct OptMLZeroCheck<E: Pairing, PCS: PolynomialCommitmentScheme> {
-    _pairing_data: PhantomData<E>,
+pub struct OptMLZeroCheck<F: PrimeField, PCS: PolynomialCommitmentScheme> {
+    _field_data: PhantomData<F>,
     _pcs_data: PhantomData<PCS>,
 }
 
-impl<E, PCS> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E, PCS>
+impl<F, PCS> ZeroCheck<F> for OptMLZeroCheck<F, PCS>
     where
-    E: Pairing,
+    F: PrimeField,
     PCS: PolynomialCommitmentScheme<
-        Polynomial = DenseMultilinearExtension<E::ScalarField>,
-        PolynomialInput = Vec<E::ScalarField>,
-        PolynomialOutput = E::ScalarField,
+        Polynomial = DenseMultilinearExtension<F>,
+        PolynomialInput = Vec<F>,
+        PolynomialOutput = F,
     >,
 {
-    type InputType = VirtualPolynomial<E::ScalarField>;
+    type InputType = VirtualPolynomial<F>;
     
     // size of the boolean hypercube over which the output polynomial evaluates to 0
     type ZeroDomain = usize;
     type Proof = Proof<PCS>;
     type ZeroCheckParams<'a> = ZeroCheckParams<'a, PCS>;
     type InputParams = PCS::PCSParams;
-    type Transcripts = ZCTranscript<E::ScalarField>;
+    type Transcripts = ZCTranscript<F>;
 
     fn setup<'a>(
         pp: &Self::InputParams
@@ -81,18 +80,17 @@ impl<E, PCS> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E, PCS>
         //compute the commitments to the MLEs in the Virtual Polynomial
         let inp_commitment_timer = start_timer!(|| "computing commitments to input MLEs");
 
-        let flatten_mle_extensions = input_poly.clone().flat_ml_extensions;
-
-        let inp_commitments: Vec<<PCS as PolynomialCommitmentScheme>::Commitment> = flatten_mle_extensions.clone()
+        let flatten_mle_extensions: Vec<DenseMultilinearExtension<_>> = input_poly.clone().flat_ml_extensions
             .into_par_iter()
             .map(|mle| {
-                let comm = PCS::commit(
-                    &zero_params.ck, 
-                    &mle.as_ref().clone(),
-                ).unwrap();
-                comm
+                (*mle.as_ref()).clone()
             })
             .collect();
+
+        let inp_commitments = PCS::batch_commit(
+            &zero_params.ck, 
+            &flatten_mle_extensions
+        ).unwrap();
             
         end_timer!(inp_commitment_timer);
 
@@ -113,7 +111,7 @@ impl<E, PCS> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E, PCS>
             })
             .collect();
         
-        let r_point: Vec<<E as Pairing>::ScalarField> = (0..*zero_domain)
+        let r_point: Vec<F> = (0..*zero_domain)
             .into_iter()
             .map(|_| {
                 let r = transcript.get_and_append_challenge(
@@ -144,7 +142,7 @@ impl<E, PCS> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E, PCS>
         let mut prover_state = IPforSumCheck::prover_init(inp_hat);
         let mut verifier_msg = None;
         let mut prover_msgs = vec![];
-        let mut challenge = <E::ScalarField>::zero();
+        let mut challenge = F::zero();
 
         for _ in 0..*zero_domain {
             let prover_msg = IPforSumCheck::prover_round(
@@ -174,18 +172,13 @@ impl<E, PCS> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E, PCS>
 
         let opening_proof_timer = start_timer!(|| "computing opening proofs to input MLEs");
 
-        let inp_openings = flatten_mle_extensions.clone()
-            .into_par_iter()
-            .enumerate()
-            .map(|(i, mle)| {
-                PCS::open(
-                    &zero_params.ck, 
-                    &inp_commitments[i],
-                    &mle.as_ref().clone(),
-                    prover_state.challenges.clone(),
-                ).unwrap()
-            })
-            .collect();
+        let inp_openings = PCS::batch_open(
+            &zero_params.ck, 
+            &inp_commitments,
+            &flatten_mle_extensions,
+            prover_state.challenges.clone(),
+        ).unwrap();
+
 
         end_timer!(opening_proof_timer);
 
@@ -234,7 +227,12 @@ impl<E, PCS> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E, PCS>
             "Dimensions of boolean hypercube do not match the given polynomials"
         );
 
-        let flatten_mle_extensions = input_poly.flat_ml_extensions.clone();
+        let flatten_mle_extensions: Vec<DenseMultilinearExtension<_>> = input_poly.clone().flat_ml_extensions
+            .into_par_iter()
+            .map(|mle| {
+                (*mle.as_ref()).clone()
+            })
+            .collect();
 
         // set up the seed and input required to generate the initial random challenge
         let initial_challenge_timer = start_timer!(|| 
@@ -248,7 +246,7 @@ impl<E, PCS> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E, PCS>
             })
             .collect();
         
-        let r_point: Vec<<E as Pairing>::ScalarField> = (0..*zero_domain)
+        let r_point: Vec<F> = (0..*zero_domain)
             .into_iter()
             .map(|_| {
                 let r = transcript.get_and_append_challenge(
@@ -289,7 +287,7 @@ impl<E, PCS> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E, PCS>
 
         let subclaim = IPforSumCheck::check_n_generate_subclaim(
             verifier_state, 
-            <E::ScalarField>::zero()
+            F::zero()
         ).unwrap();
 
         end_timer!(sumcheck_verifier_timer);
@@ -325,9 +323,11 @@ impl<E, PCS> ZeroCheck<E::ScalarField> for OptMLZeroCheck<E, PCS>
 #[cfg(test)]
 mod test {
     use ark_bls12_381::{Fr, Bls12_381};
+    use ark_ec::AffineRepr;
+    use ark_ed_on_bls12_381::EdwardsAffine;
 
     use crate::{
-        pcs::multilinear_pcs::mpc::MPC, 
+        pcs::multilinear_pcs::{hyrax::Hyrax, mpc::MPC}, 
         transcripts::ZCTranscript, 
         zc::multilinear_zc::optimized::custom_zero_test_case, 
         ZeroCheck
@@ -339,9 +339,9 @@ mod test {
     fn test_ml_zerocheck() {
         let poly = rand_zero::<Fr>(10, (4, 5), 2);
         let num_vars = 10;
-        let zp = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::setup(&num_vars).unwrap();
+        let zp = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::setup(&num_vars).unwrap();
 
-        let proof = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::prove(
+        let proof = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::prove(
             &zp.clone(),
             &poly.clone(), 
             &10,
@@ -349,7 +349,7 @@ mod test {
         ).unwrap();
         // println!("Proof Generated: {:?}", proof);
 
-        let valid = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::verify(
+        let valid = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::verify(
             &zp, 
             &poly, 
             &proof, 
@@ -367,9 +367,9 @@ mod test {
 
         println!("Unique input MLEs: {:?}", poly.flat_ml_extensions.len());
 
-        let zp = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::setup(&num_vars).unwrap();
+        let zp = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::setup(&num_vars).unwrap();
 
-        let proof = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::prove(
+        let proof = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::prove(
             &zp.clone(),
             &poly.clone(), 
             &10,
@@ -377,11 +377,42 @@ mod test {
         ).unwrap();
         println!("Proof Generated: {:?}", proof);
 
-        let valid = OptMLZeroCheck::<Bls12_381, MPC<Bls12_381>>::verify(
+        let valid = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::verify(
             &zp, 
             &poly, 
             &proof, 
             &10,
+            &mut ZCTranscript::init_transcript()
+        ).unwrap();
+
+        assert!(valid);
+    }
+
+    #[test]
+    fn test_custom_ml_zerocheck_hyrax() {
+        let num_vars = 20;
+        let poly = custom_zero_test_case::<<EdwardsAffine as AffineRepr>::ScalarField>(num_vars);
+
+        println!("Unique input MLEs: {:?}", poly.flat_ml_extensions.len());
+
+        type Fq = <EdwardsAffine as AffineRepr>::ScalarField;
+
+        let zp = OptMLZeroCheck::<Fq, Hyrax<EdwardsAffine>>::setup(&num_vars).unwrap();
+
+        let proof = OptMLZeroCheck::<Fq, Hyrax<EdwardsAffine>>::prove(
+            &zp.clone(),
+            &poly.clone(), 
+            &num_vars,
+            &mut ZCTranscript::init_transcript()
+        ).unwrap();
+        
+        // println!("Proof Generated: {:?}", proof);
+
+        let valid = OptMLZeroCheck::<Fq, Hyrax<EdwardsAffine>>::verify(
+            &zp, 
+            &poly, 
+            &proof, 
+            &num_vars,
             &mut ZCTranscript::init_transcript()
         ).unwrap();
 
