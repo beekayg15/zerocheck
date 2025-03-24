@@ -25,6 +25,11 @@ pub trait PolynomialCommitmentScheme: Clone + Sized {
         poly: &'a Self::Polynomial,
     ) -> Result<Self::Commitment, Error>;
 
+    fn batch_commit<'a> (
+        ck: &'a Self::CommitterKey<'_>,
+        poly: &'a Vec<Self::Polynomial>,
+    ) -> Result<Vec<Self::Commitment>, Error>;
+
     fn open<'a> (
         ck: &'a Self::CommitterKey<'_>,
         comm: &'a Self::Commitment,
@@ -32,11 +37,26 @@ pub trait PolynomialCommitmentScheme: Clone + Sized {
         point: Self::PolynomialInput,
     ) -> Result<Self::OpeningProof, Error>;
 
+    fn batch_open<'a> (
+        ck: &'a Self::CommitterKey<'_>,
+        comm: &'a Vec<Self::Commitment>,
+        poly: &'a Vec<Self::Polynomial>,
+        point: Self::PolynomialInput,
+    ) -> Result<Vec<Self::OpeningProof>, Error>;
+
     fn check<'a> (
         vk: &'a Self::VerifierKey,
         opening_proof: &'a Self::OpeningProof,
         comm: &'a Self::Commitment,
         point: Self::PolynomialInput,
         value: Self::PolynomialOutput,
+    ) -> Result<bool, Error>;
+
+    fn batch_check<'a> (
+        vk: &'a Self::VerifierKey,
+        opening_proof: &'a Vec<Self::OpeningProof>,
+        comm: &'a Vec<Self::Commitment>,
+        point: Self::PolynomialInput,
+        value: Vec<Self::PolynomialOutput>,
     ) -> Result<bool, Error>;
 }

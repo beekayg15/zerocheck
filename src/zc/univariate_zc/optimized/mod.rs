@@ -158,31 +158,20 @@ where
         let commit_time = start_timer!(|| "KZG commit to (g,h,s,o) polynomials");
 
         // Compute the commitment to the polynomial g(X), h(X), s(X), and o(X)
-        let comms_rs = [
+        let comm_rs = PCS::batch_commit(
+            &zero_params.ck, 
+            &vec![
                 g_coeff.clone(), 
                 h_coeff.clone(), 
                 s_coeff.clone(), 
-                o_coeff.clone()
+                o_coeff.clone(),
+                q_coeff.clone(),
             ]
-            .par_iter()
-            .enumerate()
-            .map(|(idx, poly)| {
-                (
-                    idx,
-                    PCS::commit(
-                        &zero_params.ck, 
-                        poly, 
-                    ).expect(format!("Commitment to polynomial {idx}_(X) failed").as_str()),
-                )
-            })
-            .collect::<Vec<_>>();
-        
-        let mut comms_rs_sorted = comms_rs;
-        comms_rs_sorted.sort_by_key(|(i, _)| *i);
+        ).unwrap();
 
-        let [comm_g, comm_h, comm_s, comm_o] = comms_rs_sorted
+        let [comm_g, comm_h, comm_s, comm_o, comm_q] = comm_rs.clone()
             .into_iter()
-            .map(|(_, comm)| comm)
+            .map(|comm| comm)
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
@@ -196,16 +185,6 @@ where
         ];
 
         end_timer!(commit_time);
-        let comm_q_time = start_timer!(|| "KZG commit to q polynomial");
-
-        // Compute the commitment to the polynomial q(X)
-        let comm_q =
-            PCS::commit(
-                &zero_params.ck, 
-                &q_coeff
-            ).expect("Commitment to polynomial q(X) failed");
-
-        end_timer!(comm_q_time);
         let get_r_eval_time =
             start_timer!(|| "Get Fiat-Shamir random challenge and evals at challenge");
 
@@ -228,32 +207,28 @@ where
         let open_time = start_timer!(|| "KZG open the g,h,s,o poly commit at r");
 
         // Generate the opening proof that g(r), h(r), s(r), and o(r) are the evaluations of the polynomials
-        let opening_proofs = [
-            (&g_coeff, &comm_g),
-            (&h_coeff, &comm_h),
-            (&s_coeff, &comm_s),
-            (&o_coeff, &comm_o),
-        ]
-        .par_iter()
-        .enumerate()
-        .map(|(idx, (poly, poly_comm))| {
-            (
-                idx,
-                PCS::open(
-                    &zero_params.ck, 
-                    poly_comm, 
-                    poly, 
-                    r,
-                ).expect(format!("Proof generation failed for {idx}_(X)").as_str()),
-            )
-        })
-        .collect::<Vec<_>>();
-        let mut opening_proofs_sorted = opening_proofs;
-        opening_proofs_sorted.sort_by_key(|(i, _)| *i);
-        let [g_opening_proof, h_opening_proof, s_opening_proof, o_opening_proof] =
-            opening_proofs_sorted
+        let opening_proofs = PCS::batch_open(
+            &zero_params.ck, 
+            &comm_rs, 
+            &vec![
+                g_coeff.clone(), 
+                h_coeff.clone(), 
+                s_coeff.clone(), 
+                o_coeff.clone(),
+                q_coeff.clone(),
+            ], 
+            r
+        ).unwrap();
+
+        let [
+            g_opening_proof, 
+            h_opening_proof, 
+            s_opening_proof, 
+            o_opening_proof,
+            q_opening_proof
+            ] = opening_proofs
                 .into_iter()
-                .map(|(_, proof)| proof)
+                .map(|proof| proof)
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap();
@@ -267,18 +242,6 @@ where
         ];
 
         end_timer!(open_time);
-        let open_q_time = start_timer!(|| "KZG open the q poly commit at r");
-
-        // Generate the opening proof that q(r) = t
-        let q_opening_proof =
-            PCS::open(
-                &zero_params.ck, 
-                &comm_q, 
-                &q_coeff, 
-                r
-            ).expect("Proof generation failed for q(X)");
-
-        end_timer!(open_q_time);
         end_timer!(prove_time);
 
         // Send the proof with the necessary commitments and opening proofs
@@ -333,20 +296,17 @@ where
         let r = transcript.get_and_append_challenge(b"sampling r").unwrap();
 
         // check openings to input polynomials
-        for i in 0..inp_evals.len() {
-            assert!(
-                PCS::check(
-                    &vk,
-                    &inp_openings[i],
-                    &inp_comms[i],
-                    r,
-                    inp_evals[i],
-                )
-                .unwrap(),
-                "Opening failed at input polynomial {:?}",
-                i + 1
-            );
-        }
+        assert!(
+            PCS::batch_check(
+                &vk,
+                &inp_openings,
+                &inp_comms,
+                r,
+                inp_evals.to_vec(),
+            )
+            .unwrap(),
+            "Opening failed at input polynomials"
+        );
 
         // check opening to quotient polynomials
         assert!(

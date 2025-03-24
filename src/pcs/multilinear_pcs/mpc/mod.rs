@@ -4,6 +4,7 @@ use ark_ec::pairing::Pairing;
 use ark_poly::DenseMultilinearExtension;
 use ark_poly_commit::multilinear_pc::{data_structures::{Commitment, CommitterKey, Proof, VerifierKey}, MultilinearPC};
 use ark_std::rand::thread_rng;
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::pcs::PolynomialCommitmentScheme;
 
@@ -83,5 +84,84 @@ impl<E: Pairing> PolynomialCommitmentScheme for MPC<E> {
         );
 
         Ok(result)
+    }
+    
+    fn batch_commit<'a> (
+        ck: &'a Self::CommitterKey<'_>,
+        poly: &'a Vec<Self::Polynomial>,
+    ) -> Result<Vec<Self::Commitment>, anyhow::Error> {
+        let result: Vec<Self::Commitment> = poly
+            .par_iter()
+            .map(|p| {
+                let comm = Self::commit(
+                    &ck, 
+                    p
+                ).unwrap();
+                
+                comm
+            })
+            .collect();
+
+        Ok(result)
+    }
+    
+    fn batch_open<'a> (
+        ck: &'a Self::CommitterKey<'_>,
+        comm: &'a Vec<Self::Commitment>,
+        poly: &'a Vec<Self::Polynomial>,
+        point: Self::PolynomialInput,
+    ) -> Result<Vec<Self::OpeningProof>, anyhow::Error> {
+        let result = poly
+            .par_iter()
+            .zip(comm) 
+            .map(|(p, c)| {
+                let opening_proof = Self::open(
+                    &ck, 
+                    c, 
+                    p, 
+                    point.clone()
+                ).unwrap();
+
+                opening_proof
+            })
+            .collect();
+
+        Ok(result)
+    }
+    
+    fn batch_check<'a> (
+        vk: &'a Self::VerifierKey,
+        opening_proof: &'a Vec<Self::OpeningProof>,
+        comm: &'a Vec<Self::Commitment>,
+        point: Self::PolynomialInput,
+        value: Vec<Self::PolynomialOutput>,
+    ) -> Result<bool, anyhow::Error> {
+        let result: Vec<bool> = comm
+            .par_iter()
+            .zip(opening_proof)
+            .zip(value)
+            .map(|((cm, proof), val)| {        
+                let valid = Self::check(
+                    &vk,
+                    proof,
+                    cm,
+                    point.clone(),
+                    val
+                ).unwrap();
+                
+                valid
+            })
+            .collect();
+
+        Ok(
+            result
+                .into_iter()
+                .fold(
+                    true,
+                    |res, valid| {
+                        res & valid
+                    }
+                )
+        )
     }
 }
