@@ -86,7 +86,7 @@ fn opt_univariate_zero_check_multithread_benchmark(
     let instant = Instant::now();
     let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
-    let proof = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::prove(
+    let proof = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
         &global_params.clone(),
         &inp_evals.clone(),
         &domain,
@@ -101,7 +101,7 @@ fn opt_univariate_zero_check_multithread_benchmark(
 
     let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
-    let result = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::verify(
+    let result = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
         &global_params,
         &inp_evals,
         &proof,
@@ -154,7 +154,7 @@ fn bench_opt_uni_zc() {
                 .build()
                 .unwrap();
             let (input_evals, domain, pp) = pool_prepare.install(|| prepare_input_evals_domain(size));
-            let global_params = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::setup(&pp).unwrap();
+            let global_params = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
 
             let pool_run = rayon::ThreadPoolBuilder::new()
                 .num_threads(args.run_threads as usize)

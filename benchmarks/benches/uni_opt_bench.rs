@@ -91,7 +91,7 @@ fn opt_univariate_zero_check_benchmark(c: &mut Criterion) {
         let pp = max_degree;
 
 
-        let zp = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::setup(&pp).unwrap();
+        let zp = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
 
         group.bench_with_input(
             BenchmarkId::new("uni_opt_zerocheck", size), &size, |b, &_size| {
@@ -100,7 +100,7 @@ fn opt_univariate_zero_check_benchmark(c: &mut Criterion) {
                         inp_evals.clone()
                     },
                     |input_evals| {
-                        let _proof = OptimizedUnivariateZeroCheck::<Bls12_381, KZG<Bls12_381>>::prove(
+                        let _proof = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
                             black_box(&zp.clone()),
                             black_box(&input_evals), 
                             black_box(&domain),

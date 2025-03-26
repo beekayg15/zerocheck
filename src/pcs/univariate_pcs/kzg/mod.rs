@@ -8,6 +8,9 @@ use ark_ec::AffineRepr;
 
 pub mod data_structures;
 use data_structures::*;
+use rayon::iter::IntoParallelRefIterator;
+use rayon::iter::ParallelIterator;
+use rayon::iter::IndexedParallelIterator;
 
 use crate::pcs::PolynomialCommitmentScheme;
 
@@ -82,6 +85,33 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
             rand: r,
         })
     }
+
+    fn batch_commit(
+        ck: &Self::CommitterKey<'_>,
+        poly: &Vec<Self::Polynomial>
+    ) -> Result<Vec<Self::Commitment>, anyhow::Error> {
+        let result: Vec<Self::Commitment> = poly
+            .par_iter()
+            .map(|p| {
+                let (comm, r) = KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
+                    &ck, 
+                    p, 
+                    None, 
+                    None
+                ).unwrap();
+
+                assert!(!comm.0.is_zero(), "Commitment should not be zero");
+                assert!(!r.is_hiding(), "Commitment should not be hiding");
+
+                Self::Commitment {
+                    comm: comm.0,
+                    rand: r,
+                }
+            })
+            .collect();
+
+        Ok(result)
+    }
     
     fn open(
         ck: &Self::CommitterKey<'_>,
@@ -97,6 +127,30 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
         ).unwrap();
 
         Ok(opening_proof)
+    }
+    
+    fn batch_open<'a> (
+        ck: &'a Self::CommitterKey<'_>,
+        comm: &'a Vec<Self::Commitment>,
+        poly: &'a Vec<Self::Polynomial>,
+        point: Self::PolynomialInput,
+    ) -> Result<Vec<Self::OpeningProof>, anyhow::Error> {
+        let result = poly
+            .par_iter()
+            .zip(comm) 
+            .map(|(p, c)| {
+                let opening_proof = KZG10::<E, DensePolynomial<E::ScalarField>>::open(
+                    &ck, 
+                    p, 
+                    point, 
+                    &c.rand
+                ).unwrap();
+
+                opening_proof
+            })
+            .collect();
+
+        Ok(result)
     }
     
     fn check(
@@ -119,5 +173,45 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
         ).unwrap();
 
         Ok(result)
+    }
+    
+    fn batch_check<'a> (
+        vk: &'a Self::VerifierKey,
+        opening_proof: &'a Vec<Self::OpeningProof>,
+        comm: &'a Vec<Self::Commitment>,
+        point: Self::PolynomialInput,
+        value: Vec<Self::PolynomialOutput>,
+    ) -> Result<bool, anyhow::Error> {
+        let result: Vec<bool> = comm
+            .par_iter()
+            .zip(opening_proof)
+            .zip(value)
+            .map(|((cm, proof), val)| {
+                let kzg_commitment = KZGCommitment {
+                    0: cm.comm
+                };
+        
+                let valid = KZG10::<E, DensePolynomial<E::ScalarField>>::check(
+                    &vk,
+                    &kzg_commitment,
+                    point,
+                    val,
+                    proof
+                ).unwrap();
+                
+                valid
+            })
+            .collect();
+
+        Ok(
+            result
+                .into_iter()
+                .fold(
+                    true,
+                    |res, valid| {
+                        res & valid
+                    }
+                )
+        )
     }
 }
