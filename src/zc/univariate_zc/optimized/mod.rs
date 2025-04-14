@@ -124,7 +124,7 @@ where
         let coset_domain = q_domain.get_coset(offset).unwrap();
 
         end_timer!(coset_time);
-        let coset_eval_time = start_timer!(|| "Compute g,h,s,o,z,q evaluations over coset domain");
+        let coset_eval_time = start_timer!(|| "FFT Compute g,h,s,o,z,q evaluations over coset domain");
 
         // Evaluate the values of g(X), h(X), s(X), and z_h(X) over the coset domain
         let g_evals = g_coeff.clone().evaluate_over_domain(coset_domain).evals;
@@ -154,7 +154,7 @@ where
         let q_coeff = Evaluations::from_vec_and_domain(q_evals, coset_domain).interpolate();
 
         end_timer!(ifft_q_time);
-        let commit_time = start_timer!(|| "KZG commit to (g,h,s,o) polynomials");
+        let commit_time = start_timer!(|| "KZG batch commit to (g,h,s,o,q) polynomials");
 
         // Compute the commitment to the polynomial g(X), h(X), s(X), and o(X)
         let comm_rs = PCS::batch_commit(
@@ -203,7 +203,7 @@ where
         inp_evals_at_rand.push(o_coeff.evaluate(&r));
 
         end_timer!(get_r_eval_time);
-        let open_time = start_timer!(|| "KZG open the g,h,s,o poly commit at r");
+        let open_time = start_timer!(|| "KZG batch open the g,h,s,o,q poly commit at r");
 
         // Generate the opening proof that g(r), h(r), s(r), and o(r) are the evaluations of the polynomials
         let opening_proofs = PCS::batch_open(

@@ -26,15 +26,17 @@ MAX_SIZE=16
 # CMDS1="RAYON_NUM_THREADS=1 cargo run --release --bin univar_opt_bench_multhr -- --repeat=10 --min-size=11 --max-size=12 >> output_log/univar_opt_bench_multhr_1.log "
 # CMDS2="RAYON_NUM_THREADS=1 cargo run --release --bin univar_opt_bench_multhr -- --repeat=10 --min-size=13 --max-size=18 >> output_log/univar_opt_bench_multhr_1.log "
 
-CMDS1="cargo run --release --bin univar_opt_bench_multhr -- --repeat=10 --min-size=12 --max-size=12 --prepare-threads=64 --run-threads=1 | tee -a output_log/univar_opt_bench_multhr_1.log "
+# CMDS1="cargo run --release --bin univar_opt_bench_multhr -- --repeat=10 --min-size=12 --max-size=12 --prepare-threads=64 --run-threads=1 | tee -a output_log/univar_opt_bench_multhr_1.log "
 
-for cmd in "${CMDS[@]}"; do
-    echo "Running: $cmd"
-    eval "$cmd"
-done
+# for cmd in "${CMDS[@]}"; do
+#     echo "Running: $cmd"
+#     eval "$cmd"
+# done
 
 
 ##############################
 
 # CMDS1="RAYON_NUM_THREADS=1 cargo run --release --bin mullin_naive_bench_multhr -- --repeat=10 --min-size=5 --max-size=12 | tee -a output_log/mullin_naive_bench_multhr_1.log "
-CMDS1="RAYON_NUM_THREADS=1 cargo run --release --bin mullin_opt_bench_multhr -- --repeat=10 --min-size=5 --max-size=12 | tee -a output_log/mullin_opt_bench_multhr_1.log "
+CMDS1="RAYON_NUM_THREADS=8 cargo run --release --bin univar_opt_bench_multhr -- --repeat=2 --min-size=18 --max-size=18 --prepare-threads=8 --run-threads=1 | tee -a output_log/univar_opt_bench_multhr_8.log "
+
+eval "$CMDS1"

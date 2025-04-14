@@ -160,14 +160,22 @@ fn bench_opt_uni_zc() {
                 .num_threads(args.run_threads as usize)
                 .build()
                 .unwrap();
-            let total_runtime: u128 = pool_run.install(|| {
-                (0..args.repeat)
-                    .map(|repeat_time| {
-                        println!("Running test for 2^{} with repeat: {}", size, repeat_time);
-                        opt_univariate_zero_check_multithread_benchmark(&input_evals, domain, global_params.clone(), size)
-                    })
-                    .sum()
-            });
+            // let total_runtime: u128 = pool_run.install(|| {
+            //     (0..args.repeat)
+            //         .map(|repeat_time| {
+            //             println!("Running test for 2^{} with repeat: {}", size, repeat_time);
+            //             opt_univariate_zero_check_multithread_benchmark(&input_evals, domain, global_params.clone(), size)
+            //         })
+            //         .sum()
+            // });
+            let total_runtime: u128 = (0..args.repeat)
+            .map(|repeat_time| {
+                println!("Running test for 2^{} with repeat: {}", size, repeat_time);
+                pool_run.install(|| {
+                    opt_univariate_zero_check_multithread_benchmark(&input_evals, domain, global_params.clone(), size)
+                })
+            })
+            .sum();
 
             (size, total_runtime)
         })

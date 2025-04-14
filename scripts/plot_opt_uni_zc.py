@@ -168,17 +168,16 @@ def plot_univar_zc():
         "output_log/univar_opt_bench_multhr_1.log", "Opt Univariate Proof Generation Test for")
 
     target_keys_univar = ["IFFT for g,h,s,o from evaluations to coefficients",
-                        #   "Setup KZG10 polynomial commitments global parameters",
-                        #   "Setup verifier key",
-                          "KZG commit to (g,h,s,o) polynomials",
-                          "Get Fiat-Shamir random challenge and evals at challenge",
-                          "KZG open the g,h,s,o poly commit at r",
+                          #   "Setup KZG10 polynomial commitments global parameters",
+                          #   "Setup verifier key",
                           "Compute coset domain",
-                          "Compute g,h,s,o,z,q evaluations over coset domain",
+                          "FFT Compute g,h,s,o,z,q evaluations over coset domain",
                           "IFFT for q from evaluations to coefficients",
-                          "KZG commit to q polynomial",
-                          "KZG open the q poly commit at r",]
-    assert len(target_keys_univar) == 9, "Result timer number not match the code"
+                          "KZG batch commit to (g,h,s,o,q) polynomials",
+                          "Get Fiat-Shamir random challenge and evals at challenge",
+                          "KZG batch open the g,h,s,o,q poly commit at r",
+                          ]
+    assert len(target_keys_univar) == 7, "Result timer number not match the code"
 
     # parse the result from text log --> blocks --> a dataframe
     target_time_unit = "s"
@@ -191,10 +190,10 @@ def plot_univar_zc():
             value, f"Runtime ({target_time_unit})")
 
     # Univariate ZC: merge all average results of all worksizes to one dataframe
-    merge_average = worksize[5][["Description",
+    merge_average = worksize[min(worksize.keys())][["Description",
                                  f"Average Runtime ({target_time_unit})"]].copy()
     for key, value in worksize.items():
-        if key != 5:
+        if key != min(worksize.keys()):
             merge_average = merge_dataframes(
                 merge_average, value[["Description", f"Average Runtime ({target_time_unit})"]], "Description", f"Average Runtime ({target_time_unit})")
 
@@ -207,7 +206,7 @@ def plot_univar_zc():
     stacked_merge_average.plot(kind="bar", stacked=True, figsize=(10, 6))
     # rename the x-tick labels from 5 to the end
     plt.xticks(np.arange(len(runtime_columns)), [
-               f"2^{i}" for i in range(5, 5+len(runtime_columns))])
+               f"2^{i}" for i in range(min(worksize.keys()), min(worksize.keys())+len(runtime_columns))])
     plt.xlabel("Test Cases")
     # plt.yticks(np.arange(0, 30, 1))
     plt.ylabel(f"Average Runtime ({target_time_unit})")
@@ -243,10 +242,10 @@ def plot_multi_lin_zc():
             value, f"Runtime ({target_time_unit})")
 
     # MultiLin ZC: merge all average results of all worksizes to one dataframe
-    merge_average = worksize[5][["Description",
+    merge_average = worksize[min(worksize.keys())][["Description",
                                  f"Average Runtime ({target_time_unit})"]].copy()
     for key, value in worksize.items():
-        if key != 5:
+        if key != min(worksize.keys()):
             merge_average = merge_dataframes(
                 merge_average, value[["Description", f"Average Runtime ({target_time_unit})"]], "Description", f"Average Runtime ({target_time_unit})")
 
@@ -259,7 +258,7 @@ def plot_multi_lin_zc():
     stacked_merge_average.plot(kind="bar", stacked=True, figsize=(10, 6))
     # rename the x-tick labels from 5 to the end
     plt.xticks(np.arange(len(runtime_columns)), [
-               f"2^{i}" for i in range(5, 5+len(runtime_columns))])
+               f"2^{i}" for i in range(min(worksize.keys()), min(worksize.keys())+len(runtime_columns))])
     plt.xlabel("Test Cases")
     # plt.yticks(np.arange(0, 30, 1))
     plt.ylabel(f"Average Runtime ({target_time_unit})")
@@ -272,7 +271,7 @@ def plot_multi_lin_zc():
 
 
 if __name__ == '__main__':
-    # plot_univar_zc()
-    plot_multi_lin_zc()
+    plot_univar_zc()
+    # plot_multi_lin_zc()
 
     print("End...")
