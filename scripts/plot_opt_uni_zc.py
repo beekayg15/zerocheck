@@ -163,9 +163,8 @@ def dataframe_average_row(dataframe: pd.DataFrame, common_column_name: str = "Ru
     return dataframe
 
 
-def plot_univar_zc():
-    res_blocks = load_test_from_txt_to_blocks(
-        "output_log/univar_opt_bench_multhr_1.log", "Opt Univariate Proof Generation Test for")
+def plot_univar_zc(file_path, start_line):
+    res_blocks = load_test_from_txt_to_blocks(file_path, start_line)
 
     target_keys_univar = ["IFFT for g,h,s,o from evaluations to coefficients",
                           #   "Setup KZG10 polynomial commitments global parameters",
@@ -215,12 +214,11 @@ def plot_univar_zc():
     plt.legend(title="Description", bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig("output_log/univar_opt_bench_multhr_1.png")
+    plt.savefig(file_path.replace(".log", ".png"))
 
 
-def plot_multi_lin_zc():
-    res_blocks = load_test_from_txt_to_blocks(
-        "output_log/mullin_opt_bench_multhr_1.log", "Prover starts Opt multilinear for 2^")
+def plot_multi_lin_zc(file_path, start_line):
+    res_blocks = load_test_from_txt_to_blocks(file_path, start_line)
 
     target_keys_univar = ["commit to (g,h,s,o) input MLEs",
                           "computing inital challenge using which f_hat is computed",
@@ -267,11 +265,20 @@ def plot_multi_lin_zc():
     plt.legend(title="Description", bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig("output_log/mullin_opt_bench_multhr_1.png")
+    plt.savefig(file_path.replace(".log", ".png"))
 
 
 if __name__ == '__main__':
-    plot_univar_zc()
-    # plot_multi_lin_zc()
+    # plot_univar_zc(
+    #     # file_path="output_log/univar_opt_bench_multhr_64.log",
+    #     # file_path="output_log/univar_opt_bench_run_1_open_4.log",
+    #     file_path="output_log/univar_opt_bench_run_1_open_5.log",
+    #     start_line="Opt Univariate Proof Generation Test for"
+    #     )
+
+    plot_multi_lin_zc(
+        file_path="output_log/mullin_opt_bench_run_1_open_1.log", 
+        start_line="Prover starts Opt multilinear for 2^"
+        )
 
     print("End...")

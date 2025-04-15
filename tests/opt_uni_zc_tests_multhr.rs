@@ -71,7 +71,10 @@ mod tests {
                     &zp.clone(),
                     &inp_evals.clone(), 
                     &domain,
-                    &mut ZCTranscript::init_transcript()
+                    &mut ZCTranscript::init_transcript(),
+                    None,
+                    None,
+                    None,
                 ).unwrap()
             })
             .collect::<Vec<_>>()

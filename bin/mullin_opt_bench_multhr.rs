@@ -11,7 +11,13 @@ use zerocheck::{
     ZeroCheck,
 };
 
-fn test_template(num_vars: usize, repeat: u32) -> u128 {
+fn test_template(
+    num_vars: usize,
+    repeat: u32,
+    run_threads: Option<usize>,
+    batch_commit_threads: Option<usize>,
+    batch_open_threads: Option<usize>,
+) -> u128 {
     let instant = Instant::now();
 
     // Generate a random polynomial.
@@ -41,6 +47,9 @@ fn test_template(num_vars: usize, repeat: u32) -> u128 {
                 &poly.clone(),
                 &num_vars,
                 &mut ZCTranscript::init_transcript(),
+                run_threads,
+                batch_commit_threads,
+                batch_open_threads,
             )
             .unwrap()
         })
@@ -63,7 +72,13 @@ fn test_template(num_vars: usize, repeat: u32) -> u128 {
     return runtime.as_millis();
 }
 
-fn test_template_hyrax(num_vars: usize, repeat: u32) -> u128 {
+fn test_template_hyrax(
+    num_vars: usize,
+    repeat: u32,
+    run_threads: Option<usize>,
+    batch_commit_threads: Option<usize>,
+    batch_open_threads: Option<usize>,
+) -> u128 {
     let instant = Instant::now();
 
     let poly = custom_zero_test_case::<<EdwardsAffine as AffineRepr>::ScalarField>(num_vars);
@@ -87,6 +102,9 @@ fn test_template_hyrax(num_vars: usize, repeat: u32) -> u128 {
                 &poly.clone(),
                 &num_vars,
                 &mut ZCTranscript::init_transcript(),
+                run_threads,
+                batch_commit_threads,
+                batch_open_threads,
             )
             .unwrap()
         })
@@ -123,17 +141,25 @@ struct Args {
     #[arg(long, default_value = "20")]
     max_size: usize,
 
-    // /// Number of threads to use for prepare input evaluations
-    // #[arg(long, default_value = "64")]
-    // prepare_threads: usize,
+    /// Number of threads to use for prepare input evaluations
+    #[arg(long, default_value = "64")]
+    prepare_threads: usize,
 
-    // /// Number of threads to use to run proof and verify tests
-    // #[arg(long, default_value = "1")]
-    // run_threads: usize,
+    /// Number of threads to use to run proof and verify tests
+    #[arg(long, default_value = "1")]
+    run_threads: usize,
 
     // choose between `hyrax` and `mpc`
     #[arg(long, default_value = "mpc")]
     poly_commit_scheme: String,
+
+    /// Number of threads to run batch opening
+    #[arg(long, default_value = "1")]
+    batch_opening_threads: usize,
+
+    /// Number of threads to run batch commit
+    #[arg(long, default_value = "1")]
+    batch_commit_threads: usize,
 }
 
 fn bench_opt_mle_zc() {
@@ -144,10 +170,26 @@ fn bench_opt_mle_zc() {
         .map(|size| {
             let total_runtime: u128 = match args.poly_commit_scheme.as_str() {
                 "mpc" => (0..repeat)
-                    .map(|_| test_template(size, repeat))
+                    .map(|_| {
+                        test_template(
+                            size,
+                            repeat,
+                            Some(args.run_threads),
+                            Some(args.batch_commit_threads),
+                            Some(args.batch_opening_threads),
+                        )
+                    })
                     .sum(),
                 "hyrax" => (0..repeat)
-                    .map(|_| test_template_hyrax(size, repeat))
+                    .map(|_| {
+                        test_template_hyrax(
+                            size,
+                            repeat,
+                            Some(args.run_threads),
+                            Some(args.batch_commit_threads),
+                            Some(args.batch_opening_threads),
+                        )
+                    })
                     .sum(),
                 _ => panic!("Invalid poly_commit_scheme"),
             };

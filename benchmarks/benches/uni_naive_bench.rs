@@ -56,7 +56,10 @@ fn naive_univariate_zero_check_benchmark(c: &mut Criterion) {
                             black_box(&zp.clone()),
                             black_box(&input_evals), 
                             black_box(&domain),
-                            &mut None
+                            &mut None,
+                            None,
+                            None,
+                            None,
                         );
                     },
                     BatchSize::LargeInput
