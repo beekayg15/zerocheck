@@ -100,7 +100,10 @@ mod tests {
                 &zp.clone(),
                 &inp_evals.clone(), 
                 &domain,
-                &mut ZCTranscript::init_transcript()
+                &mut ZCTranscript::init_transcript(),
+                None, // run_threads
+                None, // batch_commit_threads
+                None, // batch_open_threads
             ).unwrap();
 
         let runtime = instant.elapsed();

@@ -54,7 +54,10 @@ impl<F> ZeroCheck<F> for NaiveMLZeroCheck<F>
             _zero_params: &Self::ZeroCheckParams<'_>,
             input_poly: &Self::InputType,
             zero_domain: &Self::ZeroDomain,
-            _transcript: &mut Self::Transcripts
+            _transcript: &mut Self::Transcripts,
+            _run_threads: Option<usize>,
+            _batch_commit_threads: Option<usize>,
+            _batch_open_threads: Option<usize>,
         ) -> Result<Self::Proof, anyhow::Error> {
             
         assert_eq!(
@@ -246,7 +249,10 @@ mod test {
             &zp.clone(),
             &poly.clone(), 
             &10,
-            &mut ZCTranscript::init_transcript()
+            &mut ZCTranscript::init_transcript(),
+            None,
+            None,
+            None,
         ).unwrap();
         println!("Proof Generated: {:?}", proof);
 
@@ -270,7 +276,10 @@ mod test {
             &zp.clone(),
             &poly.clone(), 
             &10,
-            &mut ZCTranscript::init_transcript()
+            &mut ZCTranscript::init_transcript(),
+            None,
+            None,
+            None,
         ).unwrap();
         println!("Proof Generated: {:?}", proof);
 

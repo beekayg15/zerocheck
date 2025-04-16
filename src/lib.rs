@@ -59,6 +59,9 @@ pub trait ZeroCheck<F: PrimeField>: Sized{
         input_poly: &'a Self::InputType,
         zero_domain: &'a Self::ZeroDomain,
         transcript: &'a mut Self::Transcripts, 
+        run_threads: Option<usize>,
+        batch_commit_threads: Option<usize>,
+        batch_open_threads: Option<usize>,
     ) -> Result<Self::Proof, Error>;
 
     /// function called by the verifier to check if the proof for the 

@@ -1,60 +1,46 @@
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::UniformRand;
-use ark_poly::{
-    univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Evaluations,
-    GeneralEvaluationDomain, Polynomial,
-};
+use ark_poly::{EvaluationDomain, Evaluations, GeneralEvaluationDomain};
 use ark_std::One;
 use ark_std::{end_timer, start_timer};
 use clap::Parser;
-use rayon::prelude::*;
+use std::time::Instant;
 use zerocheck::pcs::univariate_pcs::kzg::KZG;
 use zerocheck::transcripts::ZCTranscript;
-use std::time::Instant;
 use zerocheck::zc::univariate_zc::optimized::data_structures::ZeroCheckParams;
 use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
 use zerocheck::ZeroCheck;
 
 /// This function prepares the random input evaluations for the prover test.
 /// Reuse for the same worksize across multiple repeated tests.
-fn prepare_input_evals_domain<'a> (
+fn prepare_input_evals_domain<'a>(
     size: u32,
-) -> (
-    [Evaluations<Fr>; 4],
-    GeneralEvaluationDomain<Fr>,
-    usize,
-) {
+) -> ([Evaluations<Fr>; 4], GeneralEvaluationDomain<Fr>, usize) {
     println!("Preparing input evaluations and domain for 2^{size} work");
     let instant = Instant::now();
     let domain = GeneralEvaluationDomain::<Fr>::new(1 << size).unwrap();
 
-    let rand_g_coeffs: Vec<_> = (0..(1 << size))
-        .into_par_iter()
-        .map(|_| Fr::rand(&mut ark_std::test_rng()))
+    let evals_over_domain_g: Vec<_> = domain
+        .elements()
+        .map(|_| Fr::rand(&mut ark_std::rand::thread_rng()))
         .collect();
-    let rand_h_coeffs: Vec<_> = (0..(1 << size))
-        .into_par_iter()
-        .map(|_| Fr::rand(&mut ark_std::test_rng()))
+    let evals_over_domain_h: Vec<_> = domain
+        .elements()
+        .map(|_| Fr::rand(&mut ark_std::rand::thread_rng()))
         .collect();
-    let rand_s_coeffs: Vec<_> = (0..(1 << size))
-        .into_par_iter()
-        .map(|_| Fr::rand(&mut ark_std::test_rng()))
+    let evals_over_domain_s: Vec<_> = domain
+        .elements()
+        .map(|_| Fr::rand(&mut ark_std::rand::thread_rng()))
         .collect();
-
-    let g = DensePolynomial::from_coefficients_vec(rand_g_coeffs);
-    let h = DensePolynomial::from_coefficients_vec(rand_h_coeffs);
-    let s = DensePolynomial::from_coefficients_vec(rand_s_coeffs);
-
-    let max_degree = g.degree() + s.degree() + h.degree();
-
-    let evals_over_domain_g: Vec<_> = domain.elements().map(|f| g.evaluate(&f)).collect();
-    let evals_over_domain_h: Vec<_> = domain.elements().map(|f| h.evaluate(&f)).collect();
-    let evals_over_domain_s: Vec<_> = domain.elements().map(|f| s.evaluate(&f)).collect();
     let evals_over_domain_o: Vec<_> = domain
         .elements()
-        .map(|f| {
-            g.evaluate(&f) * h.evaluate(&f) * s.evaluate(&f)
-                + (Fr::one() - s.evaluate(&f)) * (g.evaluate(&f) + h.evaluate(&f))
+        .zip(
+            evals_over_domain_g
+                .iter()
+                .zip(evals_over_domain_h.iter().zip(evals_over_domain_s.iter())),
+        )
+        .map(|(f, (g_eval, (h_eval, s_eval)))| {
+            g_eval * h_eval * s_eval + (Fr::one() - s_eval) * (g_eval + h_eval)
         })
         .collect();
 
@@ -64,6 +50,7 @@ fn prepare_input_evals_domain<'a> (
     let o_evals = Evaluations::from_vec_and_domain(evals_over_domain_o, domain);
 
     let inp_evals = [g_evals, h_evals, s_evals, o_evals];
+    let max_degree = (domain.size() - 1) * 3; // g.h.s
     let duration = instant.elapsed().as_secs_f64();
     println!("Preparing input evaluations and domain for 2^{size} work ....{duration}s");
     return (inp_evals, domain, max_degree);
@@ -78,6 +65,9 @@ fn opt_univariate_zero_check_multithread_benchmark(
     domain: GeneralEvaluationDomain<Fr>,
     global_params: ZeroCheckParams<KZG<Bls12_381>>,
     size: u32,
+    run_threads: Option<usize>,
+    batch_commit_threads: Option<usize>,
+    batch_open_threads: Option<usize>,
 ) -> u128 {
     let test_timer =
         start_timer!(|| format!("Opt Univariate Proof Generation Test for 2^{size} work"));
@@ -90,7 +80,10 @@ fn opt_univariate_zero_check_multithread_benchmark(
         &global_params.clone(),
         &inp_evals.clone(),
         &domain,
-        &mut ZCTranscript::init_transcript()
+        &mut ZCTranscript::init_transcript(),
+        run_threads,
+        batch_commit_threads,
+        batch_open_threads,
     )
     .unwrap();
 
@@ -106,7 +99,7 @@ fn opt_univariate_zero_check_multithread_benchmark(
         &inp_evals,
         &proof,
         &domain,
-        &mut ZCTranscript::init_transcript()
+        &mut ZCTranscript::init_transcript(),
     )
     .unwrap();
 
@@ -123,23 +116,31 @@ fn opt_univariate_zero_check_multithread_benchmark(
 struct Args {
     /// Number of repetitions for each test
     #[arg(long, default_value = "10")]
-    repeat: u32,
+    repeat: usize,
 
     /// Minimum work size exponent (2^min_size)
     #[arg(long, default_value = "10")]
-    min_size: u32,
+    min_size: usize,
 
     /// Maximum work size exponent (inclusive, 2^max_size)
     #[arg(long, default_value = "20")]
-    max_size: u32,
+    max_size: usize,
 
     /// Number of threads to use for prepare input evaluations
     #[arg(long, default_value = "64")]
-    prepare_threads: u32,
+    prepare_threads: usize,
 
     /// Number of threads to use to run proof and verify tests
     #[arg(long, default_value = "1")]
-    run_threads: u32,
+    run_threads: usize,
+
+    /// Number of threads to run batch opening
+    #[arg(long, default_value = "1")]
+    batch_opening_threads: usize,
+
+    /// Number of threads to run batch commit
+    #[arg(long, default_value = "1")]
+    batch_commit_threads: usize,
 }
 
 fn bench_opt_uni_zc() {
@@ -153,23 +154,27 @@ fn bench_opt_uni_zc() {
                 .num_threads(args.prepare_threads as usize)
                 .build()
                 .unwrap();
-            let (input_evals, domain, pp) = pool_prepare.install(|| prepare_input_evals_domain(size));
-            let global_params = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
+            let (input_evals, domain, pp) =
+                pool_prepare.install(|| prepare_input_evals_domain(size as u32));
+            let global_params =
+                OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
 
-            let pool_run = rayon::ThreadPoolBuilder::new()
-                .num_threads(args.run_threads as usize)
-                .build()
-                .unwrap();
-            let total_runtime: u128 = pool_run.install(|| {
-                (0..args.repeat)
-                    .map(|repeat_time| {
-                        println!("Running test for 2^{} with repeat: {}", size, repeat_time);
-                        opt_univariate_zero_check_multithread_benchmark(&input_evals, domain, global_params.clone(), size)
-                    })
-                    .sum()
-            });
+            let total_runtime: u128 = (0..args.repeat)
+                .map(|repeat_time| {
+                    println!("Running test for 2^{} with repeat: {}", size, repeat_time);
+                    opt_univariate_zero_check_multithread_benchmark(
+                        &input_evals,
+                        domain,
+                        global_params.clone(),
+                        size as u32,
+                        Some(args.run_threads as usize),
+                        Some(args.batch_commit_threads as usize),
+                        Some(args.batch_opening_threads as usize),
+                    )
+                })
+                .sum();
 
-            (size, total_runtime)
+            (size as u32, total_runtime)
         })
         .unzip();
     println!("size {:?}, total_runtime {:?}", s, tt);

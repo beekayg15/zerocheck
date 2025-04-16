@@ -163,22 +163,20 @@ def dataframe_average_row(dataframe: pd.DataFrame, common_column_name: str = "Ru
     return dataframe
 
 
-def plot_univar_zc():
-    res_blocks = load_test_from_txt_to_blocks(
-        "output_log/univar_opt_bench_multhr_1.log", "Opt Univariate Proof Generation Test for")
+def plot_univar_zc(file_path, start_line):
+    res_blocks = load_test_from_txt_to_blocks(file_path, start_line)
 
     target_keys_univar = ["IFFT for g,h,s,o from evaluations to coefficients",
-                        #   "Setup KZG10 polynomial commitments global parameters",
-                        #   "Setup verifier key",
-                          "KZG commit to (g,h,s,o) polynomials",
-                          "Get Fiat-Shamir random challenge and evals at challenge",
-                          "KZG open the g,h,s,o poly commit at r",
+                          #   "Setup KZG10 polynomial commitments global parameters",
+                          #   "Setup verifier key",
                           "Compute coset domain",
-                          "Compute g,h,s,o,z,q evaluations over coset domain",
+                          "FFT Compute g,h,s,o,z,q evaluations over coset domain",
                           "IFFT for q from evaluations to coefficients",
-                          "KZG commit to q polynomial",
-                          "KZG open the q poly commit at r",]
-    assert len(target_keys_univar) == 9, "Result timer number not match the code"
+                          "KZG batch commit to (g,h,s,o,q) polynomials",
+                          "Get Fiat-Shamir random challenge and evals at challenge",
+                          "KZG batch open the g,h,s,o,q poly commit at r",
+                          ]
+    assert len(target_keys_univar) == 7, "Result timer number not match the code"
 
     # parse the result from text log --> blocks --> a dataframe
     target_time_unit = "s"
@@ -191,10 +189,10 @@ def plot_univar_zc():
             value, f"Runtime ({target_time_unit})")
 
     # Univariate ZC: merge all average results of all worksizes to one dataframe
-    merge_average = worksize[5][["Description",
+    merge_average = worksize[min(worksize.keys())][["Description",
                                  f"Average Runtime ({target_time_unit})"]].copy()
     for key, value in worksize.items():
-        if key != 5:
+        if key != min(worksize.keys()):
             merge_average = merge_dataframes(
                 merge_average, value[["Description", f"Average Runtime ({target_time_unit})"]], "Description", f"Average Runtime ({target_time_unit})")
 
@@ -207,7 +205,7 @@ def plot_univar_zc():
     stacked_merge_average.plot(kind="bar", stacked=True, figsize=(10, 6))
     # rename the x-tick labels from 5 to the end
     plt.xticks(np.arange(len(runtime_columns)), [
-               f"2^{i}" for i in range(5, 5+len(runtime_columns))])
+               f"2^{i}" for i in range(min(worksize.keys()), min(worksize.keys())+len(runtime_columns))])
     plt.xlabel("Test Cases")
     # plt.yticks(np.arange(0, 30, 1))
     plt.ylabel(f"Average Runtime ({target_time_unit})")
@@ -216,17 +214,20 @@ def plot_univar_zc():
     plt.legend(title="Description", bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig("output_log/univar_opt_bench_multhr_1.png")
+    plt.savefig(file_path.replace(".log", ".png"))
 
 
-def plot_multi_lin_zc():
-    res_blocks = load_test_from_txt_to_blocks(
-        "output_log/mullin_naive_bench_multhr_1.log", "Prover starts for 2^")
+def plot_multi_lin_zc(file_path, start_line):
+    res_blocks = load_test_from_txt_to_blocks(file_path, start_line)
 
-    target_keys_univar = ["computing inital challenge using which f_hat is computed",
+    target_keys_univar = ["commit to (g,h,s,o) input MLEs",
+                          "computing inital challenge using which f_hat is computed",
                           "Build MLE: computing f_hat(X) = sum_{B^m} f(X)",
-                          "running sumcheck proving algorithm for X rounds",]
-    assert len(target_keys_univar) == 3, "Result timer number not match the code"
+                          "running sumcheck proving algorithm for X rounds",
+                          "open proof g,h,s,o input MLEs at r",
+                          "computing evaluations of input MLEs at challenges",
+                          ]
+    assert len(target_keys_univar) == 6, "Result timer number not match the code"
 
     # parse the result from text log --> blocks --> a dataframe
     target_time_unit = "s"
@@ -239,10 +240,10 @@ def plot_multi_lin_zc():
             value, f"Runtime ({target_time_unit})")
 
     # MultiLin ZC: merge all average results of all worksizes to one dataframe
-    merge_average = worksize[5][["Description",
+    merge_average = worksize[min(worksize.keys())][["Description",
                                  f"Average Runtime ({target_time_unit})"]].copy()
     for key, value in worksize.items():
-        if key != 5:
+        if key != min(worksize.keys()):
             merge_average = merge_dataframes(
                 merge_average, value[["Description", f"Average Runtime ({target_time_unit})"]], "Description", f"Average Runtime ({target_time_unit})")
 
@@ -255,7 +256,7 @@ def plot_multi_lin_zc():
     stacked_merge_average.plot(kind="bar", stacked=True, figsize=(10, 6))
     # rename the x-tick labels from 5 to the end
     plt.xticks(np.arange(len(runtime_columns)), [
-               f"2^{i}" for i in range(5, 5+len(runtime_columns))])
+               f"2^{i}" for i in range(min(worksize.keys()), min(worksize.keys())+len(runtime_columns))])
     plt.xlabel("Test Cases")
     # plt.yticks(np.arange(0, 30, 1))
     plt.ylabel(f"Average Runtime ({target_time_unit})")
@@ -264,11 +265,20 @@ def plot_multi_lin_zc():
     plt.legend(title="Description", bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig("output_log/mullin_naive_bench_multhr_1.png")
+    plt.savefig(file_path.replace(".log", ".png"))
 
 
 if __name__ == '__main__':
-    # plot_univar_zc()
-    plot_multi_lin_zc()
+    # plot_univar_zc(
+    #     # file_path="output_log/univar_opt_bench_multhr_64.log",
+    #     # file_path="output_log/univar_opt_bench_run_1_open_4.log",
+    #     file_path="output_log/univar_opt_bench_run_1_open_5.log",
+    #     start_line="Opt Univariate Proof Generation Test for"
+    #     )
+
+    plot_multi_lin_zc(
+        file_path="output_log/mullin_opt_bench_run_1_open_1.log", 
+        start_line="Prover starts Opt multilinear for 2^"
+        )
 
     print("End...")

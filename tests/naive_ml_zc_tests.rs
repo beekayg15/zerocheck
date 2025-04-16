@@ -30,7 +30,10 @@ mod tests {
                     &zp.clone(),
                     &poly.clone(), 
                     &num_vars,
-                    &mut ZCTranscript::init_transcript()
+                    &mut ZCTranscript::init_transcript(),
+                    None,
+                    None,
+                    None,
                 ).unwrap()
             })
             .collect::<Vec<_>>()

@@ -52,7 +52,10 @@ mod tests {
                 &zp.clone(),
                 &inp_evals.clone(), 
                 &domain,
-            &mut None
+            &mut None,
+                None,
+                None,
+                None,
         ).unwrap();
 
         let runtime = instant.elapsed();

@@ -1,11 +1,11 @@
 use anyhow::Ok;
 use ark_ff::FftField;
+use ark_ff::PrimeField;
 use ark_poly::EvaluationDomain;
 use ark_poly::{univariate::DensePolynomial, Evaluations, GeneralEvaluationDomain, Polynomial};
 use ark_std::{end_timer, start_timer};
 use rayon::prelude::*;
 use std::marker::PhantomData;
-use ark_ff::PrimeField;
 
 pub mod data_structures;
 use data_structures::*;
@@ -35,7 +35,7 @@ where
     PCS: PolynomialCommitmentScheme<
         Polynomial = DensePolynomial<F>,
         PolynomialInput = F,
-        PolynomialOutput = F
+        PolynomialOutput = F,
     >,
 {
     type InputType = Vec<Evaluations<F>>;
@@ -53,10 +53,7 @@ where
 
         end_timer!(setup_kzg_time);
 
-        Ok(ZeroCheckParams {
-            ck,
-            vk,
-        })
+        Ok(ZeroCheckParams { ck, vk })
     }
 
     /// function called by the prover to genearte a valid
@@ -75,8 +72,27 @@ where
         zero_params: &Self::ZeroCheckParams<'_>,
         input_poly: &Self::InputType,
         zero_domain: &Self::ZeroDomain,
-        transcript: &mut Self::Transcripts, 
+        transcript: &mut Self::Transcripts,
+        run_threads: Option<usize>,
+        batch_commit_threads: Option<usize>,
+        batch_open_threads: Option<usize>,
     ) -> Result<Self::Proof, anyhow::Error> {
+        let run_threads = run_threads.unwrap_or(1);
+        let batch_commit_threads = batch_commit_threads.unwrap_or(1);
+        let batch_open_threads = batch_open_threads.unwrap_or(1);
+        let pool_run = rayon::ThreadPoolBuilder::new()
+            .num_threads(run_threads)
+            .build()
+            .unwrap();
+        let pool_commit = rayon::ThreadPoolBuilder::new()
+            .num_threads(batch_commit_threads)
+            .build()
+            .unwrap();
+        let pool_open = rayon::ThreadPoolBuilder::new()
+            .num_threads(batch_open_threads)
+            .build()
+            .unwrap();
+
         // compute the vanishing polynomial of the zero domain
         // let z_poly = zero_domain.vanishing_polynomial();
         let z_deg = zero_domain.size();
@@ -92,11 +108,13 @@ where
         let o = input_poly[3].clone(); // o_evals
 
         // compute the polynomials corresponding to g, h, and s using interpolation (IFFT)
-        let ghso_coeffs: Vec<_> = [&g, &h, &s, &o]
-            .par_iter()
-            .enumerate()
-            .map(|(i, evals)| (i, (*evals).clone().interpolate()))
-            .collect();
+        let ghso_coeffs: Vec<_> = pool_run.install(|| {
+            [&g, &h, &s, &o]
+                .par_iter()
+                .enumerate()
+                .map(|(i, evals)| (i, (*evals).clone().interpolate()))
+                .collect()
+        });
         let mut ghso_sorted_coeffs = ghso_coeffs;
         ghso_sorted_coeffs.sort_by_key(|(i, _)| *i);
         let [g_coeff, h_coeff, s_coeff, o_coeff]: [_; 4] = ghso_sorted_coeffs
@@ -108,7 +126,7 @@ where
 
         end_timer!(ifft_time);
         let coset_time = start_timer!(|| "Compute coset domain");
-        
+
         // Compute the quotient polynomial q(X) = f(X)/z_H(X) = (g.h.s + (1-s)(g+h))/z_H
         let g_deg = g_coeff.degree();
         let h_deg = h_coeff.degree();
@@ -124,63 +142,73 @@ where
         let coset_domain = q_domain.get_coset(offset).unwrap();
 
         end_timer!(coset_time);
-        let coset_eval_time = start_timer!(|| "Compute g,h,s,o,z,q evaluations over coset domain");
+        let coset_eval_time =
+            start_timer!(|| "FFT Compute g,h,s,o,z,q evaluations over coset domain");
 
-        // Evaluate the values of g(X), h(X), s(X), and z_h(X) over the coset domain
-        let g_evals = g_coeff.clone().evaluate_over_domain(coset_domain).evals;
-        let h_evals = h_coeff.clone().evaluate_over_domain(coset_domain).evals;
-        let s_evals = s_coeff.clone().evaluate_over_domain(coset_domain).evals;
-        let o_evals = o_coeff.clone().evaluate_over_domain(coset_domain).evals;
-        let z_evals = zero_domain
-            .vanishing_polynomial()
-            .evaluate_over_domain(coset_domain)
-            .evals;
+        // Evaluate the values of g(X), h(X), s(X), and z_h(X) over the coset domain using threads
+        let (g_evals, h_evals, s_evals, o_evals, z_evals) = pool_run.install(|| {
+            let g_evals = g_coeff.clone().evaluate_over_domain(coset_domain).evals;
+            let h_evals = h_coeff.clone().evaluate_over_domain(coset_domain).evals;
+            let s_evals = s_coeff.clone().evaluate_over_domain(coset_domain).evals;
+            let o_evals = o_coeff.clone().evaluate_over_domain(coset_domain).evals;
+            let z_evals = zero_domain
+                .vanishing_polynomial()
+                .evaluate_over_domain(coset_domain)
+                .evals;
+            (g_evals, h_evals, s_evals, o_evals, z_evals)
+        });
 
-        // Find the value of q(X) over the coset domain
-        let mut q_evals = vec![];
-        for i in 0..g_evals.len() {
-            q_evals.push(
-                ((g_evals[i] * h_evals[i] * s_evals[i])
-                    + (F::one() - s_evals[i]) * (g_evals[i] + h_evals[i])
-                    - o_evals[i])
-                    / z_evals[i],
-            )
-        }
+        // Find the value of q(X) over the coset domain using threads
+        let q_evals = pool_run.install(|| {
+            (0..g_evals.len())
+                .into_par_iter()
+                .map(|i| {
+                    ((g_evals[i] * h_evals[i] * s_evals[i])
+                        + (F::one() - s_evals[i]) * (g_evals[i] + h_evals[i])
+                        - o_evals[i])
+                        / z_evals[i]
+                })
+                .collect::<Vec<_>>()
+        });
 
         end_timer!(coset_eval_time);
         let ifft_q_time = start_timer!(|| "IFFT for q from evaluations to coefficients");
 
         // Interpolate q(X) using the evaluations
-        let q_coeff = Evaluations::from_vec_and_domain(q_evals, coset_domain).interpolate();
+        let q_coeff = pool_run
+            .install(|| Evaluations::from_vec_and_domain(q_evals, coset_domain).interpolate());
 
         end_timer!(ifft_q_time);
-        let commit_time = start_timer!(|| "KZG commit to (g,h,s,o) polynomials");
+        let commit_time = start_timer!(|| "KZG batch commit to (g,h,s,o,q) polynomials");
 
-        // Compute the commitment to the polynomial g(X), h(X), s(X), and o(X)
-        let comm_rs = PCS::batch_commit(
-            &zero_params.ck, 
-            &vec![
-                g_coeff.clone(), 
-                h_coeff.clone(), 
-                s_coeff.clone(), 
-                o_coeff.clone(),
-                q_coeff.clone(),
-            ]
-        ).unwrap();
+        // Use the pool_commit thread pool to perform the batch_commit operation
+        let comm_rs = pool_commit.install(|| {
+            PCS::batch_commit(
+                &zero_params.ck,
+                &vec![
+                    g_coeff.clone(),
+                    h_coeff.clone(),
+                    s_coeff.clone(),
+                    o_coeff.clone(),
+                    q_coeff.clone(),
+                ],
+            )
+            .unwrap()
+        });
 
-        let [comm_g, comm_h, comm_s, comm_o, comm_q] = comm_rs.clone()
+        let [comm_g, comm_h, comm_s, comm_o, comm_q] = comm_rs
+            .clone()
             .into_iter()
-            .map(|comm| comm)
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
 
         // Collect the commitment to the input polynomials
         let inp_comms = vec![
-            comm_g.clone(), 
-            comm_h.clone(), 
-            comm_s.clone(), 
-            comm_o.clone()
+            comm_g.clone(),
+            comm_h.clone(),
+            comm_s.clone(),
+            comm_o.clone(),
         ];
 
         end_timer!(commit_time);
@@ -188,11 +216,21 @@ where
             start_timer!(|| "Get Fiat-Shamir random challenge and evals at challenge");
 
         // Sample a random challenge - Fiat-Shamir
-        transcript.append_serializable_element(b"comm_g",&comm_g).unwrap();
-        transcript.append_serializable_element(b"comm_h",&comm_h).unwrap();
-        transcript.append_serializable_element(b"comm_s",&comm_s).unwrap();
-        transcript.append_serializable_element(b"comm_o",&comm_o).unwrap();
-        transcript.append_serializable_element(b"comm_q",&comm_q).unwrap();
+        transcript
+            .append_serializable_element(b"comm_g", &comm_g)
+            .unwrap();
+        transcript
+            .append_serializable_element(b"comm_h", &comm_h)
+            .unwrap();
+        transcript
+            .append_serializable_element(b"comm_s", &comm_s)
+            .unwrap();
+        transcript
+            .append_serializable_element(b"comm_o", &comm_o)
+            .unwrap();
+        transcript
+            .append_serializable_element(b"comm_q", &comm_q)
+            .unwrap();
         let r = transcript.get_and_append_challenge(b"sampling r").unwrap();
 
         // Collect the evalution of the input polynomials at the challenge
@@ -203,29 +241,27 @@ where
         inp_evals_at_rand.push(o_coeff.evaluate(&r));
 
         end_timer!(get_r_eval_time);
-        let open_time = start_timer!(|| "KZG open the g,h,s,o poly commit at r");
+        let open_time = start_timer!(|| "KZG batch open the g,h,s,o,q poly commit at r");
 
         // Generate the opening proof that g(r), h(r), s(r), and o(r) are the evaluations of the polynomials
-        let opening_proofs = PCS::batch_open(
-            &zero_params.ck, 
-            &comm_rs, 
-            &vec![
-                g_coeff.clone(), 
-                h_coeff.clone(), 
-                s_coeff.clone(), 
-                o_coeff.clone(),
-                q_coeff.clone(),
-            ], 
-            r
-        ).unwrap();
+        let opening_proofs = pool_open.install(|| {
+            PCS::batch_open(
+                &zero_params.ck,
+                &comm_rs,
+                &vec![
+                    g_coeff.clone(),
+                    h_coeff.clone(),
+                    s_coeff.clone(),
+                    o_coeff.clone(),
+                    q_coeff.clone(),
+                ],
+                r,
+            )
+            .unwrap()
+        });
 
-        let [
-            g_opening_proof, 
-            h_opening_proof, 
-            s_opening_proof, 
-            o_opening_proof,
-            q_opening_proof
-            ] = opening_proofs
+        let [g_opening_proof, h_opening_proof, s_opening_proof, o_opening_proof, q_opening_proof] =
+            opening_proofs
                 .into_iter()
                 .map(|proof| proof)
                 .collect::<Vec<_>>()
@@ -271,7 +307,7 @@ where
         _input_poly: &Self::InputType,
         proof: &Self::Proof,
         zero_domain: &Self::ZeroDomain,
-        transcript: &'a mut Self::Transcripts, 
+        transcript: &'a mut Self::Transcripts,
     ) -> Result<bool, anyhow::Error> {
         // let g = input_poly[0].clone();
         // let h = input_poly[1].clone();
@@ -287,35 +323,32 @@ where
         let q_eval = proof.q_eval;
 
         // Sample a random challenge - Fiat-Shamir
-        transcript.append_serializable_element(b"comm_g",&inp_comms[0]).unwrap();
-        transcript.append_serializable_element(b"comm_h",&inp_comms[1]).unwrap();
-        transcript.append_serializable_element(b"comm_s",&inp_comms[2]).unwrap();
-        transcript.append_serializable_element(b"comm_o",&inp_comms[3]).unwrap();
-        transcript.append_serializable_element(b"comm_q",q_comm).unwrap();
+        transcript
+            .append_serializable_element(b"comm_g", &inp_comms[0])
+            .unwrap();
+        transcript
+            .append_serializable_element(b"comm_h", &inp_comms[1])
+            .unwrap();
+        transcript
+            .append_serializable_element(b"comm_s", &inp_comms[2])
+            .unwrap();
+        transcript
+            .append_serializable_element(b"comm_o", &inp_comms[3])
+            .unwrap();
+        transcript
+            .append_serializable_element(b"comm_q", q_comm)
+            .unwrap();
         let r = transcript.get_and_append_challenge(b"sampling r").unwrap();
 
         // check openings to input polynomials
         assert!(
-            PCS::batch_check(
-                &vk,
-                &inp_openings,
-                &inp_comms,
-                r,
-                inp_evals.to_vec(),
-            )
-            .unwrap(),
+            PCS::batch_check(&vk, &inp_openings, &inp_comms, r, inp_evals.to_vec(),).unwrap(),
             "Opening failed at input polynomials"
         );
 
         // check opening to quotient polynomials
         assert!(
-            PCS::check(
-                &zero_params.vk, 
-                &q_opening,
-                &q_comm, 
-                r, 
-                q_eval
-            ).unwrap(),
+            PCS::check(&zero_params.vk, &q_opening, &q_comm, r, q_eval).unwrap(),
             "Opening failed at quotient polynomial"
         );
 
@@ -342,6 +375,7 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_bls12_381::Fr;
+    use ark_ff::One;
     use ark_ff::UniformRand;
     use ark_poly::{
         univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Evaluations,
@@ -349,7 +383,6 @@ mod tests {
     };
     use ark_std::end_timer;
     use ark_std::start_timer;
-    use ark_ff::One;
 
     #[test]
     fn test_proof_generation_verification_op_uni() {
@@ -412,7 +445,10 @@ mod tests {
             &zp.clone(),
             &inp_evals.clone(),
             &domain,
-            &mut ZCTranscript::init_transcript()
+            &mut ZCTranscript::init_transcript(),
+            None,
+            None,
+            None,
         )
         .unwrap();
 
@@ -422,14 +458,14 @@ mod tests {
 
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
-        let result =
-            OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
-                &zp, 
-                &inp_evals, 
-                &proof, 
-                &domain,
-                &mut ZCTranscript::init_transcript()
-            ).unwrap();
+        let result = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
+            &zp,
+            &inp_evals,
+            &proof,
+            &domain,
+            &mut ZCTranscript::init_transcript(),
+        )
+        .unwrap();
 
         end_timer!(verify_timer);
 

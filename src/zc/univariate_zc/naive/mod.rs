@@ -65,6 +65,9 @@ impl<F: PrimeField + FftField> ZeroCheck<F> for NaiveUnivariateZeroCheck<F> {
             input_poly: &Self::InputType,
             zero_domain: &Self::ZeroDomain,
             _transcript: &mut Self::Transcripts,
+            _run_threads: Option<usize>,
+            _batch_commit_threads: Option<usize>,
+            _batch_open_threads: Option<usize>,
         ) -> Result<Self::Proof, Error> {
 
         let inp_interpolation_time = start_timer!(|| "Interpolating input evaluations");
@@ -224,7 +227,10 @@ mod tests {
                 &zero_params,
                 &inp_evals.clone(), 
                 &domain,
-                &mut None
+                &mut None,
+                None,
+                None,
+                None
             ).unwrap();
 
         end_timer!(proof_gen_timer);
@@ -278,7 +284,10 @@ mod tests {
                 &zero_params.clone(),
                 &inp_evals.clone(), 
                 &domain,
-                &mut None
+                &mut None,
+                None,
+                None,
+                None
             ).unwrap();
 
         end_timer!(proof_gen_timer);

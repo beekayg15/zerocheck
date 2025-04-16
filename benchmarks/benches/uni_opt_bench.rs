@@ -104,7 +104,10 @@ fn opt_univariate_zero_check_benchmark(c: &mut Criterion) {
                             black_box(&zp.clone()),
                             black_box(&input_evals), 
                             black_box(&domain),
-                            &mut ZCTranscript::init_transcript()
+                            &mut ZCTranscript::init_transcript(),
+                            None,
+                            None,
+                            None,
                         );
                     },
                     BatchSize::LargeInput
