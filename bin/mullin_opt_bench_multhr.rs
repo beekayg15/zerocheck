@@ -165,8 +165,10 @@ struct Args {
 fn bench_opt_mle_zc() {
     let args = Args::parse();
     let repeat = args.repeat;
+    let min_size = args.min_size + (args.min_size % 2); // make it even
 
-    let (sizes, runtimes): (Vec<usize>, Vec<u128>) = (args.min_size..=args.max_size)
+    let (sizes, runtimes): (Vec<usize>, Vec<u128>) = (min_size..=args.max_size)
+        .step_by(2)
         .map(|size| {
             let total_runtime: u128 = match args.poly_commit_scheme.as_str() {
                 "mpc" => (0..repeat)

@@ -176,7 +176,7 @@ where
 
         end_timer!(sumcheck_prover_timer);
 
-        let opening_proof_timer = start_timer!(|| "open proof g,h,s,o input MLEs at r");
+        let opening_proof_timer = start_timer!(|| "batch open proof g,h,s,o input MLEs at r");
 
         let inp_openings = pool_open.install(|| {
             PCS::batch_open(

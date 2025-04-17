@@ -179,7 +179,7 @@ where
             .install(|| Evaluations::from_vec_and_domain(q_evals, coset_domain).interpolate());
 
         end_timer!(ifft_q_time);
-        let commit_time = start_timer!(|| "KZG batch commit to (g,h,s,o,q) polynomials");
+        let commit_time = start_timer!(|| "KZG commit to (g,h,s,o) polynomials");
 
         // Use the pool_commit thread pool to perform the batch_commit operation
         let comm_rs = pool_commit.install(|| {
@@ -190,13 +190,11 @@ where
                     h_coeff.clone(),
                     s_coeff.clone(),
                     o_coeff.clone(),
-                    q_coeff.clone(),
                 ],
             )
             .unwrap()
         });
-
-        let [comm_g, comm_h, comm_s, comm_o, comm_q] = comm_rs
+        let [comm_g, comm_h, comm_s, comm_o] = comm_rs
             .clone()
             .into_iter()
             .collect::<Vec<_>>()
@@ -210,10 +208,20 @@ where
             comm_s.clone(),
             comm_o.clone(),
         ];
-
         end_timer!(commit_time);
-        let get_r_eval_time =
-            start_timer!(|| "Get Fiat-Shamir random challenge and evals at challenge");
+        let commit_q_time = start_timer!(|| "KZG commit to (q) polynomial");
+
+        let comm_q = pool_commit.install(|| PCS::commit(&zero_params.ck, &q_coeff).unwrap());
+        let comm_rs = vec![
+            comm_g.clone(),
+            comm_h.clone(),
+            comm_s.clone(),
+            comm_o.clone(),
+            comm_q.clone(),
+        ];
+        end_timer!(commit_q_time);
+
+        let get_r_eval_time = start_timer!(|| "computing evaluations at challenge, get challenge");
 
         // Sample a random challenge - Fiat-Shamir
         transcript
@@ -239,6 +247,7 @@ where
         inp_evals_at_rand.push(h_coeff.evaluate(&r));
         inp_evals_at_rand.push(s_coeff.evaluate(&r));
         inp_evals_at_rand.push(o_coeff.evaluate(&r));
+        let q_eval_r = q_coeff.evaluate(&r);
 
         end_timer!(get_r_eval_time);
         let open_time = start_timer!(|| "KZG batch open the g,h,s,o,q poly commit at r");
@@ -285,7 +294,7 @@ where
             inp_comms: inp_comms,
             inp_evals: inp_evals_at_rand,
             inp_openings: inp_opening_proofs,
-            q_eval: q_coeff.evaluate(&r),
+            q_eval: q_eval_r,
             q_opening: q_opening_proof,
         })
     }

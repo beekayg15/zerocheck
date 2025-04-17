@@ -89,10 +89,17 @@ def parse_test_block_time(block: list, target_time_unit: str = "ms"):
 def extract_result_by_key(df: pd.DataFrame, keys: list):
     """
     Extract the result of a test with a list of keys (should be unique each).
-    Return a dataframe.
+    Return a dataframe sorted by the order of keys.
     """
     pattern = "|".join(map(re.escape, keys))
     result = df[df["Description"].str.contains(pattern, regex=True)]
+    # Sort the result by the order of keys
+    result_sort = deepcopy(result)
+    result_sort["SortOrder"] = result["Description"].apply(
+        lambda x: next(
+            (i for i, key in enumerate(keys) if key in x), len(keys))
+    )
+    result = result_sort.sort_values("SortOrder").drop(columns=["SortOrder"])
     return result
 
 
@@ -163,20 +170,19 @@ def dataframe_average_row(dataframe: pd.DataFrame, common_column_name: str = "Ru
     return dataframe
 
 
-def plot_univar_zc(file_path, start_line):
+def plot_univar_zc(file_path, start_line, save_fig=True):
     res_blocks = load_test_from_txt_to_blocks(file_path, start_line)
 
-    target_keys_univar = ["IFFT for g,h,s,o from evaluations to coefficients",
-                          #   "Setup KZG10 polynomial commitments global parameters",
-                          #   "Setup verifier key",
-                          "Compute coset domain",
+    target_keys_univar = ["Compute coset domain",
+                          "IFFT for g,h,s,o from evaluations to coefficients",
                           "FFT Compute g,h,s,o,z,q evaluations over coset domain",
                           "IFFT for q from evaluations to coefficients",
-                          "KZG batch commit to (g,h,s,o,q) polynomials",
-                          "Get Fiat-Shamir random challenge and evals at challenge",
+                          "computing evaluations at challenge, get challenge",
+                          "KZG commit to (q) polynomial",
+                          "KZG commit to (g,h,s,o) polynomials",
                           "KZG batch open the g,h,s,o,q poly commit at r",
                           ]
-    assert len(target_keys_univar) == 7, "Result timer number not match the code"
+    assert len(target_keys_univar) == 8, "Result timer number not match the code"
 
     # parse the result from text log --> blocks --> a dataframe
     target_time_unit = "s"
@@ -190,11 +196,17 @@ def plot_univar_zc(file_path, start_line):
 
     # Univariate ZC: merge all average results of all worksizes to one dataframe
     merge_average = worksize[min(worksize.keys())][["Description",
-                                 f"Average Runtime ({target_time_unit})"]].copy()
+                                                    f"Average Runtime ({target_time_unit})"]].copy()
     for key, value in worksize.items():
         if key != min(worksize.keys()):
             merge_average = merge_dataframes(
                 merge_average, value[["Description", f"Average Runtime ({target_time_unit})"]], "Description", f"Average Runtime ({target_time_unit})")
+
+    for i, col in enumerate(merge_average.columns):
+        if i == 0:
+            continue
+        merge_average.rename(
+            columns={col: f"2^{list(worksize.keys())[i-1]} {col}"}, inplace=True)
 
     # draw stacked bar chart for each worksize, using the average runtime, stacked by rows
     runtime_columns = [
@@ -214,18 +226,21 @@ def plot_univar_zc(file_path, start_line):
     plt.legend(title="Description", bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig(file_path.replace(".log", ".png"))
+    if save_fig:
+        print(f"Save figure to {file_path.replace('.log', '.png')}")
+        plt.savefig(file_path.replace(".log", ".png"))
+    return stacked_merge_average
 
 
-def plot_multi_lin_zc(file_path, start_line):
+def plot_multi_lin_zc(file_path, start_line, save_fig=True):
     res_blocks = load_test_from_txt_to_blocks(file_path, start_line)
 
-    target_keys_univar = ["commit to (g,h,s,o) input MLEs",
-                          "computing inital challenge using which f_hat is computed",
+    target_keys_univar = ["computing inital challenge using which f_hat is computed",
                           "Build MLE: computing f_hat(X) = sum_{B^m} f(X)",
                           "running sumcheck proving algorithm for X rounds",
-                          "open proof g,h,s,o input MLEs at r",
                           "computing evaluations of input MLEs at challenges",
+                          "commit to (g,h,s,o) input MLEs",
+                          "batch open proof g,h,s,o input MLEs at r",
                           ]
     assert len(target_keys_univar) == 6, "Result timer number not match the code"
 
@@ -241,11 +256,17 @@ def plot_multi_lin_zc(file_path, start_line):
 
     # MultiLin ZC: merge all average results of all worksizes to one dataframe
     merge_average = worksize[min(worksize.keys())][["Description",
-                                 f"Average Runtime ({target_time_unit})"]].copy()
+                                                    f"Average Runtime ({target_time_unit})"]].copy()
     for key, value in worksize.items():
         if key != min(worksize.keys()):
             merge_average = merge_dataframes(
                 merge_average, value[["Description", f"Average Runtime ({target_time_unit})"]], "Description", f"Average Runtime ({target_time_unit})")
+
+    for i, col in enumerate(merge_average.columns):
+        if i == 0:
+            continue
+        merge_average.rename(
+            columns={col: f"2^{list(worksize.keys())[i-1]} {col}"}, inplace=True)
 
     # draw stacked bar chart for each worksize, using the average runtime, stacked by rows
     runtime_columns = [
@@ -265,20 +286,93 @@ def plot_multi_lin_zc(file_path, start_line):
     plt.legend(title="Description", bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig(file_path.replace(".log", ".png"))
+    if save_fig:
+        print(f"Save figure to {file_path.replace('.log', '.png')}")
+        plt.savefig(file_path.replace(".log", ".png"))
+    return stacked_merge_average
+
+
+def parallel_stacked_bar_chart(dfs: list, output_path=None):
+    """
+    Draw a parallel stacked bar chart for multiple dataframes.
+    Each dataframe represents a stacked bar chart, and the bars are grouped by the union of all row indices.
+
+    @param dfs: List of dataframes to plot. Each dataframe should have row indices representing x-axis labels.
+    @param output_path: Path to save the figure if save_fig is True.
+    """
+    color_set = ["#C70E7BFF", "#FC6882FF", "#007BC3FF", "#54BCD1FF", "#EF7C12FF", "#F4B95AFF", "#009F3FFF",
+                 "#8FDA04FF", "#AF6125FF", "#F4E3C7FF", "#B25D91FF", "#EFC7E6FF", "#EF7C12FF", "#F4B95AFF"]
+    # Find the union of all row indices
+    all_indices = sorted(set().union(*[df.index for df in dfs]))
+    num_dfs = len(dfs)
+    bar_width = 0.8 / num_dfs  # Divide the space for bars equally
+    x = np.arange(len(all_indices))  # Base x positions for the groups
+
+    fig, ax = plt.subplots(figsize=(12, 10))
+
+    for i, df in enumerate(dfs):
+        # Align the dataframe with the full index set, filling missing values with 0
+        df_aligned = df.reindex(all_indices, fill_value=0)
+        # Offset x positions for each dataframe
+        x_offset = x + i * bar_width
+        # Plot stacked bars for the current dataframe
+        bottom = np.zeros(len(all_indices))
+        for j, col in enumerate(df_aligned.columns):
+            if (i == 0 and j < 6) or (i == 1 and j < 4):
+                ax.bar(x_offset, df_aligned[col], bar_width, label=f"{col}", bottom=bottom, color=color_set[j % len(
+                    color_set)], )  # hatch='.'
+            else:
+                ax.bar(x_offset, df_aligned[col], bar_width,
+                       label=f"{col}", bottom=bottom, color=color_set[j % len(color_set)])
+            bottom += df_aligned[col].values
+
+    # Set x-axis labels and ticks
+    ax.set_xticks(x + (num_dfs - 1) * bar_width / 2)
+    ax.set_xticklabels([i.split()[0] for i in all_indices], rotation=45)
+    ax.set_ylabel("Runtime (s)")
+    # Set y-axis ticks to show each 5% of total height
+    max_height = ax.get_ylim()[1]
+    ax.set_yticks(np.arange(0, max_height + max_height * 0.05, max_height * 0.05))
+    ax.grid(axis='y', linestyle='--')
+
+    # Add dummy labels for legend
+    nrow_first_column_legend = len(dfs[0].columns)
+    dummy_labels = [" " for _ in range(
+        nrow_first_column_legend * 2 - (len(dfs[0].columns) + len(dfs[1].columns)))]
+    for label in dummy_labels:
+        ax.bar(0, 0, color='none', label=label)
+    # Set legend
+    ax.legend(bbox_to_anchor=(1, 1.3), ncol=2)
+
+    plt.tight_layout()
+    if output_path:
+        print(f"Save figure to {output_path}")
+        plt.savefig(output_path)
 
 
 if __name__ == '__main__':
-    # plot_univar_zc(
-    #     # file_path="output_log/univar_opt_bench_multhr_64.log",
-    #     # file_path="output_log/univar_opt_bench_run_1_open_4.log",
-    #     file_path="output_log/univar_opt_bench_run_1_open_5.log",
-    #     start_line="Opt Univariate Proof Generation Test for"
-    #     )
 
-    plot_multi_lin_zc(
-        file_path="output_log/mullin_opt_bench_run_1_open_1.log", 
-        start_line="Prover starts Opt multilinear for 2^"
-        )
+    save_each_fig = False
+
+    stack_univar_zc_df = plot_univar_zc(
+        # file_path="output_log/univar_opt_bench_multhr_64.log",
+        # file_path="output_log/univar_opt_bench_run_1_open_4.log",
+        file_path="output_log/univar_opt_bench_1_22_26_run_1_open_5.log",
+        start_line="Opt Univariate Proof Generation Test for",
+        save_fig=save_each_fig,
+    )
+
+    stack_multi_lin_zc_df = plot_multi_lin_zc(
+        # file_path="output_log/mullin_opt_bench_run_1_open_1.log",
+        file_path="output_log/mullin_opt_bench_1_22_26_run_1_open_4.log",
+        start_line="Prover starts Opt multilinear for 2^",
+        save_fig=save_each_fig,
+    )
+
+    # Parallel stacked bar chart for both univariate and multilinear ZC
+    parallel_stacked_bar_chart(
+        [stack_univar_zc_df, stack_multi_lin_zc_df],
+        output_path="output_log/parallel_stacked_bar_chart_1_22_26.png"
+    )
 
     print("End...")

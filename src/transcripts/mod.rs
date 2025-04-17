@@ -33,7 +33,15 @@ impl<F: PrimeField> ZCTranscript<F> {
         label: &'static [u8],
         msg: &[u8],
     ) -> Result<(), TranscriptError> {
-        self.transcript.append_message(label, msg);
+        const MAX_LEN: usize = u32::MAX as usize;
+
+        let mut start = 0;
+        while start < msg.len() {
+            let end = (start + MAX_LEN).min(msg.len());
+            self.transcript.append_message(label, &msg[start..end]);
+            start = end;
+        }
+
         self.is_empty = false;
         Ok(())
     }
