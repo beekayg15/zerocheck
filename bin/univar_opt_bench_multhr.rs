@@ -39,7 +39,7 @@ fn prepare_input_evals_domain<'a>(
                 .iter()
                 .zip(evals_over_domain_h.iter().zip(evals_over_domain_s.iter())),
         )
-        .map(|(f, (g_eval, (h_eval, s_eval)))| {
+        .map(|(_f, (g_eval, (h_eval, s_eval)))| {
             g_eval * h_eval * s_eval + (Fr::one() - s_eval) * (g_eval + h_eval)
         })
         .collect();
@@ -145,10 +145,10 @@ struct Args {
 
 fn bench_opt_uni_zc() {
     let args = Args::parse();
+    let min_size = args.min_size + (args.min_size % 2); // make it even
 
-    let work_sizes = args.min_size..=args.max_size; // 2 ^ max_size_size
-
-    let (s, tt): (Vec<u32>, Vec<u128>) = (work_sizes)
+    let (s, tt): (Vec<u32>, Vec<u128>) = (min_size..=args.max_size)
+        .step_by(2)
         .map(|size| {
             let pool_prepare = rayon::ThreadPoolBuilder::new()
                 .num_threads(args.prepare_threads as usize)
