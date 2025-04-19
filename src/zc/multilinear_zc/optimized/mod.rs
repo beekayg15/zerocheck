@@ -332,7 +332,7 @@ mod test {
     use ark_ed_on_bls12_381::EdwardsAffine;
 
     use crate::{
-        pcs::multilinear_pcs::{hyrax::Hyrax, mpc::MPC},
+        pcs::multilinear_pcs::{hyrax::Hyrax, ligero::Ligero, mpc::MPC},
         transcripts::ZCTranscript,
         zc::multilinear_zc::optimized::custom_zero_test_case,
         ZeroCheck,
@@ -404,8 +404,42 @@ mod test {
     }
 
     #[test]
+    fn test_custom_ml_zerocheck_ligero() {
+        let num_vars = 10;
+        let poly = custom_zero_test_case::<Fr>(num_vars);
+
+        println!("Unique input MLEs: {:?}", poly.flat_ml_extensions.len());
+
+        let zp = OptMLZeroCheck::<Fr, Ligero<Fr>>::setup(&num_vars).unwrap();
+
+        let proof = OptMLZeroCheck::<Fr, Ligero<Fr>>::prove(
+            &zp.clone(),
+            &poly.clone(),
+            &num_vars,
+            &mut ZCTranscript::init_transcript(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        // println!("Proof Generated: {:?}", proof);
+
+        let valid = OptMLZeroCheck::<Fr, Ligero<Fr>>::verify(
+            &zp,
+            &poly,
+            &proof,
+            &num_vars,
+            &mut ZCTranscript::init_transcript(),
+        )
+        .unwrap();
+
+        assert!(valid);
+    }
+
+    #[test]
     fn test_custom_ml_zerocheck_hyrax() {
-        let num_vars = 20;
+        let num_vars = 10;
         let poly = custom_zero_test_case::<<EdwardsAffine as AffineRepr>::ScalarField>(num_vars);
 
         println!("Unique input MLEs: {:?}", poly.flat_ml_extensions.len());

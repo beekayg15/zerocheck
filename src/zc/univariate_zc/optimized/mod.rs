@@ -194,12 +194,11 @@ where
             )
             .unwrap()
         });
-        let [comm_g, comm_h, comm_s, comm_o] = comm_rs
-            .clone()
-            .into_iter()
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+
+        let comms = comm_rs.clone();
+        let [comm_g, comm_h, comm_s, comm_o] = &comms[..] else {
+            panic!("commitments mismatch");
+        };
 
         // Collect the commitment to the input polynomials
         let inp_comms = vec![
@@ -225,16 +224,16 @@ where
 
         // Sample a random challenge - Fiat-Shamir
         transcript
-            .append_serializable_element(b"comm_g", &comm_g)
+            .append_serializable_element(b"comm_g", comm_g)
             .unwrap();
         transcript
-            .append_serializable_element(b"comm_h", &comm_h)
+            .append_serializable_element(b"comm_h", comm_h)
             .unwrap();
         transcript
-            .append_serializable_element(b"comm_s", &comm_s)
+            .append_serializable_element(b"comm_s", comm_s)
             .unwrap();
         transcript
-            .append_serializable_element(b"comm_o", &comm_o)
+            .append_serializable_element(b"comm_o", comm_o)
             .unwrap();
         transcript
             .append_serializable_element(b"comm_q", &comm_q)
@@ -349,16 +348,19 @@ where
             .unwrap();
         let r = transcript.get_and_append_challenge(b"sampling r").unwrap();
 
-        // check openings to input polynomials
-        assert!(
-            PCS::batch_check(&vk, &inp_openings, &inp_comms, r, inp_evals.to_vec(),).unwrap(),
-            "Opening failed at input polynomials"
-        );
+        let mut comms = inp_comms.clone();
+        comms.push(q_comm.clone());
 
-        // check opening to quotient polynomials
+        let mut evals = inp_evals.clone();
+        evals.push(q_eval);
+
+        let mut openings = inp_openings.clone();
+        openings.push(q_opening.clone());
+
+        // check openings to all polynomials
         assert!(
-            PCS::check(&zero_params.vk, &q_opening, &q_comm, r, q_eval).unwrap(),
-            "Opening failed at quotient polynomial"
+            PCS::batch_check(&vk, &openings, &comms, r, evals).unwrap(),
+            "Opening failed at input polynomials"
         );
 
         let a = inp_evals[0];
@@ -380,6 +382,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::pcs::univariate_pcs::kzg::KZG;
+    use crate::pcs::univariate_pcs::ligero::Ligero;
 
     use super::*;
     use ark_bls12_381::Bls12_381;
@@ -468,6 +471,97 @@ mod tests {
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
+            &zp,
+            &inp_evals,
+            &proof,
+            &domain,
+            &mut ZCTranscript::init_transcript(),
+        )
+        .unwrap();
+
+        end_timer!(verify_timer);
+
+        println!("verification result: {:?}", result);
+        assert_eq!(result, true);
+
+        end_timer!(test_timer);
+    }
+
+    #[test]
+    fn test_proof_generation_verification_op_uni_ligero() {
+        let test_timer = start_timer!(|| "Proof Generation Test");
+
+        let domain = GeneralEvaluationDomain::<Fr>::new(1 << 5).unwrap();
+
+        let rng = &mut ark_std::test_rng();
+
+        let mut rand_g_coeffs = vec![];
+        let mut rand_h_coeffs = vec![];
+        let mut rand_s_coeffs = vec![];
+
+        for _ in 0..(1 << 5) {
+            rand_g_coeffs.push(Fr::rand(rng));
+            rand_h_coeffs.push(Fr::rand(rng));
+            rand_s_coeffs.push(Fr::rand(rng));
+        }
+
+        let g = DensePolynomial::from_coefficients_vec(rand_g_coeffs);
+        let h = DensePolynomial::from_coefficients_vec(rand_h_coeffs);
+        let s = DensePolynomial::from_coefficients_vec(rand_s_coeffs);
+
+        let evals_over_domain_g: Vec<_> = domain.elements().map(|f| g.evaluate(&f)).collect();
+
+        let evals_over_domain_h: Vec<_> = domain.elements().map(|f| h.evaluate(&f)).collect();
+
+        let evals_over_domain_s: Vec<_> = domain.elements().map(|f| s.evaluate(&f)).collect();
+
+        let evals_over_domain_o: Vec<_> = domain
+            .elements()
+            .map(|f| {
+                g.evaluate(&f) * h.evaluate(&f) * s.evaluate(&f)
+                    + (Fr::one() - s.evaluate(&f)) * (g.evaluate(&f) + h.evaluate(&f))
+            })
+            .collect();
+
+        let g_evals = Evaluations::from_vec_and_domain(evals_over_domain_g, domain);
+
+        let h_evals = Evaluations::from_vec_and_domain(evals_over_domain_h, domain);
+
+        let s_evals = Evaluations::from_vec_and_domain(evals_over_domain_s, domain);
+
+        let o_evals = Evaluations::from_vec_and_domain(evals_over_domain_o, domain);
+
+        let mut inp_evals = vec![];
+        inp_evals.push(g_evals);
+        inp_evals.push(h_evals);
+        inp_evals.push(s_evals);
+        inp_evals.push(o_evals);
+
+        let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
+
+        let max_degree = g.degree() + s.degree() + h.degree();
+        let pp = max_degree;
+
+        let zp = OptimizedUnivariateZeroCheck::<Fr, Ligero<Fr>>::setup(&pp).unwrap();
+
+        let proof = OptimizedUnivariateZeroCheck::<Fr, Ligero<Fr>>::prove(
+            &zp.clone(),
+            &inp_evals.clone(),
+            &domain,
+            &mut ZCTranscript::init_transcript(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        end_timer!(proof_gen_timer);
+
+        println!("Proof Generated");
+
+        let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
+
+        let result = OptimizedUnivariateZeroCheck::<Fr, Ligero<Fr>>::verify(
             &zp,
             &inp_evals,
             &proof,

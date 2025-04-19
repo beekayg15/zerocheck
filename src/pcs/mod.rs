@@ -9,7 +9,7 @@ pub mod multilinear_pcs;
 pub trait PolynomialCommitmentScheme: Clone + Sized {
     type VerifierKey: Clone + Sync;
     type CommitterKey<'a>: Clone + Sync;
-    type Commitment: Clone + CanonicalSerialize + CanonicalDeserialize + Send + Debug;
+    type Commitment: Debug + Clone + CanonicalSerialize + CanonicalDeserialize + Send;
     type OpeningProof: Clone + Send + Debug;
     type PCSParams: Clone;
     type Polynomial: Clone;

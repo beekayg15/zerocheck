@@ -42,7 +42,7 @@ pub trait ZeroCheck<F: PrimeField>: Sized{
     /// equipments necessary
     fn setup<'a>(
         pp: &'a Self::InputParams
-    ) -> Result<Self::ZeroCheckParams<'_>, Error>;
+    ) -> Result<Self::ZeroCheckParams<'a>, Error>;
 
     /// function called by the prover to genearte a valid
     /// proof for zero-check protocol
