@@ -77,8 +77,8 @@ fn opt_univariate_zero_check_multithread_benchmark(
     let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
     let proof = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
-        &global_params.clone(),
-        &inp_evals.clone(),
+        &global_params,
+        &inp_evals,
         &domain,
         &mut ZCTranscript::init_transcript(),
         run_threads,
