@@ -63,7 +63,7 @@ fn prepare_input_evals_domain<'a>(
 fn opt_univariate_zero_check_multithread_benchmark(
     input_evals: &[Evaluations<Fr>; 4],
     domain: GeneralEvaluationDomain<Fr>,
-    global_params: ZeroCheckParams<KZG<Bls12_381>>,
+    global_params: &ZeroCheckParams<KZG<Bls12_381>>,
     size: u32,
     run_threads: Option<usize>,
     batch_commit_threads: Option<usize>,
@@ -165,7 +165,7 @@ fn bench_opt_uni_zc() {
                     opt_univariate_zero_check_multithread_benchmark(
                         &input_evals,
                         domain,
-                        global_params.clone(),
+                        &global_params,
                         size as u32,
                         Some(args.run_threads as usize),
                         Some(args.batch_commit_threads as usize),

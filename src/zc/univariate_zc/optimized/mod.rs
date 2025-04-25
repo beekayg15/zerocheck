@@ -102,17 +102,13 @@ where
         ));
 
         let ifft_time = start_timer!(|| "IFFT for g,h,s,o from evaluations to coefficients");
-        let g = input_poly[0].clone(); // g_evals
-        let h = input_poly[1].clone(); // h_evals
-        let s = input_poly[2].clone(); // s_evals
-        let o = input_poly[3].clone(); // o_evals
 
         // compute the polynomials corresponding to g, h, and s using interpolation (IFFT)
         let ghso_coeffs: Vec<_> = pool_run.install(|| {
-            [&g, &h, &s, &o]
+            input_poly
                 .par_iter()
                 .enumerate()
-                .map(|(i, evals)| (i, (*evals).clone().interpolate()))
+                .map(|(i, evals)| (i, evals.clone().interpolate()))
                 .collect()
         });
         let mut ghso_sorted_coeffs = ghso_coeffs;
@@ -257,11 +253,11 @@ where
                 &zero_params.ck,
                 &comm_rs,
                 &vec![
-                    g_coeff.clone(),
-                    h_coeff.clone(),
-                    s_coeff.clone(),
-                    o_coeff.clone(),
-                    q_coeff.clone(),
+                    g_coeff,
+                    h_coeff,
+                    s_coeff,
+                    o_coeff,
+                    q_coeff,
                 ],
                 r,
             )
@@ -317,11 +313,6 @@ where
         zero_domain: &Self::ZeroDomain,
         transcript: &'a mut Self::Transcripts,
     ) -> Result<bool, anyhow::Error> {
-        // let g = input_poly[0].clone();
-        // let h = input_poly[1].clone();
-        // let s = input_poly[2].clone();
-        // let o = input_poly[3].clone();
-
         let q_comm = &proof.q_comm;
         let inp_comms = &proof.inp_comms;
         let vk = &zero_params.vk;
