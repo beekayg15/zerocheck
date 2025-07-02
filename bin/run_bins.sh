@@ -53,5 +53,5 @@ MAX_SIZE=16
 
 # { echo "Running: cargo run --release --bin mullin_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --poly-commit-scheme=hyrax --batch-opening-threads=4"; cargo run --release --bin mullin_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --poly-commit-scheme=hyrax --batch-opening-threads=4; } >> output_log/mullin_opt_bench_1_26_28_run_1_open_4.log 2>&1
 
-{ echo "Running: cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --batch-opening-threads=5" ; cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --batch-opening-threads=5; } >> output_log/univar_opt_bench_1_28_28_run_1_open_5.log 2>&1
+{ echo "Running: RAYON_NUM_THREADS=64 cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --batch-opening-threads=5" ; RAYON_NUM_THREADS=64 cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --batch-opening-threads=5; } >> output_log/univar_opt_bench_1_28_28_run_1_open_5.log 2>&1
 

@@ -4,6 +4,7 @@ use ark_poly::{EvaluationDomain, Evaluations, GeneralEvaluationDomain};
 use ark_std::One;
 use ark_std::{end_timer, start_timer};
 use clap::Parser;
+use rayon::prelude::*;
 use std::time::Instant;
 use zerocheck::pcs::univariate_pcs::kzg::KZG;
 use zerocheck::transcripts::ZCTranscript;
@@ -20,26 +21,24 @@ fn prepare_input_evals_domain<'a>(
     let instant = Instant::now();
     let domain = GeneralEvaluationDomain::<Fr>::new(1 << size).unwrap();
 
-    let evals_over_domain_g: Vec<_> = domain
-        .elements()
+    let evals_over_domain_g: Vec<_> = (0..domain.size())
+        .into_par_iter()
         .map(|_| Fr::rand(&mut ark_std::rand::thread_rng()))
         .collect();
-    let evals_over_domain_h: Vec<_> = domain
-        .elements()
+    let evals_over_domain_h: Vec<_> = (0..domain.size())
+        .into_par_iter()
         .map(|_| Fr::rand(&mut ark_std::rand::thread_rng()))
         .collect();
-    let evals_over_domain_s: Vec<_> = domain
-        .elements()
+    let evals_over_domain_s: Vec<_> = (0..domain.size())
+        .into_par_iter()
         .map(|_| Fr::rand(&mut ark_std::rand::thread_rng()))
         .collect();
-    let evals_over_domain_o: Vec<_> = domain
-        .elements()
-        .zip(
-            evals_over_domain_g
-                .iter()
-                .zip(evals_over_domain_h.iter().zip(evals_over_domain_s.iter())),
-        )
-        .map(|(_f, (g_eval, (h_eval, s_eval)))| {
+    let evals_over_domain_o: Vec<_> = (0..domain.size())
+        .into_par_iter()
+        .map(|i| {
+            let g_eval = evals_over_domain_g[i];
+            let h_eval = evals_over_domain_h[i];
+            let s_eval = evals_over_domain_s[i];
             g_eval * h_eval * s_eval + (Fr::one() - s_eval) * (g_eval + h_eval)
         })
         .collect();
