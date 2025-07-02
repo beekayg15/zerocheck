@@ -43,8 +43,15 @@ MAX_SIZE=16
 # CMDS1="cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=18 --max-size=18 --prepare-threads=64 --run-threads=1 --batch-opening-threads=8 | tee -a output_log/univar_opt_bench_run_1_open_8.log "
 
 # CMDS1="cargo run --release --bin mullin_opt_bench_multhr -- --repeat=2 --min-size=18 --max-size=18 --prepare-threads=64 --run-threads=1 --poly-commit-scheme=hyrax --batch-opening-threads=1 | tee -a output_log/mullin_opt_bench_run_1_open_1.log "
-CMDS1="cargo run --release --bin mullin_opt_bench_multhr -- --repeat=1 --min-size=26 --max-size=28 --prepare-threads=64 --run-threads=1 --poly-commit-scheme=hyrax --batch-opening-threads=4 | tee -a output_log/mullin_opt_bench_1_26_28_run_1_open_4.log "
+# CMDS1="cargo run --release --bin mullin_opt_bench_multhr -- --repeat=1 --min-size=26 --max-size=28 --prepare-threads=64 --run-threads=1 --poly-commit-scheme=hyrax --batch-opening-threads=4 | tee -a output_log/mullin_opt_bench_1_26_28_run_1_open_4.log "
 
 
-echo "Running: $CMDS1"
-eval "$CMDS1"
+# echo "Running: $CMDS1"
+# eval "$CMDS1"
+
+##############
+
+# { echo "Running: cargo run --release --bin mullin_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --poly-commit-scheme=hyrax --batch-opening-threads=4"; cargo run --release --bin mullin_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --poly-commit-scheme=hyrax --batch-opening-threads=4; } >> output_log/mullin_opt_bench_1_26_28_run_1_open_4.log 2>&1
+
+{ echo "Running: cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --batch-opening-threads=5" ; cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --batch-opening-threads=5; } >> output_log/univar_opt_bench_1_28_28_run_1_open_5.log 2>&1
+
