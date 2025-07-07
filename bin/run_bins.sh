@@ -20,7 +20,7 @@ MAX_SIZE=16
 
 
 
-##############################
+############################################################
 # RAYON_NUM_THREADS=1 cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=8 --max-size=8
 
 # CMDS1="RAYON_NUM_THREADS=1 cargo run --release --bin univar_opt_bench_multhr -- --repeat=10 --min-size=11 --max-size=12 >> output_log/univar_opt_bench_multhr_1.log "
@@ -34,7 +34,7 @@ MAX_SIZE=16
 # done
 
 
-##############################
+############################################################
 
 # CMDS1="RAYON_NUM_THREADS=1 cargo run --release --bin mullin_naive_bench_multhr -- --repeat=10 --min-size=5 --max-size=12 | tee -a output_log/mullin_naive_bench_multhr_1.log "
 # CMDS1="RAYON_NUM_THREADS=64 cargo run --release --bin univar_opt_bench_multhr -- --repeat=2 --min-size=18 --max-size=18 --prepare-threads=64 --run-threads=1 | tee -a output_log/univar_opt_bench_multhr_64.log "
@@ -49,9 +49,13 @@ MAX_SIZE=16
 # echo "Running: $CMDS1"
 # eval "$CMDS1"
 
-##############
-
+############################################################
+####### multi-linear (hyrax) #######
 # { echo "Running: cargo run --release --bin mullin_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --poly-commit-scheme=hyrax --batch-opening-threads=4"; cargo run --release --bin mullin_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --poly-commit-scheme=hyrax --batch-opening-threads=4; } >> output_log/mullin_opt_bench_1_26_28_run_1_open_4.log 2>&1
 
-{ echo "Running: RAYON_NUM_THREADS=64 cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --batch-opening-threads=5" ; RAYON_NUM_THREADS=64 cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --batch-opening-threads=5; } >> output_log/univar_opt_bench_1_28_28_run_1_open_5.log 2>&1
+####### multi-linear (kzg) #######
+{ echo "Running: cargo run --release --bin mullin_opt_bench_multhr -- --repeat=1 --min-size=20 --max-size=20 --prepare-threads=64 --run-threads=1 --poly-commit-scheme=kzg --batch-opening-threads=4"; cargo run --release --bin mullin_opt_bench_multhr -- --repeat=1 --min-size=20 --max-size=20 --prepare-threads=64 --run-threads=1 --poly-commit-scheme=kzg --batch-opening-threads=4; } >> output_log/mullin_opt_bench_1_26_28_run_1_open_4.log 2>&1
+
+####### univar (kzg) #######
+# { echo "Running: RAYON_NUM_THREADS=64 cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --batch-opening-threads=5" ; RAYON_NUM_THREADS=64 cargo run --release --bin univar_opt_bench_multhr -- --repeat=1 --min-size=28 --max-size=28 --prepare-threads=64 --run-threads=1 --batch-opening-threads=5; } >> output_log/univar_opt_bench_1_28_28_run_1_open_5.log 2>&1
 
