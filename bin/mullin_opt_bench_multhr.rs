@@ -5,13 +5,13 @@ use clap::Parser;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::{
-    pcs::multilinear_pcs::{hyrax::Hyrax, mpc::MPC},
+    pcs::multilinear_pcs::{hyrax::Hyrax, mpc::MPC, kzg::MultilinearKZG},
     transcripts::ZCTranscript,
     zc::multilinear_zc::optimized::{custom_zero_test_case, OptMLZeroCheck},
     ZeroCheck,
 };
 
-fn test_template(
+fn test_template_mpc(
     num_vars: usize,
     repeat: u32,
     run_threads: Option<usize>,
@@ -127,6 +127,67 @@ fn test_template_hyrax(
     return runtime.as_millis();
 }
 
+fn test_template_kzg(
+    num_vars: usize,
+    repeat: u32,
+    run_threads: Option<usize>,
+    batch_commit_threads: Option<usize>,
+    batch_open_threads: Option<usize>,
+) -> u128 {
+    let instant = Instant::now();
+
+    // Generate a random polynomial.
+    // f = ∑_{num_products} rand_coeff*(g1.g2...g_{num_multiplicands_range}), gs are MLEs size 2^num_vars;
+    // f = ∑_{i=1..6} rand_coeff*(g_i1·g_i2···g_i{1..=3}).
+    // g_ij are MLEs size 2^num_vars, stored in `poly.flat_ml_extensions` (or poly.raw_pointers_lookup_table as (Vec, idx)).
+    // (rand_coeff, ij info) are stored in `poly.products`.
+    // let poly = rand_zero::<Fr>(num_vars, num_multiplicands_range, num_products);
+
+    let poly = custom_zero_test_case::<Fr>(num_vars);
+
+    let inp_params = 1 << num_vars;
+    let zp = OptMLZeroCheck::<Fr, MultilinearKZG<Bls12_381>>::setup(&inp_params).unwrap();
+
+    let duration = instant.elapsed().as_millis();
+    print!("Polynomial terms: ");
+    for i in 0..poly.products.len() {
+        print!("{} ", poly.products[i].1.len());
+    }
+    println!();
+    println!("Preparing input evaluations and domain for 2^{num_vars} work ....{duration}ms");
+
+    let proof = (0..repeat)
+        .map(|_| {
+            OptMLZeroCheck::<Fr, MultilinearKZG<Bls12_381>>::prove(
+                &zp.clone(),
+                &poly.clone(),
+                &num_vars,
+                &mut ZCTranscript::init_transcript(),
+                run_threads,
+                batch_commit_threads,
+                batch_open_threads,
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>()
+        .last()
+        .cloned()
+        .unwrap();
+
+    let runtime = instant.elapsed();
+
+    let result = OptMLZeroCheck::<Fr, MultilinearKZG<Bls12_381>>::verify(
+        &zp,
+        &poly,
+        &proof,
+        &num_vars,
+        &mut ZCTranscript::init_transcript(),
+    )
+    .unwrap();
+    assert_eq!(result, true);
+    return runtime.as_millis();
+}
+
 #[derive(Parser, Debug)]
 struct Args {
     /// Number of repetitions for each test
@@ -173,7 +234,7 @@ fn bench_opt_mle_zc() {
             let total_runtime: u128 = match args.poly_commit_scheme.as_str() {
                 "mpc" => (0..repeat)
                     .map(|_| {
-                        test_template(
+                        test_template_mpc(
                             size,
                             repeat,
                             Some(args.run_threads),
@@ -185,6 +246,17 @@ fn bench_opt_mle_zc() {
                 "hyrax" => (0..repeat)
                     .map(|_| {
                         test_template_hyrax(
+                            size,
+                            repeat,
+                            Some(args.run_threads),
+                            Some(args.batch_commit_threads),
+                            Some(args.batch_opening_threads),
+                        )
+                    })
+                    .sum(),
+                "kzg" => (0..repeat)
+                    .map(|_| {
+                        test_template_kzg(
                             size,
                             repeat,
                             Some(args.run_threads),
