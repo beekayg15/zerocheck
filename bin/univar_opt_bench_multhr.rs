@@ -5,8 +5,9 @@ use ark_std::One;
 use ark_std::{end_timer, start_timer};
 use clap::Parser;
 use rayon::prelude::*;
+use std::iter::zip;
 use std::time::Instant;
-use zerocheck::pcs::univariate_pcs::kzg::KZG;
+use zerocheck::pcs::univariate_pcs::{kzg::KZG, ligero::Ligero};
 use zerocheck::transcripts::ZCTranscript;
 use zerocheck::zc::univariate_zc::optimized::data_structures::ZeroCheckParams;
 use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
@@ -59,7 +60,7 @@ fn prepare_input_evals_domain<'a>(
 /// `inp_evals` is the input evaluations of g, h, s, o.
 /// `domain` is the domain of the evaluations.
 /// `size` is the work size exponent (2^size).
-fn opt_univariate_zero_check_multithread_benchmark(
+fn opt_univ_zc_multhr_benchmark_kzg(
     input_evals: &[Evaluations<Fr>; 4],
     domain: GeneralEvaluationDomain<Fr>,
     global_params: &ZeroCheckParams<KZG<Bls12_381>>,
@@ -69,11 +70,11 @@ fn opt_univariate_zero_check_multithread_benchmark(
     batch_open_threads: Option<usize>,
 ) -> u128 {
     let test_timer =
-        start_timer!(|| format!("Opt Univariate Proof Generation Test for 2^{size} work"));
+        start_timer!(|| format!("Opt Univariate Proof Generation Test for KZG with 2^{size} work"));
 
     let inp_evals = input_evals.to_vec();
     let instant = Instant::now();
-    let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
+    let proof_gen_timer = start_timer!(|| "Prove fn called for KZG");
 
     let proof = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
         &global_params,
@@ -89,9 +90,7 @@ fn opt_univariate_zero_check_multithread_benchmark(
     end_timer!(proof_gen_timer);
     let runtime = instant.elapsed();
 
-    // println!("Proof Generated");
-
-    let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
+    let verify_timer = start_timer!(|| "Verify fn called for KZG");
 
     let result = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
         &global_params,
@@ -104,7 +103,58 @@ fn opt_univariate_zero_check_multithread_benchmark(
 
     end_timer!(verify_timer);
 
-    // println!("verification result: {:?}", result);
+    assert_eq!(result, true);
+
+    end_timer!(test_timer);
+    return runtime.as_millis();
+}
+
+fn opt_univ_zc_multhr_benchmark_ligero(
+    input_evals: &[Evaluations<Fr>; 4],
+    domain: GeneralEvaluationDomain<Fr>,
+    global_params: &ZeroCheckParams<Ligero<Fr>>,
+    size: u32,
+    run_threads: Option<usize>,
+    batch_commit_threads: Option<usize>,
+    batch_open_threads: Option<usize>,
+) -> u128 {
+    let test_timer = start_timer!(|| {
+        format!(
+            "Opt Univariate Proof Generation Test for Ligero with 2^{size} work"
+        )
+    });
+
+    let inp_evals = input_evals.to_vec();
+    let instant = Instant::now();
+    let proof_gen_timer = start_timer!(|| "Prove fn called for Ligero");
+
+    let proof = OptimizedUnivariateZeroCheck::<Fr, Ligero<Fr>>::prove(
+        &global_params,
+        &inp_evals,
+        &domain,
+        &mut ZCTranscript::init_transcript(),
+        run_threads,
+        batch_commit_threads,
+        batch_open_threads,
+    )
+    .unwrap();
+
+    end_timer!(proof_gen_timer);
+    let runtime = instant.elapsed();
+
+    let verify_timer = start_timer!(|| "Verify fn called for Ligero");
+
+    let result = OptimizedUnivariateZeroCheck::<Fr, Ligero<Fr>>::verify(
+        &global_params,
+        &inp_evals,
+        &proof,
+        &domain,
+        &mut ZCTranscript::init_transcript(),
+    )
+    .unwrap();
+
+    end_timer!(verify_timer);
+
     assert_eq!(result, true);
 
     end_timer!(test_timer);
@@ -134,7 +184,7 @@ struct Args {
     run_threads: usize,
 
     // choose between `kzg` and `ligero`
-    #[arg(long, default_value = "mpc")]
+    #[arg(long, default_value = "kzg")]
     poly_commit_scheme: String,
 
     /// Number of threads to run batch opening
@@ -150,37 +200,79 @@ fn bench_opt_uni_zc() {
     let args = Args::parse();
     let min_size = args.min_size + (args.min_size % 2); // make it even
 
-    let (s, tt): (Vec<u32>, Vec<u128>) = (min_size..=args.max_size)
+    let (sizes, runtimes): (Vec<u32>, Vec<u128>) = (min_size..=args.max_size)
         .step_by(2)
         .map(|size| {
             let pool_prepare = rayon::ThreadPoolBuilder::new()
                 .num_threads(args.prepare_threads as usize)
                 .build()
                 .unwrap();
+
             let (input_evals, domain, pp) =
                 pool_prepare.install(|| prepare_input_evals_domain(size as u32));
-            let global_params =
-                OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
 
-            let total_runtime: u128 = (0..args.repeat)
-                .map(|repeat_time| {
-                    println!("Running test for 2^{} with repeat: {}", size, repeat_time);
-                    opt_univariate_zero_check_multithread_benchmark(
-                        &input_evals,
-                        domain,
-                        &global_params,
-                        size as u32,
-                        Some(args.run_threads as usize),
-                        Some(args.batch_commit_threads as usize),
-                        Some(args.batch_opening_threads as usize),
-                    )
-                })
-                .sum();
+            // let global_params =
+            //     OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
+
+            let total_runtime: u128 = match args.poly_commit_scheme.as_str() {
+                "kzg" => {
+                    let global_params =
+                        OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
+                    (0..args.repeat)
+                        .map(|repeat_time| {
+                            println!(
+                                "Running KZG test for 2^{} with repeat: {}",
+                                size, repeat_time
+                            );
+                            opt_univ_zc_multhr_benchmark_kzg(
+                                &input_evals,
+                                domain,
+                                &global_params,
+                                size as u32,
+                                Some(args.run_threads as usize),
+                                Some(args.batch_commit_threads as usize),
+                                Some(args.batch_opening_threads as usize),
+                            )
+                        })
+                        .sum()
+                }
+                "ligero" => {
+                    let global_params =
+                        OptimizedUnivariateZeroCheck::<Fr, Ligero<Fr>>::setup(&pp).unwrap();
+                    (0..args.repeat)
+                        .map(|repeat_time| {
+                            println!(
+                                "Running Ligero test for 2^{} with repeat: {}",
+                                size, repeat_time
+                            );
+                            opt_univ_zc_multhr_benchmark_ligero(
+                                &input_evals,
+                                domain,
+                                &global_params,
+                                size as u32,
+                                Some(args.run_threads as usize),
+                                Some(args.batch_commit_threads as usize),
+                                Some(args.batch_opening_threads as usize),
+                            )
+                        })
+                        .sum()
+                }
+                _ => panic!("Invalid poly_commit_scheme"),
+            };
 
             (size as u32, total_runtime)
         })
         .unzip();
-    println!("size {:?}, total_runtime {:?}", s, tt);
+
+    // Print results
+    for (size, runtime) in zip(sizes, runtimes) {
+        println!(
+            "Input Polynomial Degree: 2^{:?}\t|| Poly Commit Scheme: {:?}\t|| Avg. Runtime: {:?} ms",
+            size,
+            args.poly_commit_scheme,
+            (runtime as f64) / (args.repeat as f64),
+        );
+    }
 }
 
 fn main() {
