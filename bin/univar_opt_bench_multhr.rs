@@ -133,6 +133,10 @@ struct Args {
     #[arg(long, default_value = "1")]
     run_threads: usize,
 
+    // choose between `kzg` and `ligero`
+    #[arg(long, default_value = "mpc")]
+    poly_commit_scheme: String,
+
     /// Number of threads to run batch opening
     #[arg(long, default_value = "1")]
     batch_opening_threads: usize,

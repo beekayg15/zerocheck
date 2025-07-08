@@ -5,7 +5,7 @@ use clap::Parser;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::{
-    pcs::multilinear_pcs::{hyrax::Hyrax, mpc::MPC, kzg::MultilinearKZG},
+    pcs::multilinear_pcs::{hyrax::Hyrax, kzg::MultilinearKZG, ligero::Ligero, mpc::MPC},
     transcripts::ZCTranscript,
     zc::multilinear_zc::optimized::{custom_zero_test_case, OptMLZeroCheck},
     ZeroCheck,
@@ -29,7 +29,7 @@ fn test_template_mpc(
 
     let poly = custom_zero_test_case::<Fr>(num_vars);
 
-    let inp_params = num_vars;
+    let inp_params = 2 * (1 << num_vars);
     let zp = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::setup(&inp_params).unwrap();
 
     let duration = instant.elapsed().as_millis();
@@ -136,16 +136,9 @@ fn test_template_kzg(
 ) -> u128 {
     let instant = Instant::now();
 
-    // Generate a random polynomial.
-    // f = ∑_{num_products} rand_coeff*(g1.g2...g_{num_multiplicands_range}), gs are MLEs size 2^num_vars;
-    // f = ∑_{i=1..6} rand_coeff*(g_i1·g_i2···g_i{1..=3}).
-    // g_ij are MLEs size 2^num_vars, stored in `poly.flat_ml_extensions` (or poly.raw_pointers_lookup_table as (Vec, idx)).
-    // (rand_coeff, ij info) are stored in `poly.products`.
-    // let poly = rand_zero::<Fr>(num_vars, num_multiplicands_range, num_products);
-
     let poly = custom_zero_test_case::<Fr>(num_vars);
 
-    let inp_params = 1 << num_vars;
+    let inp_params = 2 * (1 << num_vars);
     let zp = OptMLZeroCheck::<Fr, MultilinearKZG<Bls12_381>>::setup(&inp_params).unwrap();
 
     let duration = instant.elapsed().as_millis();
@@ -185,6 +178,64 @@ fn test_template_kzg(
     )
     .unwrap();
     assert_eq!(result, true);
+    return runtime.as_millis();
+}
+
+fn test_template_ligero(
+    num_vars: usize,
+    repeat: u32,
+    run_threads: Option<usize>,
+    batch_commit_threads: Option<usize>,
+    batch_open_threads: Option<usize>,
+) -> u128 {
+    let instant = Instant::now();
+
+    // Generate a random polynomial for testing
+    let poly = custom_zero_test_case::<Fr>(num_vars);
+
+    let inp_params = 2 * (1 << num_vars); // Input parameters for Ligero setup
+    let zp = OptMLZeroCheck::<Fr, Ligero<Fr>>::setup(&inp_params).unwrap();
+
+    let duration = instant.elapsed().as_millis();
+    print!("Polynomial terms: ");
+    for i in 0..poly.products.len() {
+        print!("{} ", poly.products[i].1.len());
+    }
+    println!();
+    println!("Preparing input evaluations and domain for 2^{num_vars} work ....{duration}ms");
+
+    // Generate the proof
+    let proof = (0..repeat)
+        .map(|_| {
+            OptMLZeroCheck::<Fr, Ligero<Fr>>::prove(
+                &zp.clone(),
+                &poly.clone(),
+                &num_vars,
+                &mut ZCTranscript::init_transcript(),
+                run_threads,
+                batch_commit_threads,
+                batch_open_threads,
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>()
+        .last()
+        .cloned()
+        .unwrap();
+
+    let runtime = instant.elapsed();
+
+    // Verify the proof
+    let result = OptMLZeroCheck::<Fr, Ligero<Fr>>::verify(
+        &zp,
+        &poly,
+        &proof,
+        &num_vars,
+        &mut ZCTranscript::init_transcript(),
+    )
+    .unwrap();
+    assert_eq!(result, true);
+
     return runtime.as_millis();
 }
 
@@ -257,6 +308,17 @@ fn bench_opt_mle_zc() {
                 "kzg" => (0..repeat)
                     .map(|_| {
                         test_template_kzg(
+                            size,
+                            repeat,
+                            Some(args.run_threads),
+                            Some(args.batch_commit_threads),
+                            Some(args.batch_opening_threads),
+                        )
+                    })
+                    .sum(),
+                "ligero" => (0..repeat)
+                    .map(|_| {
+                        test_template_ligero(
                             size,
                             repeat,
                             Some(args.run_threads),
