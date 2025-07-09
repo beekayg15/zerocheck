@@ -283,50 +283,34 @@ fn bench_opt_mle_zc() {
         .step_by(2)
         .map(|size| {
             let total_runtime: u128 = match args.poly_commit_scheme.as_str() {
-                "mpc" => (0..repeat)
-                    .map(|_| {
-                        test_template_mpc(
-                            size,
-                            repeat,
-                            Some(args.run_threads),
-                            Some(args.batch_commit_threads),
-                            Some(args.batch_opening_threads),
-                        )
-                    })
-                    .sum(),
-                "hyrax" => (0..repeat)
-                    .map(|_| {
-                        test_template_hyrax(
-                            size,
-                            repeat,
-                            Some(args.run_threads),
-                            Some(args.batch_commit_threads),
-                            Some(args.batch_opening_threads),
-                        )
-                    })
-                    .sum(),
-                "kzg" => (0..repeat)
-                    .map(|_| {
-                        test_template_kzg(
-                            size,
-                            repeat,
-                            Some(args.run_threads),
-                            Some(args.batch_commit_threads),
-                            Some(args.batch_opening_threads),
-                        )
-                    })
-                    .sum(),
-                "ligero" => (0..repeat)
-                    .map(|_| {
-                        test_template_ligero(
-                            size,
-                            repeat,
-                            Some(args.run_threads),
-                            Some(args.batch_commit_threads),
-                            Some(args.batch_opening_threads),
-                        )
-                    })
-                    .sum(),
+                "mpc" => test_template_mpc(
+                    size,
+                    repeat,
+                    Some(args.run_threads),
+                    Some(args.batch_commit_threads),
+                    Some(args.batch_opening_threads),
+                ),
+                "hyrax" => test_template_hyrax(
+                    size,
+                    repeat,
+                    Some(args.run_threads),
+                    Some(args.batch_commit_threads),
+                    Some(args.batch_opening_threads),
+                ),
+                "kzg" => test_template_kzg(
+                    size,
+                    repeat,
+                    Some(args.run_threads),
+                    Some(args.batch_commit_threads),
+                    Some(args.batch_opening_threads),
+                ),
+                "ligero" => test_template_ligero(
+                    size,
+                    repeat,
+                    Some(args.run_threads),
+                    Some(args.batch_commit_threads),
+                    Some(args.batch_opening_threads),
+                ),
                 _ => panic!("Invalid poly_commit_scheme"),
             };
             (size, total_runtime)
