@@ -1,16 +1,16 @@
-use std::marker::PhantomData;
 use anyhow::Ok;
 use ark_ec::pairing::Pairing;
+use ark_ec::AffineRepr;
 use ark_poly::univariate::DensePolynomial;
 use ark_poly_commit::kzg10::{Commitment as KZGCommitment, Powers, Proof, VerifierKey, KZG10};
 use ark_std::rand::thread_rng;
-use ark_ec::AffineRepr;
+use std::marker::PhantomData;
 
 pub mod data_structures;
 use data_structures::*;
+use rayon::iter::IndexedParallelIterator;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
-use rayon::iter::IndexedParallelIterator;
 
 use crate::pcs::PolynomialCommitmentScheme;
 
@@ -30,16 +30,12 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
     type PCSParams = usize;
 
     fn setup(
-            max_degree: &Self::PCSParams
-        ) -> Result<(Self::CommitterKey<'_>, Self::VerifierKey), anyhow::Error> {
-        
+        max_degree: &Self::PCSParams,
+    ) -> Result<(Self::CommitterKey<'_>, Self::VerifierKey), anyhow::Error> {
         // Setting up the KZG(MSM) Polynomial Commitment Scheme
         let rng = &mut thread_rng();
-        let params = KZG10::<E, DensePolynomial<E::ScalarField>>::setup(
-            *max_degree, 
-            false, 
-            rng
-        ).expect("PCS setup failed");
+        let params = KZG10::<E, DensePolynomial<E::ScalarField>>::setup(*max_degree, false, rng)
+            .expect("PCS setup failed");
 
         // Computing the verification key
         let vk = Self::VerifierKey {
@@ -64,18 +60,13 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
 
         Ok((powers, vk))
     }
-    
+
     fn commit(
         ck: &Self::CommitterKey<'_>,
         poly: &Self::Polynomial,
     ) -> Result<Self::Commitment, anyhow::Error> {
-        
-        let (comm, r) = KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
-            &ck, 
-            poly, 
-            None, 
-            None
-        ).unwrap();
+        let (comm, r) =
+            KZG10::<E, DensePolynomial<E::ScalarField>>::commit(&ck, poly, None, None).unwrap();
 
         assert!(!comm.0.is_zero(), "Commitment should not be zero");
         assert!(!r.is_hiding(), "Commitment should not be hiding");
@@ -88,17 +79,14 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
 
     fn batch_commit(
         ck: &Self::CommitterKey<'_>,
-        poly: &Vec<Self::Polynomial>
+        poly: &Vec<Self::Polynomial>,
     ) -> Result<Vec<Self::Commitment>, anyhow::Error> {
         let result: Vec<Self::Commitment> = poly
             .par_iter()
             .map(|p| {
-                let (comm, r) = KZG10::<E, DensePolynomial<E::ScalarField>>::commit(
-                    &ck, 
-                    p, 
-                    None, 
-                    None
-                ).unwrap();
+                let (comm, r) =
+                    KZG10::<E, DensePolynomial<E::ScalarField>>::commit(&ck, p, None, None)
+                        .unwrap();
 
                 assert!(!comm.0.is_zero(), "Commitment should not be zero");
                 assert!(!r.is_hiding(), "Commitment should not be hiding");
@@ -112,24 +100,21 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
 
         Ok(result)
     }
-    
+
     fn open(
         ck: &Self::CommitterKey<'_>,
         comm: &Self::Commitment,
         poly: &Self::Polynomial,
         point: Self::PolynomialInput,
     ) -> Result<Self::OpeningProof, anyhow::Error> {
-        let opening_proof = KZG10::<E, DensePolynomial<E::ScalarField>>::open(
-            &ck, 
-            poly, 
-            point, 
-            &comm.rand
-        ).unwrap();
+        let opening_proof =
+            KZG10::<E, DensePolynomial<E::ScalarField>>::open(&ck, poly, point, &comm.rand)
+                .unwrap();
 
         Ok(opening_proof)
     }
-    
-    fn batch_open<'a> (
+
+    fn batch_open<'a>(
         ck: &'a Self::CommitterKey<'_>,
         comm: &'a Vec<Self::Commitment>,
         poly: &'a Vec<Self::Polynomial>,
@@ -137,14 +122,11 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
     ) -> Result<Vec<Self::OpeningProof>, anyhow::Error> {
         let result = poly
             .par_iter()
-            .zip(comm) 
+            .zip(comm)
             .map(|(p, c)| {
-                let opening_proof = KZG10::<E, DensePolynomial<E::ScalarField>>::open(
-                    &ck, 
-                    p, 
-                    point, 
-                    &c.rand
-                ).unwrap();
+                let opening_proof =
+                    KZG10::<E, DensePolynomial<E::ScalarField>>::open(&ck, p, point, &c.rand)
+                        .unwrap();
 
                 opening_proof
             })
@@ -152,7 +134,7 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
 
         Ok(result)
     }
-    
+
     fn check(
         vk: &Self::VerifierKey,
         opening_proof: &Self::OpeningProof,
@@ -160,22 +142,21 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
         point: Self::PolynomialInput,
         value: Self::PolynomialOutput,
     ) -> Result<bool, anyhow::Error> {
-        let kzg_commitment = KZGCommitment {
-            0: comm.comm
-        };
+        let kzg_commitment = KZGCommitment { 0: comm.comm };
 
         let result = KZG10::<E, DensePolynomial<E::ScalarField>>::check(
             &vk,
             &kzg_commitment,
             point,
             value,
-            opening_proof
-        ).unwrap();
+            opening_proof,
+        )
+        .unwrap();
 
         Ok(result)
     }
-    
-    fn batch_check<'a> (
+
+    fn batch_check<'a>(
         vk: &'a Self::VerifierKey,
         opening_proof: &'a Vec<Self::OpeningProof>,
         comm: &'a Vec<Self::Commitment>,
@@ -187,31 +168,25 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
             .zip(opening_proof)
             .zip(value)
             .map(|((cm, proof), val)| {
-                let kzg_commitment = KZGCommitment {
-                    0: cm.comm
-                };
-        
+                let kzg_commitment = KZGCommitment { 0: cm.comm };
+
                 let valid = KZG10::<E, DensePolynomial<E::ScalarField>>::check(
                     &vk,
                     &kzg_commitment,
                     point,
                     val,
-                    proof
-                ).unwrap();
-                
+                    proof,
+                )
+                .unwrap();
+
                 valid
             })
             .collect();
 
-        Ok(
-            result
-                .into_iter()
-                .fold(
-                    true,
-                    |res, valid| {
-                        res & valid
-                    }
-                )
-        )
+        Ok(result.into_iter().fold(true, |res, valid| res & valid))
+    }
+
+    fn extract_pure_commitment(comm: &Self::Commitment) -> Result<Self::Commitment, anyhow::Error> {
+        Ok(comm.clone())
     }
 }

@@ -116,8 +116,9 @@ where
             .clone()
             .into_iter()
             .map(|comm| {
+                let pure_commitment = PCS::extract_pure_commitment(&comm).unwrap();
                 transcript
-                    .append_serializable_element(b"comm_mle", &comm)
+                    .append_serializable_element(b"comm_mle", &pure_commitment)
                     .unwrap();
             })
             .collect();
@@ -236,6 +237,10 @@ where
             input_poly.poly_info.num_vars, *zero_domain,
             "Dimensions of boolean hypercube do not match the given polynomials"
         );
+        println!(
+            "Start Verifier Opt multilinear for 2^{:?}.",
+            zero_domain
+        );
 
         let flatten_mle_extensions: Vec<DenseMultilinearExtension<_>> = input_poly
             .clone()
@@ -246,15 +251,16 @@ where
 
         // set up the seed and input required to generate the initial random challenge
         let initial_challenge_timer =
-            start_timer!(|| "computing inital challenge using which f_hat is computed");
+            start_timer!(|| "Verifier computes inital challenge using which f_hat is computed");
 
         let _: Vec<_> = proof
             .inp_mle_commitments
             .clone()
             .into_iter()
             .map(|comm| {
+                let pure_commitment = PCS::extract_pure_commitment(&comm).unwrap();
                 transcript
-                    .append_serializable_element(b"comm_mle", &comm)
+                    .append_serializable_element(b"comm_mle", &pure_commitment)
                     .unwrap();
             })
             .collect();

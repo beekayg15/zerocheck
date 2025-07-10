@@ -138,4 +138,8 @@ impl<E: Pairing> PolynomialCommitmentScheme for MultilinearKZG<E> {
         let uv_point = point[0];
         UnivariateKZG::<E>::batch_check(vk, opening_proof, &uv_comm, uv_point, value)
     }
+
+    fn extract_pure_commitment(comm: &Self::Commitment) -> Result<Self::Commitment, anyhow::Error> {
+        Ok(comm.clone())
+    }
 }

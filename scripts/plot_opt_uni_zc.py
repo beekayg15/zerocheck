@@ -106,6 +106,7 @@ def extract_result_by_key(df: pd.DataFrame, keys: list):
 def merge_dataframes(dataframe1: pd.DataFrame, dataframe2: pd.DataFrame, common_column: str, merge_column="Runtime (ms)"):
     """
     Assume both dataframes have one common column, merge their merge_column.
+    Return df[↓common column, merge_column1, merge_column2]
     """
     assert np.array_equal(dataframe1[common_column].values, dataframe2[common_column]
                           .values), f"Common column not match, {dataframe1[common_column]} vs {dataframe2[common_column]}"
@@ -171,18 +172,27 @@ def dataframe_average_row(dataframe: pd.DataFrame, common_column_name: str = "Ru
 
 
 def plot_univar_zc(file_path, start_line, save_fig=True):
+    """
+    Plot the univariate zerocheck average runtime from a log file.
+
+    @param file_path: Path to the log file containing univariate zerocheck results.
+    @param start_line: The starting line to identify the univariate zerocheck test blocks.
+    @param save_fig: Whether to save the figure as a PNG file.
+    @return: A dataframe containing the average runtime for each test case.
+    """
     res_blocks = load_test_from_txt_to_blocks(file_path, start_line)
 
-    target_keys_univar = ["Compute coset domain",
-                          "IFFT for g,h,s,o from evaluations to coefficients",
-                          "FFT Compute g,h,s,o,z,q evaluations over coset domain",
-                          "IFFT for q from evaluations to coefficients",
-                          "computing evaluations at challenge, get challenge",
-                          "KZG commit to (q) polynomial",
-                          "KZG commit to (g,h,s,o) polynomials",
-                          "KZG batch open the g,h,s,o,q poly commit at r",
-                          ]
-    assert len(target_keys_univar) == 8, "Result timer number not match the code"
+    target_keys_univar = [
+        "Compute coset domain",
+        "IFFT for g,h,s,o from evaluations to coefficients",
+        "FFT Compute g,h,s,o,z,q evaluations over coset domain",
+        "IFFT for q from evaluations to coefficients",
+        "computing evaluations at challenge, get challenge",
+        "Commit to (q) polynomial",
+        # "Commit to (g,h,s,o) polynomials",
+        # "Batch open the g,h,s,o,q poly commit at r",
+        ]
+    assert len(target_keys_univar) == 6, "Result timer number not match the code"
 
     # parse the result from text log --> blocks --> a dataframe
     target_time_unit = "s"
@@ -233,16 +243,25 @@ def plot_univar_zc(file_path, start_line, save_fig=True):
 
 
 def plot_multi_lin_zc(file_path, start_line, save_fig=True):
+    """
+    Plot the multilinear zerocheck average runtime from a log file.
+
+    @param file_path: Path to the log file containing multilinear zerocheck results.
+    @param start_line: The starting line to identify the multilinear zerocheck test blocks.
+    @param save_fig: Whether to save the figure as a PNG file.
+    @return: A dataframe containing the average runtime for each test case.
+    """
     res_blocks = load_test_from_txt_to_blocks(file_path, start_line)
 
-    target_keys_univar = ["computing inital challenge using which f_hat is computed",
-                          "Build MLE: computing f_hat(X) = sum_{B^m} f(X)",
-                          "running sumcheck proving algorithm for X rounds",
-                          "computing evaluations of input MLEs at challenges",
-                          "commit to (g,h,s,o) input MLEs",
-                          "batch open proof g,h,s,o input MLEs at r",
-                          ]
-    assert len(target_keys_univar) == 6, "Result timer number not match the code"
+    target_keys_univar = [
+        "computing inital challenge using which f_hat is computed",
+        "Build MLE: computing f_hat(X) = sum_{B^m} f(X)",
+        "running sumcheck proving algorithm for X rounds",
+        "computing evaluations of input MLEs at challenges",
+        # "commit to (g,h,s,o) input MLEs",
+        # "batch open proof g,h,s,o input MLEs at r",
+        ]
+    assert len(target_keys_univar) == 4, "Result timer number not match the code"
 
     # parse the result from text log --> blocks --> a dataframe
     target_time_unit = "s"
@@ -265,8 +284,9 @@ def plot_multi_lin_zc(file_path, start_line, save_fig=True):
     for i, col in enumerate(merge_average.columns):
         if i == 0:
             continue
-        merge_average.rename(
-            columns={col: f"2^{list(worksize.keys())[i-1]} {col}"}, inplace=True)
+        rename_goal = col if col.split()[-1] == "(s)" else " ".join(col.split()[:-1])
+        rename_goal = f"2^{list(worksize.keys())[i-1]} {rename_goal}"
+        merge_average.rename(columns={col: rename_goal}, inplace=True)
 
     # draw stacked bar chart for each worksize, using the average runtime, stacked by rows
     runtime_columns = [
@@ -350,29 +370,117 @@ def parallel_stacked_bar_chart(dfs: list, output_path=None):
         plt.savefig(output_path)
 
 
+def parallel_stacked_bar_chart_univ_mulin_numvar_comm(save_fig=False):
+    """
+    Draw a parallel stacked bar chart for univariate and multilinear ZC, 
+    different num_var, different commit methods.
+    """
+    # extract the averaged data from log files, return the dataframe
+    stack_multilin_zc_hyrax_df = plot_multi_lin_zc(
+        file_path="output_log/mullin_opt_bench_24_24_run_1_hyrax_open_4.log",
+        start_line="Prover starts Opt multilinear for 2^",
+        save_fig=False,
+    )
+    stack_multilin_zc_kzg_df = plot_multi_lin_zc(
+        file_path="output_log/mullin_opt_bench_24_24_run_1_kzg_open_4.log",
+        start_line="Prover starts Opt multilinear for 2^",
+        save_fig=False,
+    )
+    stack_multilin_zc_ligero_df = plot_multi_lin_zc(
+        file_path="output_log/mullin_opt_bench_24_24_run_1_ligero_open_4.log",
+        start_line="Prover starts Opt multilinear for 2^",
+        save_fig=False,
+    )
+    stack_multilin_zc_hyrax_df.index = stack_multilin_zc_hyrax_df.index.str.replace(
+        "Average Runtime", "Mulin hyrax")
+    stack_multilin_zc_kzg_df.index = stack_multilin_zc_kzg_df.index.str.replace(
+        "Average Runtime", "Mulin kzg")
+    stack_multilin_zc_ligero_df.index = stack_multilin_zc_ligero_df.index.str.replace(
+        "Average Runtime", "Mulin ligero")
+    
+    # extract the averaged data from log files, return the dataframe
+    stack_univar_zc_kzg_df = plot_univar_zc(
+        file_path="output_log/univar_opt_bench_24_24_run_1_kzg_open_5.log",
+        start_line="Opt Univariate Proof Generation Test ",
+        save_fig=False,
+    )
+    stack_univar_zc_ligero_df = plot_univar_zc(
+        file_path="output_log/univar_opt_bench_24_24_run_1_ligero_open_5.log",
+        start_line="Opt Univariate Proof Generation Test ",
+        save_fig=False,
+    )
+    stack_univar_zc_kzg_df.index = stack_univar_zc_kzg_df.index.str.replace(
+        "Average Runtime", "Univar kzg")
+    stack_univar_zc_ligero_df.index = stack_univar_zc_ligero_df.index.str.replace(
+        "Average Runtime", "Univar ligero")
+
+    # merge the dataframe, match the same columns between dataframes to the correct column
+    merged_multilin_df = pd.concat(
+        [stack_multilin_zc_hyrax_df, stack_multilin_zc_kzg_df, stack_multilin_zc_ligero_df], axis=0)
+    merged_univar_df = pd.concat(
+        [stack_univar_zc_kzg_df, stack_univar_zc_ligero_df], axis=0)
+    
+    # sort the order by the index column
+    merged_multilin_df = merged_multilin_df.sort_index()
+    merged_univar_df = merged_univar_df.sort_index()
+
+    # Draw a stacked bar chart for merged_multilin_df and merged_univar_df
+    combined_df = pd.concat([merged_multilin_df, merged_univar_df], axis=1).fillna(0)
+
+    # Plot the stacked bar chart
+    combined_df.plot(kind="bar", stacked=True, figsize=(12, 8), colormap="tab20")
+
+    plt.xlabel("Test Cases")
+    plt.ylabel("Runtime (s)")
+    plt.title("Stacked Bar Chart for Multilinear and Univariate ZC")
+    plt.xticks(rotation=45)
+
+    # Split the legend into two groups
+    group_size = 4
+    handles, labels = plt.gca().get_legend_handles_labels()
+    first_legend_handles = handles[:group_size]
+    first_legend_labels = labels[:group_size]
+    second_legend_handles = handles[group_size:]
+    second_legend_labels = labels[group_size:]
+
+    # Add the first legend
+    first_legend = plt.legend(first_legend_handles, first_legend_labels, loc='upper left', bbox_to_anchor=(1, 1), title="Mulin")
+    plt.gca().add_artist(first_legend)  # Add the first legend to the plot
+
+    # Add the second legend
+    plt.legend(second_legend_handles, second_legend_labels, loc='upper left', bbox_to_anchor=(1, 0.7), title="Univar")
+    plt.tight_layout()
+
+    if save_fig:
+        output_path = "output_log/stacked_bar_chart_univ_mulin_bench_24_24_filter.png"
+        print(f"Save figure to {output_path}")
+        plt.savefig(output_path)
+
+    return None
+
+
 if __name__ == '__main__':
 
     save_each_fig = False
 
-    stack_univar_zc_df = plot_univar_zc(
-        # file_path="output_log/univar_opt_bench_multhr_64.log",
-        # file_path="output_log/univar_opt_bench_run_1_open_4.log",
-        file_path="output_log/univar_opt_bench_1_22_26_run_1_open_5.log",
-        start_line="Opt Univariate Proof Generation Test for",
-        save_fig=save_each_fig,
-    )
+    # stack_univar_zc_df = plot_univar_zc(
+    #     file_path="output_log/univar_opt_bench_24_24_run_1_kzg_open_5.log",
+    #     start_line="Opt Univariate Proof Generation Test ",
+    #     save_fig=save_each_fig,
+    # )
 
-    stack_multi_lin_zc_df = plot_multi_lin_zc(
-        # file_path="output_log/mullin_opt_bench_run_1_open_1.log",
-        file_path="output_log/mullin_opt_bench_1_22_26_run_1_open_4.log",
-        start_line="Prover starts Opt multilinear for 2^",
-        save_fig=save_each_fig,
-    )
+    # stack_multi_lin_zc_df = plot_multi_lin_zc(
+    #     file_path="output_log/mullin_opt_bench_24_24_run_1_kzg_open_4.log",
+    #     start_line="Prover starts Opt multilinear for 2^",
+    #     save_fig=save_each_fig,
+    # )
 
-    # Parallel stacked bar chart for both univariate and multilinear ZC
-    parallel_stacked_bar_chart(
-        [stack_univar_zc_df, stack_multi_lin_zc_df],
-        output_path="output_log/parallel_stacked_bar_chart_1_22_26.png"
-    )
+    # # Parallel stacked bar chart for both univariate and multilinear ZC
+    # parallel_stacked_bar_chart(
+    #     [stack_univar_zc_df, stack_multi_lin_zc_df],
+    #     output_path="output_log/parallel_stacked_bar_chart_1_22_26.png"
+    # )
+
+    parallel_stacked_bar_chart_univ_mulin_numvar_comm(True)
 
     print("End...")

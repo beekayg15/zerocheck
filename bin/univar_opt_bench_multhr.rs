@@ -70,7 +70,7 @@ fn opt_univ_zc_multhr_benchmark_kzg(
     batch_open_threads: Option<usize>,
 ) -> u128 {
     let test_timer =
-        start_timer!(|| format!("Opt Univariate Proof Generation Test for KZG with 2^{size} work"));
+        start_timer!(|| format!("Opt Univariate Proof Generation Test KZG for 2^{size} work"));
 
     let inp_evals = input_evals.to_vec();
     let instant = Instant::now();
@@ -120,7 +120,7 @@ fn opt_univ_zc_multhr_benchmark_ligero(
 ) -> u128 {
     let test_timer = start_timer!(|| {
         format!(
-            "Opt Univariate Proof Generation Test for Ligero with 2^{size} work"
+            "Opt Univariate Proof Generation Test Ligero for 2^{size} work"
         )
     });
 

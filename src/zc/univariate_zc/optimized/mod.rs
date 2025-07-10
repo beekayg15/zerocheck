@@ -175,7 +175,7 @@ where
             .install(|| Evaluations::from_vec_and_domain(q_evals, coset_domain).interpolate());
 
         end_timer!(ifft_q_time);
-        let commit_time = start_timer!(|| "KZG commit to (g,h,s,o) polynomials");
+        let commit_time = start_timer!(|| "Commit to (g,h,s,o) polynomials");
 
         // Use the pool_commit thread pool to perform the batch_commit operation
         let comm_rs = pool_commit.install(|| {
@@ -204,7 +204,7 @@ where
             comm_o.clone(),
         ];
         end_timer!(commit_time);
-        let commit_q_time = start_timer!(|| "KZG commit to (q) polynomial");
+        let commit_q_time = start_timer!(|| "Commit to (q) polynomial");
 
         let comm_q = pool_commit.install(|| PCS::commit(&zero_params.ck, &q_coeff).unwrap());
         let comm_rs = vec![
@@ -220,19 +220,19 @@ where
 
         // Sample a random challenge - Fiat-Shamir
         transcript
-            .append_serializable_element(b"comm_g", comm_g)
+            .append_serializable_element(b"comm_g", &PCS::extract_pure_commitment(comm_g).unwrap())
             .unwrap();
         transcript
-            .append_serializable_element(b"comm_h", comm_h)
+            .append_serializable_element(b"comm_h", &PCS::extract_pure_commitment(comm_h).unwrap())
             .unwrap();
         transcript
-            .append_serializable_element(b"comm_s", comm_s)
+            .append_serializable_element(b"comm_s", &PCS::extract_pure_commitment(comm_s).unwrap())
             .unwrap();
         transcript
-            .append_serializable_element(b"comm_o", comm_o)
+            .append_serializable_element(b"comm_o", &PCS::extract_pure_commitment(comm_o).unwrap())
             .unwrap();
         transcript
-            .append_serializable_element(b"comm_q", &comm_q)
+            .append_serializable_element(b"comm_q", &PCS::extract_pure_commitment(&comm_q).unwrap())
             .unwrap();
         let r = transcript.get_and_append_challenge(b"sampling r").unwrap();
 
@@ -245,20 +245,14 @@ where
         let q_eval_r = q_coeff.evaluate(&r);
 
         end_timer!(get_r_eval_time);
-        let open_time = start_timer!(|| "KZG batch open the g,h,s,o,q poly commit at r");
+        let open_time = start_timer!(|| "Batch open the g,h,s,o,q poly commit at r");
 
         // Generate the opening proof that g(r), h(r), s(r), and o(r) are the evaluations of the polynomials
         let opening_proofs = pool_open.install(|| {
             PCS::batch_open(
                 &zero_params.ck,
                 &comm_rs,
-                &vec![
-                    g_coeff,
-                    h_coeff,
-                    s_coeff,
-                    o_coeff,
-                    q_coeff,
-                ],
+                &vec![g_coeff, h_coeff, s_coeff, o_coeff, q_coeff],
                 r,
             )
             .unwrap()
@@ -323,19 +317,31 @@ where
 
         // Sample a random challenge - Fiat-Shamir
         transcript
-            .append_serializable_element(b"comm_g", &inp_comms[0])
+            .append_serializable_element(
+                b"comm_g",
+                &PCS::extract_pure_commitment(&inp_comms[0]).unwrap(),
+            )
             .unwrap();
         transcript
-            .append_serializable_element(b"comm_h", &inp_comms[1])
+            .append_serializable_element(
+                b"comm_h",
+                &PCS::extract_pure_commitment(&inp_comms[1]).unwrap(),
+            )
             .unwrap();
         transcript
-            .append_serializable_element(b"comm_s", &inp_comms[2])
+            .append_serializable_element(
+                b"comm_s",
+                &PCS::extract_pure_commitment(&inp_comms[2]).unwrap(),
+            )
             .unwrap();
         transcript
-            .append_serializable_element(b"comm_o", &inp_comms[3])
+            .append_serializable_element(
+                b"comm_o",
+                &PCS::extract_pure_commitment(&inp_comms[3]).unwrap(),
+            )
             .unwrap();
         transcript
-            .append_serializable_element(b"comm_q", q_comm)
+            .append_serializable_element(b"comm_q", &PCS::extract_pure_commitment(q_comm).unwrap())
             .unwrap();
         let r = transcript.get_and_append_challenge(b"sampling r").unwrap();
 
