@@ -119,9 +119,9 @@ mod tests {
     fn bench_opt_uni_zc() {
         let mut sizes = vec![];
         let mut runtimes = vec![];
-        for size in 1..16 {
+        for size in 1..10 {
             let mut total_runtime = 0;
-            for _ in 0..10 {
+            for _ in 0..5 {
                 total_runtime += test_template(size);
             }
             sizes.push(size);

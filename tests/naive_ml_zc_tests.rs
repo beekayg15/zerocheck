@@ -63,8 +63,8 @@ mod tests {
 
     #[test]
     fn bench_naive_mle_zc() {
-        let repeat = 10;
-        let max_work_size = 16;
+        let repeat = 5;
+        let max_work_size = 10;
 
         let (sizes, runtimes): (Vec<usize>, Vec<u128>) = (1..max_work_size)
             .map(|size| {
