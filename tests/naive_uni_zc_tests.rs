@@ -97,7 +97,7 @@ mod tests {
             println!("Test completed for degree: {:?}", 1 << size);
         }
 
-        for i in 0..20 {
+        for i in 0..10 {
             println!(
                 "Input Polynomial Degree: 2^{:?}\t|| Avg. Runtime: {:?}",
                 sizes[i],
