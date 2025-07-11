@@ -369,9 +369,6 @@ where
         let lhs = q_eval * zero_domain.evaluate_vanishing_polynomial(r);
         let rhs = a * b * c + (F::one() - c) * (a + b) - d;
 
-        // println!("lhs: {:?}", lhs);
-        // println!("rhs: {:?}", rhs);
-
         Ok(lhs == rhs)
     }
 }
@@ -463,8 +460,6 @@ mod tests {
 
         end_timer!(proof_gen_timer);
 
-        println!("Proof Generated");
-
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
@@ -477,8 +472,6 @@ mod tests {
         .unwrap();
 
         end_timer!(verify_timer);
-
-        println!("verification result: {:?}", result);
         assert_eq!(result, true);
 
         end_timer!(test_timer);
@@ -554,8 +547,6 @@ mod tests {
 
         end_timer!(proof_gen_timer);
 
-        println!("Proof Generated");
-
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result = OptimizedUnivariateZeroCheck::<Fr, Ligero<Fr>>::verify(
@@ -568,8 +559,6 @@ mod tests {
         .unwrap();
 
         end_timer!(verify_timer);
-
-        println!("verification result: {:?}", result);
         assert_eq!(result, true);
 
         end_timer!(test_timer);

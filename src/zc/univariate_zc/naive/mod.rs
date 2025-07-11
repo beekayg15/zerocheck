@@ -74,9 +74,6 @@ impl<F: PrimeField + FftField> ZeroCheck<F> for NaiveUnivariateZeroCheck<F> {
         let g_poly = g.interpolate();
         let h_poly = h.interpolate();
 
-        // println!("deg_g_poly: {:?}", g_poly.degree());
-        // println!("deg_h_poly: {:?}", h_poly.degree());
-
         end_timer!(inp_interpolation_time);
 
         let f_poly_timer = start_timer!(|| "interpolating poly. f = g^2 * h");
@@ -179,9 +176,6 @@ mod tests {
 
         let domain = GeneralEvaluationDomain::<Fr>::new(1 << 15).unwrap();
 
-        // println!("domain size of g: {:?}", domain_g.size());
-        // println!("domain size of zero_domain: {:?}", zero_domain.size());
-
         let evals_over_domain_g: Vec<_> = domain
             .elements()
             .map(|f| domain.evaluate_vanishing_polynomial(f))
@@ -220,10 +214,6 @@ mod tests {
         .unwrap();
 
         end_timer!(proof_gen_timer);
-
-        //println!("Proof Generated: {:?}", proof);
-
-        println!("Proof Generated");
         end_timer!(test_timer);
     }
 
@@ -272,8 +262,6 @@ mod tests {
 
         end_timer!(proof_gen_timer);
 
-        // println!("Proof Generated: {:?}", proof);
-
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result = NaiveUnivariateZeroCheck::<Fr>::verify(
@@ -286,8 +274,6 @@ mod tests {
         .unwrap();
 
         end_timer!(verify_timer);
-
-        println!("verification result: {:?}", result);
         assert_eq!(result, true);
 
         end_timer!(test_timer);

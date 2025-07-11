@@ -199,9 +199,6 @@ where
         let lhs = subclaim.expected_evaluation;
         let rhs = inp_hat.evaluate(subclaim.point);
 
-        // println!("lhs: {:?}", lhs);
-        // println!("rhs: {:?}", rhs);
-
         // check if the virtual polynomial evaluates to the
         // given value over the sampled challenges
         let result: bool = lhs == rhs;
@@ -234,7 +231,6 @@ mod test {
             None,
         )
         .unwrap();
-        println!("Proof Generated: {:?}", proof);
 
         let valid = NaiveMLZeroCheck::<Fr>::verify(
             &zp,
@@ -263,7 +259,6 @@ mod test {
             None,
         )
         .unwrap();
-        println!("Proof Generated: {:?}", proof);
 
         let valid = NaiveMLZeroCheck::<Fr>::verify(
             &zp,

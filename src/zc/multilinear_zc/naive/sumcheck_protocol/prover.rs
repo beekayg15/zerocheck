@@ -1,6 +1,6 @@
 use ark_ff::PrimeField;
 use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
-use ark_std::{cfg_iter_mut, end_timer, start_timer, vec::Vec};
+use ark_std::{cfg_iter_mut, vec::Vec};
 use rayon::prelude::*;
 
 use crate::zc::multilinear_zc::naive::VirtualPolynomial;
@@ -81,11 +81,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
         prover_state: &mut ProverState<F>,
         verifier_msg: &Option<VerifierMsg<F>>,
     ) -> ProverMsg<F> {
-        let prover_single_round_timer = start_timer!(|| format!(
-            "Interative prover for sumcheck at round {:?}",
-            prover_state.round
-        ));
-
         if let Some(v_msg) = verifier_msg {
             if prover_state.round == 0 {
                 panic!("first round should be prover first.");
@@ -98,14 +93,9 @@ impl<F: PrimeField> IPforSumCheck<F> {
 
             // update the multilinear extensions with the challenge
             // sent by the verifier
-            let fix_mle_variable_timer =
-                start_timer!(|| format!("fixing variable of the mle's with the challenge {:?}", r));
-
             cfg_iter_mut!(prover_state.flat_ml_extensions).for_each(|mult_ext| {
                 *mult_ext = mult_ext.fix_variables(&[r]);
             });
-
-            end_timer!(fix_mle_variable_timer);
         } else if prover_state.round > 0 {
             panic!("verifier message is empty");
         }
@@ -118,9 +108,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
         }
 
         // Find the sum of the virtual polynomial over the remaining dimensions of the boolean hypercube
-        let bool_hypercube_sum_timer =
-            start_timer!(|| "Evaluting over the remaining dim. of the boolean hypercube");
-
         let i = prover_state.round;
         let nv = prover_state.num_vars;
         let degree = prover_state.max_multiplicand;
@@ -151,9 +138,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
             .reduce(|| vec![F::zero(); degree + 1], |_, partial| partial);
 
         let products_sum = fold_result;
-
-        end_timer!(bool_hypercube_sum_timer);
-        end_timer!(prover_single_round_timer);
 
         // Send the evalutions on the max_degree + 1 points as the prover message
         ProverMsg {

@@ -1,5 +1,4 @@
 use ark_ff::PrimeField;
-use ark_std::{end_timer, start_timer};
 
 use crate::{transcripts::ZCTranscript, zc::multilinear_zc::optimized::PolynomialInfo};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -75,10 +74,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
         verifier_state: &mut VerifierState<F>,
         transcript: &mut ZCTranscript<F>,
     ) -> Option<VerifierMsg<F>> {
-        let verifier_single_round_timer = start_timer!(|| format!(
-            "Interative verifier for sumcheck at round {:?}",
-            verifier_state.round
-        ));
 
         // check if the verification step is already done
         if verifier_state.finished {
@@ -86,8 +81,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
         }
 
         // compute the seed and input required to generate the random challenge
-        let verifier_challenge_sampling_timer =
-            start_timer!(|| "verifier sampling a random challenge using the transcripts");
 
         transcript
             .append_serializable_element(b"prover_msg", &prover_msg)
@@ -100,8 +93,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
             challenge: challenge,
         };
 
-        end_timer!(verifier_challenge_sampling_timer);
-
         // Update the verifier state with the new challenge
         verifier_state.challenges.push(msg.challenge);
         verifier_state.poly_rcvd.push(prover_msg.evaluations);
@@ -112,7 +103,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
             verifier_state.round += 1;
         }
 
-        end_timer!(verifier_single_round_timer);
         Some(msg)
     }
 
@@ -145,8 +135,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
         }
 
         // recursively check if the p_i(0) + p_i(1) = p_{i - 1}(r_{i-1})
-        let recursive_sum_check_timer =
-            start_timer!(|| "recursively check if the p_i(0) + p_i(1) = p_{i - 1}(r_{i-1})");
         for i in 0..verifier_state.num_vars {
             let evaluations = &verifier_state.poly_rcvd[i];
 
@@ -164,16 +152,8 @@ impl<F: PrimeField> IPforSumCheck<F> {
                 i
             );
 
-            let uni_poly_interpolation_timer = start_timer!(|| format!(
-                "Interpolating the univariate polnomials at round {:?}",
-                i
-            ));
             expected = interpolate_uni_poly(evaluations, verifier_state.challenges[i]);
-
-            end_timer!(uni_poly_interpolation_timer);
         }
-
-        end_timer!(recursive_sum_check_timer);
 
         Ok(SubClaim {
             point: verifier_state.challenges,

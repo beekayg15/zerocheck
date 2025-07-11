@@ -1,7 +1,7 @@
 use ark_ff::{batch_inversion, PrimeField};
 use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{cfg_into_iter, end_timer, start_timer, vec::Vec};
+use ark_std::{cfg_into_iter, vec::Vec};
 use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator};
 
 #[cfg(feature = "parallel")]
@@ -96,11 +96,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
         verifier_msg: &Option<VerifierMsg<F>>,
         transcripts: &mut ZCTranscript<F>,
     ) -> ProverMsg<F> {
-        let prover_single_round_timer = start_timer!(|| format!(
-            "Interative prover for sumcheck at round {:?}",
-            prover_state.round
-        ));
-
         let mut flattened_ml_extensions: Vec<DenseMultilinearExtension<F>> = prover_state
             .flat_ml_extensions
             .par_iter()
@@ -119,14 +114,11 @@ impl<F: PrimeField> IPforSumCheck<F> {
 
             // update the multilinear extensions with the challenge
             // sent by the verifier
-            let fix_mle_variable_timer =
-                start_timer!(|| format!("fixing variable of the mle's with the challenge {:?}", r));
 
             flattened_ml_extensions
                 .par_iter_mut()
                 .for_each(|mle| *mle = mle.fix_variables(&[r]));
 
-            end_timer!(fix_mle_variable_timer);
         } else if prover_state.round > 0 {
             panic!("verifier message is empty");
         }
@@ -139,8 +131,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
         }
 
         // Find the sum of the virtual polynomial over the remaining dimensions of the boolean hypercube
-        let bool_hypercube_sum_timer =
-            start_timer!(|| "Evaluting over the remaining dim. of the boolean hypercube");
 
         let i = prover_state.round;
         let nv = prover_state.num_vars;
@@ -206,9 +196,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
             .par_iter()
             .map(|x| x.clone())
             .collect();
-
-        end_timer!(bool_hypercube_sum_timer);
-        end_timer!(prover_single_round_timer);
 
         // Send the evalutions on the max_degree + 1 points as the prover message
         let prover_msg = ProverMsg {
