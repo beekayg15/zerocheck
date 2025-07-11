@@ -77,7 +77,7 @@ mod tests {
     }
 
     #[test]
-    fn naive_uni_zc_sample_test() {
+    fn sample_naive_uni_zc_test() {
         let x = test_template(15);
         println!("Proving time: {:?}", x);
     }

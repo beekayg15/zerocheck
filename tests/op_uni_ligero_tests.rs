@@ -110,7 +110,7 @@ mod tests {
     }
 
     #[test]
-    fn opt_uni_zc_sample_test() {
+    fn sample_opt_uni_zc_test() {
         let x = test_template(5);
         println!("Proving time: {:?}", x);
     }

@@ -54,7 +54,7 @@ mod tests {
     }
 
     #[test]
-    fn sample_naive_mle_test() {
+    fn sample_opt_mle_test() {
         let x = test_template(15, 5);
         println!("Proving time: {:?}", x);
     }
