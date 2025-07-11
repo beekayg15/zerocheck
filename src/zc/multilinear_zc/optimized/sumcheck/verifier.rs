@@ -74,7 +74,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
         verifier_state: &mut VerifierState<F>,
         transcript: &mut ZCTranscript<F>,
     ) -> Option<VerifierMsg<F>> {
-
         // check if the verification step is already done
         if verifier_state.finished {
             panic!("Incorrect verifier state: Verifier is already finished.");

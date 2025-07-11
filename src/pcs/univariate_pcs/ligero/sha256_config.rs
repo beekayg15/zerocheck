@@ -1,11 +1,11 @@
-use std::marker::PhantomData;
 use std::borrow::Borrow;
+use std::marker::PhantomData;
 
 use ark_crypto_primitives::{
     crh::{CRHScheme, TwoToOneCRHScheme},
     sponge::{Absorb, CryptographicSponge, FieldElementSize},
 };
-use ark_ff::{PrimeField, BigInteger};
+use ark_ff::{BigInteger, PrimeField};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone)]

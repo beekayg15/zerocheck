@@ -118,7 +118,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
             flattened_ml_extensions
                 .par_iter_mut()
                 .for_each(|mle| *mle = mle.fix_variables(&[r]));
-
         } else if prover_state.round > 0 {
             panic!("verifier message is empty");
         }
