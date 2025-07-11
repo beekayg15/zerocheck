@@ -2,8 +2,6 @@ use std::marker::PhantomData;
 
 use crate::pcs::PolynomialCommitmentScheme;
 use anyhow::Ok;
-use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
-use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
 use ark_crypto_primitives::sponge::CryptographicSponge;
 use ark_crypto_primitives::{
     crh::{CRHScheme, TwoToOneCRHScheme},
@@ -27,8 +25,8 @@ use rayon::iter::ParallelIterator;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator};
 
 pub mod merkle_config;
-pub mod poseidon_config;
-use poseidon_config::{poseidon_parameters, FieldsToBytesHasher};
+pub mod sha256_config;
+use sha256_config::{Sha256FieldsToBytesHasher, Sha256Sponge};
 
 pub mod data_structures;
 use data_structures::*;
@@ -42,8 +40,8 @@ impl<F> PolynomialCommitmentScheme for Ligero<F>
 where
     F: PrimeField + Absorb,
 {
-    type VerifierKey = LigeroPCParams<F, MerkleConfig<F>, FieldsToBytesHasher<F>>;
-    type CommitterKey<'a> = LigeroPCParams<F, MerkleConfig<F>, FieldsToBytesHasher<F>>;
+    type VerifierKey = LigeroPCParams<F, MerkleConfig<F>, Sha256FieldsToBytesHasher<F>>;
+    type CommitterKey<'a> = LigeroPCParams<F, MerkleConfig<F>, Sha256FieldsToBytesHasher<F>>;
     type Commitment = Commitment<F>;
     type OpeningProof = LinCodePCProof<F, MerkleConfig<F>>;
     type PCSParams = usize;
@@ -62,10 +60,10 @@ where
             <<MerkleConfig<F> as Config>::TwoToOneHash as TwoToOneCRHScheme>::setup(rng)
                 .unwrap()
                 .clone();
-        let col_hash_params = <FieldsToBytesHasher<F> as CRHScheme>::setup(rng).unwrap();
+        let col_hash_params = <Sha256FieldsToBytesHasher<F> as CRHScheme>::setup(rng).unwrap();
 
         let params =
-            MLLigero::<F, MerkleConfig<F>, Self::Polynomial, FieldsToBytesHasher<F>>::setup(
+            MLLigero::<F, MerkleConfig<F>, Self::Polynomial, Sha256FieldsToBytesHasher<F>>::setup(
                 0,
                 Some(0),
                 rng,
@@ -91,11 +89,11 @@ where
         let rng = &mut thread_rng();
 
         let (comm, comm_state) = LinearCodePCS::<
-            MLLigero<F, MerkleConfig<F>, Self::Polynomial, FieldsToBytesHasher<F>>,
+            MLLigero<F, MerkleConfig<F>, Self::Polynomial, Sha256FieldsToBytesHasher<F>>,
             F,
             Self::Polynomial,
             MerkleConfig<F>,
-            FieldsToBytesHasher<F>,
+            Sha256FieldsToBytesHasher<F>,
         >::commit(ck, &[lp], Some(rng))
         .unwrap();
 
@@ -119,11 +117,11 @@ where
         let rng = &mut thread_rng();
 
         let (comm, comm_state) = LinearCodePCS::<
-            MLLigero<F, MerkleConfig<F>, Self::Polynomial, FieldsToBytesHasher<F>>,
+            MLLigero<F, MerkleConfig<F>, Self::Polynomial, Sha256FieldsToBytesHasher<F>>,
             F,
             Self::Polynomial,
             MerkleConfig<F>,
-            FieldsToBytesHasher<F>,
+            Sha256FieldsToBytesHasher<F>,
         >::commit(ck, &lp, Some(rng))
         .unwrap();
 
@@ -155,8 +153,7 @@ where
         point: Self::PolynomialInput,
     ) -> Result<Vec<Self::OpeningProof>, anyhow::Error> {
         let rng = &mut thread_rng();
-        let poseidon_config: PoseidonConfig<F> = poseidon_parameters();
-        let mut sponge = PoseidonSponge::new(&poseidon_config);
+        let mut sponge = Sha256Sponge::new();
 
         let lp: Vec<LabeledPolynomial<F, Self::Polynomial>> = poly
             .par_iter()
@@ -176,15 +173,15 @@ where
             })
             .collect();
 
-        let states: Vec<LinCodePCCommitmentState<F, FieldsToBytesHasher<F>>> =
+        let states: Vec<LinCodePCCommitmentState<F, Sha256FieldsToBytesHasher<F>>> =
             comm.par_iter().map(|cm| cm.state.clone()).collect();
 
         Ok(LinearCodePCS::<
-            MLLigero<F, MerkleConfig<F>, Self::Polynomial, FieldsToBytesHasher<F>>,
+            MLLigero<F, MerkleConfig<F>, Self::Polynomial, Sha256FieldsToBytesHasher<F>>,
             F,
             Self::Polynomial,
             MerkleConfig<F>,
-            FieldsToBytesHasher<F>,
+            Sha256FieldsToBytesHasher<F>,
         >::open(
             ck, &lp, &lc, &point, &mut sponge, &states, Some(rng)
         )?)
@@ -219,15 +216,14 @@ where
             .collect();
 
         let rng = &mut thread_rng();
-        let poseidon_config: PoseidonConfig<F> = poseidon_parameters();
-        let mut sponge = PoseidonSponge::new(&poseidon_config);
+        let mut sponge = Sha256Sponge::new();
 
         Ok(LinearCodePCS::<
-            MLLigero<F, MerkleConfig<F>, Self::Polynomial, FieldsToBytesHasher<F>>,
+            MLLigero<F, MerkleConfig<F>, Self::Polynomial, Sha256FieldsToBytesHasher<F>>,
             F,
             Self::Polynomial,
             MerkleConfig<F>,
-            FieldsToBytesHasher<F>,
+            Sha256FieldsToBytesHasher<F>,
         >::check(
             vk,
             &lc,

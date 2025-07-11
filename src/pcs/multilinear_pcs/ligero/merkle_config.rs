@@ -8,7 +8,7 @@ use ark_crypto_primitives::{
 
 use crate::PrimeField;
 
-use super::poseidon_config::{CustomPoseidonHasher, CustomTwoToOneHasher};
+use super::sha256_config::{Sha256Hasher, Sha256TwoToOneHasher};
 
 #[derive(Debug, Clone)]
 pub struct MerkleConfig<F: PrimeField> {
@@ -19,9 +19,9 @@ pub struct MerkleConfig<F: PrimeField> {
 
 impl<F: PrimeField + Absorb> Config for MerkleConfig<F> {
     type Leaf = Vec<u8>;
-    type LeafHash = CustomPoseidonHasher<F>;
-    type LeafDigest = <CustomPoseidonHasher<F> as CRHScheme>::Output;
-    type InnerDigest = <CustomTwoToOneHasher<F> as TwoToOneCRHScheme>::Output;
+    type LeafHash = Sha256Hasher<F>;
+    type LeafDigest = <Sha256Hasher<F> as CRHScheme>::Output;
+    type InnerDigest = <Sha256TwoToOneHasher<F> as TwoToOneCRHScheme>::Output;
     type LeafInnerDigestConverter = IdentityDigestConverter<Self::LeafDigest>;
-    type TwoToOneHash = CustomTwoToOneHasher<F>;
+    type TwoToOneHash = Sha256TwoToOneHasher<F>;
 }
