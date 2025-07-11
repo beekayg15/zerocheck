@@ -21,7 +21,7 @@ pub struct Proof<PCS: PolynomialCommitmentScheme> {
     pub(crate) q_opening: PCS::OpeningProof,
     pub(crate) inp_openings: Vec<PCS::OpeningProof>,
     pub(crate) inp_evals: Vec<PCS::PolynomialOutput>,
-    pub(crate) q_eval: PCS::PolynomialOutput
+    pub(crate) q_eval: PCS::PolynomialOutput,
 }
 
 #[derive(Clone)]

@@ -3,6 +3,10 @@ name = "zerocheck"
 version = "0.1.0"
 edition = "2021"
 
+[alias]
+lint = "clippy -- -D warnings"
+format = "fmt"
+
 [dependencies]
 anyhow = "1.0.97"
 ark-ff = { version = "^0.5.0", default-features = false, features = ["parallel", "std"] }

@@ -9,10 +9,10 @@ mod tests {
     use ark_std::UniformRand;
     use ark_std::{end_timer, start_timer};
     use rayon::prelude::*;
-    use zerocheck::pcs::univariate_pcs::kzg::KZG;
-    use zerocheck::transcripts::ZCTranscript;
     use std::iter::zip;
     use std::time::Instant;
+    use zerocheck::pcs::univariate_pcs::kzg::KZG;
+    use zerocheck::transcripts::ZCTranscript;
     use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
     use zerocheck::ZeroCheck;
 
@@ -69,13 +69,14 @@ mod tests {
             .map(|_| {
                 OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
                     &zp.clone(),
-                    &inp_evals.clone(), 
+                    &inp_evals.clone(),
                     &domain,
                     &mut ZCTranscript::init_transcript(),
                     None,
                     None,
                     None,
-                ).unwrap()
+                )
+                .unwrap()
             })
             .collect::<Vec<_>>()
             .last()
@@ -90,14 +91,14 @@ mod tests {
 
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
-        let result =
-            OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
-                &zp,
-                &inp_evals, 
-                &proof, 
-                &domain,
-                &mut ZCTranscript::init_transcript()
-            ).unwrap();
+        let result = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
+            &zp,
+            &inp_evals,
+            &proof,
+            &domain,
+            &mut ZCTranscript::init_transcript(),
+        )
+        .unwrap();
 
         end_timer!(verify_timer);
 

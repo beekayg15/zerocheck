@@ -1,10 +1,9 @@
-use std::marker::PhantomData;
 use ark_crypto_primitives::{
-    crh::{
-        CRHScheme, TwoToOneCRHScheme
-    }, 
-    merkle_tree::{Config, IdentityDigestConverter}, sponge::Absorb
+    crh::{CRHScheme, TwoToOneCRHScheme},
+    merkle_tree::{Config, IdentityDigestConverter},
+    sponge::Absorb,
 };
+use std::marker::PhantomData;
 
 use crate::PrimeField;
 

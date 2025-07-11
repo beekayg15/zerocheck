@@ -1,8 +1,14 @@
 use std::{borrow::Borrow, marker::PhantomData};
 
-use ark_crypto_primitives::{crh::{CRHScheme, TwoToOneCRHScheme}, sponge::{poseidon::{PoseidonConfig, PoseidonSponge}, Absorb}};
-use ark_ff::PrimeField;
 use ark_crypto_primitives::sponge::CryptographicSponge;
+use ark_crypto_primitives::{
+    crh::{CRHScheme, TwoToOneCRHScheme},
+    sponge::{
+        poseidon::{PoseidonConfig, PoseidonSponge},
+        Absorb,
+    },
+};
+use ark_ff::PrimeField;
 
 pub fn poseidon_parameters<F: PrimeField>() -> PoseidonConfig<F> {
     let full_rounds = 8;
@@ -661,13 +667,15 @@ pub struct CustomPoseidonHasher<F: PrimeField> {
 impl<F: PrimeField + Absorb> CRHScheme for CustomPoseidonHasher<F> {
     type Input = Vec<u8>;
     type Output = Vec<u8>;
-    
+
     type Parameters = ();
-    
-    fn setup<R: ark_std::rand::Rng>(_r: &mut R) -> Result<Self::Parameters, ark_crypto_primitives::Error> {
+
+    fn setup<R: ark_std::rand::Rng>(
+        _r: &mut R,
+    ) -> Result<Self::Parameters, ark_crypto_primitives::Error> {
         Ok(())
     }
-    
+
     fn evaluate<T: std::borrow::Borrow<Self::Input>>(
         _parameters: &Self::Parameters,
         input: T,
@@ -676,7 +684,7 @@ impl<F: PrimeField + Absorb> CRHScheme for CustomPoseidonHasher<F> {
         let mut sponge = PoseidonSponge::new(&poseidon_config);
 
         let elems: Vec<F> = vec_bytes_to_field_vec(input.borrow().to_vec());
-        
+
         sponge.absorb(&elems);
         let res = sponge.squeeze_bytes(32);
         Ok(res)
@@ -690,13 +698,15 @@ pub struct CustomTwoToOneHasher<F: PrimeField> {
 impl<F: PrimeField + Absorb> TwoToOneCRHScheme for CustomTwoToOneHasher<F> {
     type Input = Vec<u8>;
     type Output = Vec<u8>;
-    
+
     type Parameters = ();
-    
-    fn setup<R: ark_std::rand::Rng>(_r: &mut R) -> Result<Self::Parameters, ark_crypto_primitives::Error> {
+
+    fn setup<R: ark_std::rand::Rng>(
+        _r: &mut R,
+    ) -> Result<Self::Parameters, ark_crypto_primitives::Error> {
         Ok(())
     }
-    
+
     fn evaluate<T: Borrow<Self::Input>>(
         parameters: &Self::Parameters,
         left_input: T,
@@ -704,7 +714,7 @@ impl<F: PrimeField + Absorb> TwoToOneCRHScheme for CustomTwoToOneHasher<F> {
     ) -> Result<Self::Output, ark_crypto_primitives::Error> {
         Self::compress(parameters, left_input, right_input)
     }
-    
+
     fn compress<T: std::borrow::Borrow<Self::Output>>(
         _parameters: &Self::Parameters,
         left_input: T,
@@ -715,7 +725,7 @@ impl<F: PrimeField + Absorb> TwoToOneCRHScheme for CustomTwoToOneHasher<F> {
 
         let left_elems: Vec<F> = vec_bytes_to_field_vec(left_input.borrow().to_vec());
         let right_elems: Vec<F> = vec_bytes_to_field_vec(right_input.borrow().to_vec());
-        
+
         sponge.absorb(&left_elems);
         sponge.absorb(&right_elems);
         let res = sponge.squeeze_bytes(32);
@@ -727,12 +737,14 @@ pub struct FieldsToBytesHasher<F: PrimeField> {
     _field_data: PhantomData<F>,
 }
 
-impl<F: PrimeField + Absorb> CRHScheme for FieldsToBytesHasher<F>  {
+impl<F: PrimeField + Absorb> CRHScheme for FieldsToBytesHasher<F> {
     type Input = Vec<F>;
     type Output = Vec<u8>;
     type Parameters = ();
 
-    fn setup<R: ark_std::rand::Rng>(_r: &mut R) -> Result<Self::Parameters, ark_crypto_primitives::Error> {
+    fn setup<R: ark_std::rand::Rng>(
+        _r: &mut R,
+    ) -> Result<Self::Parameters, ark_crypto_primitives::Error> {
         Ok(())
     }
 
@@ -753,7 +765,7 @@ pub fn vec_bytes_to_field_vec<F: PrimeField>(bytes: Vec<u8>) -> Vec<F> {
     let bits_per_elem = F::MODULUS_BIT_SIZE as usize;
 
     // Convert bits to bytes, rounding up
-    let bytes_per_elem = (bits_per_elem + 7) / 8; 
+    let bytes_per_elem = (bits_per_elem + 7) / 8;
     let mut result = vec![];
 
     // Iterate over chunks of the byte array and convert each chunk to a field element

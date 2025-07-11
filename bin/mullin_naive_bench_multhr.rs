@@ -3,7 +3,9 @@ use clap::Parser;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::{
-    transcripts::ZCTranscript, zc::multilinear_zc::naive::{rand_zero, NaiveMLZeroCheck}, ZeroCheck
+    transcripts::ZCTranscript,
+    zc::multilinear_zc::naive::{rand_zero, NaiveMLZeroCheck},
+    ZeroCheck,
 };
 
 fn test_template(
@@ -18,13 +20,9 @@ fn test_template(
     // f = ∑_{i=1..6} rand_coeff*(g_i1·g_i2···g_i{1..=3}).
     // g_ij are MLEs size 2^num_vars, stored in `poly.flat_ml_extensions` (or poly.raw_pointers_lookup_table as (Vec, idx)).
     // (rand_coeff, ij info) are stored in `poly.products`.
-    let poly = rand_zero::<Fr> (
-        num_vars, 
-        num_multiplicands_range, 
-        num_products
-    );
+    let poly = rand_zero::<Fr>(num_vars, num_multiplicands_range, num_products);
 
-    let zp= NaiveMLZeroCheck::<Fr>::setup(&None).unwrap();
+    let zp = NaiveMLZeroCheck::<Fr>::setup(&None).unwrap();
 
     let duration = instant.elapsed().as_millis();
     print!("Random polynomial terms: ");
@@ -38,13 +36,14 @@ fn test_template(
         .map(|_| {
             NaiveMLZeroCheck::<Fr>::prove(
                 &zp.clone(),
-                &poly.clone(), 
+                &poly.clone(),
                 &num_vars,
                 &mut ZCTranscript::init_transcript(),
                 None,
                 None,
                 None,
-            ).unwrap()
+            )
+            .unwrap()
         })
         .collect::<Vec<_>>()
         .last()
@@ -55,11 +54,12 @@ fn test_template(
 
     let result = NaiveMLZeroCheck::<Fr>::verify(
         &zp,
-        &poly, 
-        &proof, 
+        &poly,
+        &proof,
         &num_vars,
-        &mut ZCTranscript::init_transcript()
-    ).unwrap();
+        &mut ZCTranscript::init_transcript(),
+    )
+    .unwrap();
 
     assert_eq!(result, true);
     return runtime.as_millis();

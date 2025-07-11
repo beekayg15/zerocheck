@@ -237,10 +237,7 @@ where
             input_poly.poly_info.num_vars, *zero_domain,
             "Dimensions of boolean hypercube do not match the given polynomials"
         );
-        println!(
-            "Start Verifier Opt multilinear for 2^{:?}.",
-            zero_domain
-        );
+        println!("Start Verifier Opt multilinear for 2^{:?}.", zero_domain);
 
         let flatten_mle_extensions: Vec<DenseMultilinearExtension<_>> = input_poly
             .clone()

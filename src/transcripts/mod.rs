@@ -1,16 +1,16 @@
+use crate::to_bytes;
 use ark_ff::PrimeField;
 use ark_serialize::CanonicalSerialize;
-use merlin::Transcript;
-use std::marker::PhantomData;
 use ark_std::string::String;
 use displaydoc::Display;
-use crate::to_bytes;
+use merlin::Transcript;
+use std::marker::PhantomData;
 
 #[derive(Clone)]
 pub struct ZCTranscript<F: PrimeField> {
     transcript: Transcript,
     is_empty: bool,
-    _field_data: PhantomData<F>
+    _field_data: PhantomData<F>,
 }
 
 impl<F: PrimeField> ZCTranscript<F> {

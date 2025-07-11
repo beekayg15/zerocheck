@@ -1,14 +1,14 @@
 #[cfg(test)]
 mod tests {
-    use ark_poly::{
-        univariate::DensePolynomial, DenseUVPolynomial, 
-        GeneralEvaluationDomain, Evaluations, EvaluationDomain
-    };
-    use ark_std::{end_timer, start_timer};
-    use zerocheck::zc::univariate_zc::naive::NaiveUnivariateZeroCheck;
     use ark_bls12_381::Fr;
+    use ark_poly::{
+        univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Evaluations,
+        GeneralEvaluationDomain,
+    };
     use ark_std::UniformRand;
+    use ark_std::{end_timer, start_timer};
     use std::time::Instant;
+    use zerocheck::zc::univariate_zc::naive::NaiveUnivariateZeroCheck;
     use zerocheck::ZeroCheck;
 
     fn test_template(size: u32) -> u128 {
@@ -21,10 +21,7 @@ mod tests {
             .map(|f| domain.evaluate_vanishing_polynomial(f))
             .collect();
 
-        let g_evals = Evaluations::from_vec_and_domain(
-            evals_over_domain_g, 
-            domain
-        );
+        let g_evals = Evaluations::from_vec_and_domain(evals_over_domain_g, domain);
 
         let mut rand_coeffs = vec![];
 
@@ -41,39 +38,34 @@ mod tests {
         inp_evals.push(g_evals);
         inp_evals.push(h_evals);
 
-        let zp= NaiveUnivariateZeroCheck::<Fr>::setup(&None).unwrap();
+        let zp = NaiveUnivariateZeroCheck::<Fr>::setup(&None).unwrap();
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
         let instant = Instant::now();
-        
-        let proof = 
-            NaiveUnivariateZeroCheck::<Fr>::prove(
-                &zp.clone(),
-                &inp_evals.clone(), 
-                &domain,
+
+        let proof = NaiveUnivariateZeroCheck::<Fr>::prove(
+            &zp.clone(),
+            &inp_evals.clone(),
+            &domain,
             &mut None,
-                None,
-                None,
-                None,
-        ).unwrap();
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         let runtime = instant.elapsed();
 
         end_timer!(proof_gen_timer);
-        
+
         // println!("Proof Generated: {:?}", proof);
 
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
-        let result = NaiveUnivariateZeroCheck::<Fr>
-            ::verify(
-                &zp, 
-                &inp_evals, 
-                &proof, 
-                &domain,
-                &mut None
-            ).unwrap();
+        let result =
+            NaiveUnivariateZeroCheck::<Fr>::verify(&zp, &inp_evals, &proof, &domain, &mut None)
+                .unwrap();
 
         end_timer!(verify_timer);
 
@@ -106,7 +98,11 @@ mod tests {
         }
 
         for i in 0..20 {
-            println!("Input Polynomial Degree: 2^{:?}\t|| Avg. Runtime: {:?}", sizes[i], (runtimes[i] as f32)/10.0);
+            println!(
+                "Input Polynomial Degree: 2^{:?}\t|| Avg. Runtime: {:?}",
+                sizes[i],
+                (runtimes[i] as f32) / 10.0
+            );
         }
     }
 }

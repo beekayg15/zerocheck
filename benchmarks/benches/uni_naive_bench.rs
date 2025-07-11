@@ -1,14 +1,10 @@
-use criterion::{
-    criterion_group, BenchmarkId,
-    Criterion, BatchSize, black_box
-};
 use ark_bls12_381::Fr;
 use ark_ff::UniformRand;
 use ark_poly::{
-    univariate::DensePolynomial, 
-    DenseUVPolynomial, EvaluationDomain, 
-    Evaluations, GeneralEvaluationDomain
+    univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Evaluations,
+    GeneralEvaluationDomain,
 };
+use criterion::{black_box, criterion_group, BatchSize, BenchmarkId, Criterion};
 use zerocheck::zc::univariate_zc::naive::NaiveUnivariateZeroCheck;
 use zerocheck::ZeroCheck;
 
@@ -23,10 +19,7 @@ fn naive_univariate_zero_check_benchmark(c: &mut Criterion) {
             .map(|f| domain.evaluate_vanishing_polynomial(f))
             .collect();
 
-        let g_evals = Evaluations::from_vec_and_domain(
-            evals_over_domain_g, 
-            domain
-        );
+        let g_evals = Evaluations::from_vec_and_domain(evals_over_domain_g, domain);
 
         let mut rand_coeffs = vec![];
 
@@ -46,15 +39,15 @@ fn naive_univariate_zero_check_benchmark(c: &mut Criterion) {
         let zp = NaiveUnivariateZeroCheck::<Fr>::setup(&None).unwrap();
 
         group.bench_with_input(
-            BenchmarkId::new("uni_naive_zerocheck", size), &size, |b, &_size| {
+            BenchmarkId::new("uni_naive_zerocheck", size),
+            &size,
+            |b, &_size| {
                 b.iter_batched(
-                    || {
-                        inp_evals.clone()
-                    },
+                    || inp_evals.clone(),
                     |input_evals| {
                         let _proof = NaiveUnivariateZeroCheck::<Fr>::prove(
                             black_box(&zp.clone()),
-                            black_box(&input_evals), 
+                            black_box(&input_evals),
                             black_box(&domain),
                             &mut None,
                             None,
@@ -62,9 +55,9 @@ fn naive_univariate_zero_check_benchmark(c: &mut Criterion) {
                             None,
                         );
                     },
-                    BatchSize::LargeInput
+                    BatchSize::LargeInput,
                 )
-            }
+            },
         );
     }
     group.finish();
