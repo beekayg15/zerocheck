@@ -2,7 +2,6 @@ use std::marker::PhantomData;
 
 use crate::pcs::PolynomialCommitmentScheme;
 use anyhow::Ok;
-use ark_crypto_primitives::sponge::CryptographicSponge;
 use ark_crypto_primitives::{
     crh::{CRHScheme, TwoToOneCRHScheme},
     merkle_tree::Config,

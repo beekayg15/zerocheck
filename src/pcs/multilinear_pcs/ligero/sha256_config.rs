@@ -6,8 +6,12 @@ use ark_crypto_primitives::{
 };
 use ark_ff::PrimeField;
 use sha2::Sha256;
+use sha2::Digest;
 use ark_crypto_primitives::sponge::CryptographicSponge;
+use ark_crypto_primitives::sponge::FieldElementSize;
+use std::borrow::Borrow;
 
+#[derive(Debug, Clone)]
 pub struct Sha256Sponge {
     buffer: Vec<u8>,
     squeeze_counter: u64,
@@ -23,12 +27,14 @@ impl Sha256Sponge {
 }
 
 impl CryptographicSponge for Sha256Sponge {
-    fn new() -> Self {
+    type Config = ();
+
+    fn new(_config: &Self::Config) -> Self {
         Sha256Sponge::new()
     }
 
-    fn absorb(&mut self, input: &[u8]) {
-        self.buffer.extend_from_slice(input);
+    fn absorb(&mut self, input: &impl Absorb) {
+        self.buffer.extend_from_slice(&Absorb::to_sponge_bytes_as_vec(input));
     }
 
     fn squeeze_bytes(&mut self, num_bytes: usize) -> Vec<u8> {
@@ -51,9 +57,73 @@ impl CryptographicSponge for Sha256Sponge {
             .collect()
     }
 
-    fn reset(&mut self) {
-        self.buffer.clear();
-        self.squeeze_counter = 0;
+    fn squeeze_bits(&mut self, num_bits: usize) -> Vec<bool> {
+        let num_bytes = (num_bits + 7) / 8;
+        let bytes = self.squeeze_bytes(num_bytes);
+        let mut bits = Vec::with_capacity(num_bits);
+        for byte in bytes {
+            for i in (0..8).rev() {
+                if bits.len() == num_bits {
+                    break;
+                }
+                bits.push((byte >> i) & 1 == 1);
+            }
+            if bits.len() == num_bits {
+                break;
+            }
+        }
+        bits
+    }    
+
+    fn squeeze_field_elements_with_sizes<F: PrimeField>(
+        &mut self,
+        sizes: &[FieldElementSize],
+    ) -> Vec<F> {
+        if sizes.len() == 0 {
+            return Vec::new();
+        }
+
+        let mut total_bits = 0usize;
+        for size in sizes {
+            total_bits += size.num_bits;
+        }
+
+        let bits = self.squeeze_bits(total_bits);
+        let mut bits_window = bits.as_slice();
+
+        let mut output = Vec::with_capacity(sizes.len());
+        for size in sizes {
+            let num_bits = size.num_bits;
+            let emulated_bits_le: Vec<bool> = bits_window[..num_bits].to_vec();
+            bits_window = &bits_window[num_bits..];
+
+            let emulated_bytes = emulated_bits_le
+                .chunks(8)
+                .map(|bits| {
+                    let mut byte = 0u8;
+                    for (i, &bit) in bits.into_iter().enumerate() {
+                        if bit {
+                            byte += 1 << i;
+                        }
+                    }
+                    byte
+                })
+                .collect::<Vec<_>>();
+
+            output.push(F::from_le_bytes_mod_order(emulated_bytes.as_slice()));
+        }
+
+        output
+    }
+    
+    fn fork(&self, domain: &[u8]) -> Self {
+        let mut new_sponge = self.clone();
+    
+        let mut input = Absorb::to_sponge_bytes_as_vec(&domain.len());
+        input.extend_from_slice(domain);
+        new_sponge.absorb(&input);
+    
+        new_sponge
     }
 }
 
@@ -78,7 +148,7 @@ impl<F: PrimeField + Absorb> CRHScheme for Sha256Hasher<F> {
         let mut hasher = Sha256::new();
         hasher.update(input.borrow());
         let res = hasher.finalize();
-        Ok(res)
+        Ok(res.to_vec())
     }
 }
 
@@ -135,7 +205,11 @@ impl<F: PrimeField + Absorb> CRHScheme for Sha256FieldsToBytesHasher<F>  {
         input: T,
     ) -> Result<Self::Output, ark_crypto_primitives::Error> {
         let mut hasher = Sha256::new();
-        hasher.update(input.borrow());
+        // Convert each field element to bytes and feed into the hasher
+        for fe in input.borrow() {
+            let bytes = fe.into_bigint().to_bytes_be();
+            hasher.update(&bytes);
+        }
         let hash = hasher.finalize();
         Ok(hash.to_vec())
     }
