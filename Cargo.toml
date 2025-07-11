@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [alias]
-lint = "clippy -- -D warnings"
 format = "fmt"
 
 [dependencies]
