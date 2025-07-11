@@ -1,17 +1,9 @@
 use anyhow::{Error, Ok};
 use ark_ff::PrimeField;
-use ark_poly::{
-    DenseMultilinearExtension,
-    Polynomial, MultilinearExtension
-};
-use ark_std::rand::{
-    thread_rng, Rng 
-};
+use ark_poly::{DenseMultilinearExtension, MultilinearExtension, Polynomial};
+use ark_std::rand::{thread_rng, Rng};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::{
-    collections::HashMap, cmp::max,
-    marker::PhantomData, sync::Arc
-};
+use std::{cmp::max, collections::HashMap, marker::PhantomData, sync::Arc};
 
 use crate::pcs::PolynomialCommitmentScheme;
 
@@ -32,7 +24,7 @@ pub struct Proof<PCS: PolynomialCommitmentScheme> {
     pub(crate) prover_msgs: Vec<ProverMsg<PCS::PolynomialOutput>>,
     pub(crate) inp_mle_commitments: Vec<PCS::Commitment>,
     pub(crate) inp_mle_evals: Vec<PCS::PolynomialOutput>,
-    pub(crate) inp_mle_openings: Vec<PCS::OpeningProof>
+    pub(crate) inp_mle_openings: Vec<PCS::OpeningProof>,
 }
 
 /// Struct to store the necessary information about the virtual polynomial,
@@ -46,17 +38,17 @@ pub struct PolynomialInfo<F: PrimeField> {
     pub num_vars: usize,
     #[doc(hidden)]
     pub phantom: PhantomData<F>,
-} 
+}
 
 /// Struct to store the sum of products of MLEs
 #[derive(Clone, Debug)]
 pub struct VirtualPolynomial<F: PrimeField> {
     // information about the virtual polynomial
     pub poly_info: PolynomialInfo<F>,
-    // list of (indexed) MLEs which are to be multiplied 
-    // together along with a coefficient 
+    // list of (indexed) MLEs which are to be multiplied
+    // together along with a coefficient
     pub products: Vec<(F, Vec<usize>)>,
-    // list of dense multilinear extensions of multilinear 
+    // list of dense multilinear extensions of multilinear
     // polynomials used
     pub flat_ml_extensions: Vec<Arc<DenseMultilinearExtension<F>>>,
     raw_pointers_lookup_table: HashMap<*const DenseMultilinearExtension<F>, usize>,
@@ -69,7 +61,7 @@ impl<F: PrimeField> VirtualPolynomial<F> {
             poly_info: PolynomialInfo {
                 max_multiplicand: 0,
                 num_vars: num_variables,
-                phantom: PhantomData
+                phantom: PhantomData,
             },
             products: Vec::new(),
             flat_ml_extensions: Vec::new(),
@@ -86,11 +78,9 @@ impl<F: PrimeField> VirtualPolynomial<F> {
     pub fn add_product(
         &mut self,
         product: impl IntoIterator<Item = Arc<DenseMultilinearExtension<F>>>,
-        coefficient: F
+        coefficient: F,
     ) {
-        let product: Vec<Arc<DenseMultilinearExtension<F>>> = product
-            .into_iter()
-            .collect();
+        let product: Vec<Arc<DenseMultilinearExtension<F>>> = product.into_iter().collect();
         let mut indexed_product = Vec::with_capacity(product.len());
         assert!(!product.is_empty());
 
@@ -125,10 +115,11 @@ impl<F: PrimeField> VirtualPolynomial<F> {
     pub fn mul_mle(
         &mut self,
         mle: Arc<DenseMultilinearExtension<F>>,
-        coefficient: F
+        coefficient: F,
     ) -> Result<(), Error> {
         assert_eq!(
-            self.poly_info.num_vars, mle.num_vars(),
+            self.poly_info.num_vars,
+            mle.num_vars(),
             "Mismatch in number of variables"
         );
 
@@ -141,7 +132,7 @@ impl<F: PrimeField> VirtualPolynomial<F> {
                     .insert(mle_ptr, self.flat_ml_extensions.len());
                 self.flat_ml_extensions.push(mle);
                 self.flat_ml_extensions.len() - 1
-            },
+            }
         };
 
         for (prod_coef, indices) in self.products.iter_mut() {
@@ -159,8 +150,8 @@ impl<F: PrimeField> VirtualPolynomial<F> {
     /// Returns an error is point.len() does not match `num_variables`
     pub fn evaluate(&self, point: Vec<F>) -> F {
         assert_eq!(
-            point.len(), 
-            self.poly_info.num_vars, 
+            point.len(),
+            self.poly_info.num_vars,
             "vector provided does not match number of varibales in MLE"
         );
 
@@ -169,9 +160,7 @@ impl<F: PrimeField> VirtualPolynomial<F> {
             .map(|(c, p)| {
                 *c * p
                     .iter()
-                    .map(|&i| self.flat_ml_extensions[i].evaluate(
-                        &point.to_vec())
-                    )
+                    .map(|&i| self.flat_ml_extensions[i].evaluate(&point.to_vec()))
                     .product::<F>()
             })
             .sum()
@@ -184,9 +173,9 @@ impl<F: PrimeField> VirtualPolynomial<F> {
     //
     // This function is used in ZeroCheck
     pub fn build_f_hat(&self, r: &[F]) -> Result<Self, Error> {
-
         assert_eq!(
-            self.poly_info.num_vars, r.len(),
+            self.poly_info.num_vars,
+            r.len(),
             "Given vector does not match the number of variables"
         );
 
@@ -204,14 +193,9 @@ impl<F: PrimeField> VirtualPolynomial<F> {
 ///      eq(x,y) = \prod_i=1^num_var (x_i * y_i + (1-x_i)*(1-y_i))
 /// over r, which is
 ///      eq(x,y) = \prod_i=1^num_var (x_i * r_i + (1-x_i)*(1-r_i))
-pub fn build_eq_x_r<F: PrimeField> (
-    r: &[F],
-) -> Result<Arc<DenseMultilinearExtension<F>>, Error> {
+pub fn build_eq_x_r<F: PrimeField>(r: &[F]) -> Result<Arc<DenseMultilinearExtension<F>>, Error> {
     let evals = build_eq_x_r_vec(r)?;
-    let mle = DenseMultilinearExtension::from_evaluations_vec(
-        r.len(), 
-        evals
-    );
+    let mle = DenseMultilinearExtension::from_evaluations_vec(r.len(), evals);
 
     Ok(Arc::new(mle))
 }
@@ -223,7 +207,7 @@ pub fn build_eq_x_r<F: PrimeField> (
 ///      eq(x,y) = \prod_i=1^num_var (x_i * y_i + (1-x_i)*(1-y_i))
 /// over r, which is
 ///      eq(x,y) = \prod_i=1^num_var (x_i * r_i + (1-x_i)*(1-r_i))
-pub fn build_eq_x_r_vec<F: PrimeField> (r: &[F]) -> Result<Vec<F>, Error> {
+pub fn build_eq_x_r_vec<F: PrimeField>(r: &[F]) -> Result<Vec<F>, Error> {
     // we build eq(x,r) from its evaluations
     // we want to evaluate eq(x,r) over x \in {0, 1}^num_vars
     // for example, with num_vars = 4, x is a binary vector of 4, then
@@ -244,7 +228,7 @@ pub fn build_eq_x_r_vec<F: PrimeField> (r: &[F]) -> Result<Vec<F>, Error> {
 /// A helper function to build eq(x, r) recursively.
 /// This function takes `r.len()` steps, and for each step it requires a maximum
 /// `r.len()-1` multiplications.
-fn build_eq_x_r_helper<F: PrimeField> (r: &[F], buf: &mut Vec<F>) -> Result<(), Error> {
+fn build_eq_x_r_helper<F: PrimeField>(r: &[F], buf: &mut Vec<F>) -> Result<(), Error> {
     if r.is_empty() {
         assert!(!r.is_empty(), "invalid challenge");
     } else if r.len() == 1 {
@@ -288,7 +272,7 @@ fn build_eq_x_r_helper<F: PrimeField> (r: &[F], buf: &mut Vec<F>) -> Result<(), 
 /// - its sum of polynomial evaluations over the boolean hypercube
 pub fn random_mle_list<F: PrimeField>(
     nv: usize,
-    degree: usize
+    degree: usize,
 ) -> (Vec<Arc<DenseMultilinearExtension<F>>>, F) {
     let mut rng = thread_rng();
 
@@ -311,16 +295,14 @@ pub fn random_mle_list<F: PrimeField>(
 
     let list = multiplicands
         .into_iter()
-        .map(|x| Arc::new(DenseMultilinearExtension::from_evaluations_vec(
-            nv, 
-            x)))
+        .map(|x| Arc::new(DenseMultilinearExtension::from_evaluations_vec(nv, x)))
         .collect();
 
     (list, sum)
 }
 
 // Build a randomize list of mle-s whose sum is zero
-pub fn random_zero_mle_list<F: PrimeField> (
+pub fn random_zero_mle_list<F: PrimeField>(
     nv: usize,
     degree: usize,
 ) -> Vec<Arc<DenseMultilinearExtension<F>>> {
@@ -355,8 +337,7 @@ pub fn rand<F: PrimeField>(
 
     let mut poly = VirtualPolynomial::new(nv);
     for _ in 0..num_products {
-        let num_multiplicands =
-            rng.gen_range(num_multiplicands_range.0..num_multiplicands_range.1);
+        let num_multiplicands = rng.gen_range(num_multiplicands_range.0..num_multiplicands_range.1);
         let (product, product_sum) = random_mle_list(nv, num_multiplicands);
         let coefficient = F::rand(&mut rng);
         poly.add_product(product.into_iter(), coefficient);
@@ -368,7 +349,7 @@ pub fn rand<F: PrimeField>(
 
 /// Sample a random virtual polynomial that evaluates to zero everywhere
 /// over the boolean hypercube.
-pub fn rand_zero<F: PrimeField> (
+pub fn rand_zero<F: PrimeField>(
     nv: usize,
     num_multiplicands_range: (usize, usize),
     num_products: usize,
@@ -376,8 +357,7 @@ pub fn rand_zero<F: PrimeField> (
     let mut rng = thread_rng();
     let mut poly = VirtualPolynomial::new(nv);
     for _ in 0..num_products {
-        let num_multiplicands =
-            rng.gen_range(num_multiplicands_range.0..num_multiplicands_range.1);
+        let num_multiplicands = rng.gen_range(num_multiplicands_range.0..num_multiplicands_range.1);
         let product = random_zero_mle_list(nv, num_multiplicands);
         let coefficient = F::rand(&mut rng);
         poly.add_product(product.into_iter(), coefficient);
@@ -388,23 +368,21 @@ pub fn rand_zero<F: PrimeField> (
 
 /// Sample a random virtual polynomial of the form f = ghs + (1-s)(g+h) - o
 /// that evaluates to zero everywhere over the boolean hypercube
-pub fn custom_zero_test_case<F: PrimeField> (
-    nv: usize
-) -> VirtualPolynomial<F> {
+pub fn custom_zero_test_case<F: PrimeField>(nv: usize) -> VirtualPolynomial<F> {
     let mut poly = VirtualPolynomial::<F>::new(nv);
 
     let rand_g_evals: Vec<F> = (0..(1 << nv))
-            .into_par_iter()
-            .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
-            .collect();
+        .into_par_iter()
+        .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
+        .collect();
     let rand_h_evals: Vec<F> = (0..(1 << nv))
-            .into_par_iter()
-            .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
-            .collect();
+        .into_par_iter()
+        .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
+        .collect();
     let rand_s_evals: Vec<F> = (0..(1 << nv))
-            .into_par_iter()
-            .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
-            .collect();
+        .into_par_iter()
+        .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
+        .collect();
 
     let one_minus_s_evals: Vec<F> = (0..(1 << nv))
         .into_par_iter()
@@ -418,10 +396,10 @@ pub fn custom_zero_test_case<F: PrimeField> (
 
     let o_evals: Vec<F> = (0..(1 << nv))
         .into_par_iter()
-        .map(|i| (
-            rand_g_evals[i] * rand_h_evals[i] * rand_s_evals[i])
-            + (one_minus_s_evals[i] * g_plus_h_evals[i])
-        )
+        .map(|i| {
+            (rand_g_evals[i] * rand_h_evals[i] * rand_s_evals[i])
+                + (one_minus_s_evals[i] * g_plus_h_evals[i])
+        })
         .collect();
 
     let mut p1 = vec![];
@@ -432,25 +410,23 @@ pub fn custom_zero_test_case<F: PrimeField> (
     let mut p6 = vec![];
 
     let g_mle = Arc::new(DenseMultilinearExtension::<F>::from_evaluations_vec(
-        nv, 
-        rand_g_evals
+        nv,
+        rand_g_evals,
     ));
 
     let h_mle = Arc::new(DenseMultilinearExtension::<F>::from_evaluations_vec(
-        nv, 
-        rand_h_evals
+        nv,
+        rand_h_evals,
     ));
 
     let s_mle = Arc::new(DenseMultilinearExtension::<F>::from_evaluations_vec(
-        nv, 
-        rand_s_evals
+        nv,
+        rand_s_evals,
     ));
 
     let o_mle = Arc::new(DenseMultilinearExtension::<F>::from_evaluations_vec(
-        nv, 
-        o_evals
+        nv, o_evals,
     ));
-
 
     p1.push(g_mle.clone());
     p1.push(h_mle.clone());

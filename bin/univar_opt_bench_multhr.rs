@@ -119,9 +119,7 @@ fn opt_univ_zc_multhr_benchmark_ligero(
     batch_open_threads: Option<usize>,
 ) -> u128 {
     let test_timer = start_timer!(|| {
-        format!(
-            "Opt Univariate Proof Generation Test Ligero for 2^{size} work"
-        )
+        format!("Opt Univariate Proof Generation Test Ligero for 2^{size} work")
     });
 
     let inp_evals = input_evals.to_vec();

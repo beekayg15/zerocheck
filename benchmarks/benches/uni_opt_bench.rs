@@ -1,20 +1,16 @@
-use criterion::{
-    criterion_group, BenchmarkId,
-    Criterion, BatchSize, black_box
-};
-use ark_bls12_381::Fr;
 use ark_bls12_381::Bls12_381;
+use ark_bls12_381::Fr;
 use ark_ff::UniformRand;
 use ark_poly::{
-    univariate::DensePolynomial, Polynomial,
-    DenseUVPolynomial, EvaluationDomain, 
-    Evaluations, GeneralEvaluationDomain
+    univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Evaluations,
+    GeneralEvaluationDomain, Polynomial,
 };
+use ark_std::One;
+use criterion::{black_box, criterion_group, BatchSize, BenchmarkId, Criterion};
 use zerocheck::pcs::univariate_pcs::kzg::KZG;
 use zerocheck::transcripts::ZCTranscript;
 use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
 use zerocheck::ZeroCheck;
-use ark_std::One;
 
 fn opt_univariate_zero_check_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("uni_opt_zerocheck");
@@ -38,48 +34,27 @@ fn opt_univariate_zero_check_benchmark(c: &mut Criterion) {
         let h = DensePolynomial::from_coefficients_vec(rand_h_coeffs);
         let s = DensePolynomial::from_coefficients_vec(rand_s_coeffs);
 
-        let evals_over_domain_g: Vec<_> = domain
-            .elements()
-            .map(|f| g.evaluate(&f))
-            .collect();
+        let evals_over_domain_g: Vec<_> = domain.elements().map(|f| g.evaluate(&f)).collect();
 
-        let evals_over_domain_h: Vec<_> = domain
-            .elements()
-            .map(|f| h.evaluate(&f))
-            .collect();
+        let evals_over_domain_h: Vec<_> = domain.elements().map(|f| h.evaluate(&f)).collect();
 
-        let evals_over_domain_s: Vec<_> = domain
-            .elements()
-            .map(|f| s.evaluate(&f))
-            .collect();
+        let evals_over_domain_s: Vec<_> = domain.elements().map(|f| s.evaluate(&f)).collect();
 
         let evals_over_domain_o: Vec<_> = domain
             .elements()
             .map(|f| {
-                g.evaluate(&f) * h.evaluate(&f) * s.evaluate(&f) 
-                + (Fr::one() - s.evaluate(&f)) * (g.evaluate(&f) + h.evaluate(&f))
+                g.evaluate(&f) * h.evaluate(&f) * s.evaluate(&f)
+                    + (Fr::one() - s.evaluate(&f)) * (g.evaluate(&f) + h.evaluate(&f))
             })
             .collect();
 
-        let g_evals = Evaluations::from_vec_and_domain(
-            evals_over_domain_g, 
-            domain            
-        );
+        let g_evals = Evaluations::from_vec_and_domain(evals_over_domain_g, domain);
 
-        let h_evals = Evaluations::from_vec_and_domain(
-            evals_over_domain_h, 
-            domain
-        );
+        let h_evals = Evaluations::from_vec_and_domain(evals_over_domain_h, domain);
 
-        let s_evals = Evaluations::from_vec_and_domain(
-            evals_over_domain_s, 
-            domain
-        );
+        let s_evals = Evaluations::from_vec_and_domain(evals_over_domain_s, domain);
 
-        let o_evals = Evaluations::from_vec_and_domain(
-            evals_over_domain_o, 
-            domain
-        );
+        let o_evals = Evaluations::from_vec_and_domain(evals_over_domain_o, domain);
 
         let mut inp_evals = vec![];
         inp_evals.push(g_evals);
@@ -90,19 +65,18 @@ fn opt_univariate_zero_check_benchmark(c: &mut Criterion) {
         let max_degree = g.degree() + s.degree() + h.degree();
         let pp = max_degree;
 
-
         let zp = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
 
         group.bench_with_input(
-            BenchmarkId::new("uni_opt_zerocheck", size), &size, |b, &_size| {
+            BenchmarkId::new("uni_opt_zerocheck", size),
+            &size,
+            |b, &_size| {
                 b.iter_batched(
-                    || {
-                        inp_evals.clone()
-                    },
+                    || inp_evals.clone(),
                     |input_evals| {
                         let _proof = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
                             black_box(&zp.clone()),
-                            black_box(&input_evals), 
+                            black_box(&input_evals),
                             black_box(&domain),
                             &mut ZCTranscript::init_transcript(),
                             None,
@@ -110,9 +84,9 @@ fn opt_univariate_zero_check_benchmark(c: &mut Criterion) {
                             None,
                         );
                     },
-                    BatchSize::LargeInput
+                    BatchSize::LargeInput,
                 )
-            }
+            },
         );
     }
     group.finish();

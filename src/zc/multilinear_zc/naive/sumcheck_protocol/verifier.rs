@@ -1,18 +1,14 @@
 use ark_ff::PrimeField;
-use ark_std::{end_timer, start_timer};
 
-use crate::{
-    zc::multilinear_zc::naive::PolynomialInfo, 
-    utils::get_randomness
-};
+use crate::{utils::get_randomness, zc::multilinear_zc::naive::PolynomialInfo};
 
 use super::{prover::ProverMsg, IPforSumCheck};
 
-/// Struct to store the verifier message sent during 
+/// Struct to store the verifier message sent during
 /// eah round of the sumcheck protocol
 #[derive(Clone, Debug)]
 pub struct VerifierMsg<F: PrimeField> {
-    // challenge sampled by the verifier 
+    // challenge sampled by the verifier
     pub(crate) challenge: F,
 }
 
@@ -30,9 +26,9 @@ pub struct VerifierState<F: PrimeField> {
     pub round: usize,
     // maximum degree of the variables in the output polynomial
     pub max_multiplicand: usize,
-    // indicator to show of the verification of the sumcheck 
+    // indicator to show of the verification of the sumcheck
     // protocol is completed
-    pub finished: bool
+    pub finished: bool,
 }
 
 /// Struct to store the subclaim obtained at the end of the sumcheck protocol
@@ -41,15 +37,15 @@ pub struct SubClaim<F: PrimeField> {
     // set of field elements sampled as challenges by the verifier
     pub point: Vec<F>,
     // claimed value to which the output polynomial evaluates to on the point
-    pub expected_evaluation: F
+    pub expected_evaluation: F,
 }
 
 impl<F: PrimeField> IPforSumCheck<F> {
     /// initialize the verifier state at the start of the sumcheck protocol
-    /// 
+    ///
     /// Attribute:
     /// info: information about the virtual polynomial, i.e., max_degree and num_vars
-    /// 
+    ///
     /// Returns:
     /// the initial verifier state at the start of round 0
     pub fn verifier_init(info: PolynomialInfo<F>) -> VerifierState<F> {
@@ -65,31 +61,23 @@ impl<F: PrimeField> IPforSumCheck<F> {
 
     /// simulate the operations done by the verifier
     /// during a single round of the sumcheck protocol
-    /// 
+    ///
     /// Attributes
     /// verifier_state: State of the verifier
     /// prover_msg: evaluations sent by the prover
-    /// 
+    ///
     /// Returns
     /// verifier_msg: a random challenge sampled using Fiat-Shamir
     pub fn verifier_round(
         prover_msg: ProverMsg<F>,
         verifier_state: &mut VerifierState<F>,
     ) -> Option<VerifierMsg<F>> {
-        let verifier_single_round_timer = start_timer!(|| format!(
-            "Interative verifier for sumcheck at round {:?}", verifier_state.round
-        ));
-        
         // check if the verification step is already done
         if verifier_state.finished {
             panic!("Incorrect verifier state: Verifier is already finished.");
         }
 
         // compute the seed and input required to generate the random challenge
-        let verifier_challenge_sampling_timer = start_timer!(|| 
-            "verifier sampling a random challenge using the transcripts"
-        );
-
         let mut inp = vec![];
         for m in verifier_state.poly_rcvd.clone() {
             inp.extend(m.clone());
@@ -98,11 +86,9 @@ impl<F: PrimeField> IPforSumCheck<F> {
         let mut seed = prover_msg.evaluations.clone();
         seed.extend(verifier_state.challenges.clone());
 
-        let msg = VerifierMsg{
-            challenge: get_randomness(seed, inp)[0]
+        let msg = VerifierMsg {
+            challenge: get_randomness(seed, inp)[0],
         };
-
-        end_timer!(verifier_challenge_sampling_timer);
 
         // Update the verifier state with the new challenge
         verifier_state.challenges.push(msg.challenge);
@@ -113,28 +99,26 @@ impl<F: PrimeField> IPforSumCheck<F> {
         } else {
             verifier_state.round += 1;
         }
-
-        end_timer!(verifier_single_round_timer);
         Some(msg)
     }
 
     /// simulate the operations done by the verifier
-    /// at the end of the sumcheck protocol, i.e., 
+    /// at the end of the sumcheck protocol, i.e.,
     /// reduce the sumcheck to the claim that the given
-    /// virtual polynomial evaluates to a given value 
+    /// virtual polynomial evaluates to a given value
     /// at a point(set of challenges samples by the verifier)
-    /// 
+    ///
     /// Attributes
     /// verifier_state: State of the verifier
     /// asserted_sum: initial claimed sum of the virtual polynomial
     /// over the boolean hypercube
     ///
     /// Returns
-    /// subclaim: claim that the given virtual polynomial evaluates 
+    /// subclaim: claim that the given virtual polynomial evaluates
     /// to a certain value at a given point
     pub fn check_n_generate_subclaim(
         verifier_state: VerifierState<F>,
-        asserted_sum: F
+        asserted_sum: F,
     ) -> Result<SubClaim<F>, crate::Error> {
         //  check of the all the round in the sumcheck have been completed
         if !verifier_state.finished {
@@ -147,9 +131,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
         }
 
         // recursively check if the p_i(0) + p_i(1) = p_{i - 1}(r_{i-1})
-        let recursive_sum_check_timer = start_timer!(||
-            "recursively check if the p_i(0) + p_i(1) = p_{i - 1}(r_{i-1})"
-        );
         for i in 0..verifier_state.num_vars {
             let evaluations = &verifier_state.poly_rcvd[i];
 
@@ -160,40 +141,34 @@ impl<F: PrimeField> IPforSumCheck<F> {
             let p0 = evaluations[0];
             let p1 = evaluations[1];
 
-            assert_eq!(p0 + p1, expected, "IP for sum-check failed at round {:?}", i);
-
-            let uni_poly_interpolation_timer = start_timer!(|| format!(
-                "Interpolating the univariate polnomials at round {:?}",
+            assert_eq!(
+                p0 + p1,
+                expected,
+                "IP for sum-check failed at round {:?}",
                 i
-            ));
-            expected = interpolate_uni_poly(evaluations, verifier_state.challenges[i]);
+            );
 
-            end_timer!(uni_poly_interpolation_timer);
+            expected = interpolate_uni_poly(evaluations, verifier_state.challenges[i]);
         }
 
-        end_timer!(recursive_sum_check_timer);
-
-        Ok(SubClaim{
+        Ok(SubClaim {
             point: verifier_state.challenges,
             expected_evaluation: expected,
         })
     }
-} 
+}
 
 /// function to interpolate the univariate polynomial from
 /// the evaluations sent by the prover during each round and
 /// find the value of the univariate polynomial at a given point
-/// 
+///
 /// Attributes:
 /// p_i: evaluations of the univariate polynomial
 /// point: sampled challenge at which the polynomial should be evaluated
-/// 
+///
 /// Returns:
 /// the evaluation of the univariate polynomial at given point
-pub(crate) fn interpolate_uni_poly<F: PrimeField>(
-    p_i: &[F],
-    eval_at: F
-) -> F {
+pub(crate) fn interpolate_uni_poly<F: PrimeField>(p_i: &[F], eval_at: F) -> F {
     let len = p_i.len();
     let mut evals = vec![];
 
@@ -313,12 +288,10 @@ fn u64_factorial(a: usize) -> u64 {
 #[cfg(test)]
 mod test {
     use crate::zc::multilinear_zc::naive::sumcheck_protocol::verifier::interpolate_uni_poly;
-    use ark_poly::{
-        univariate::DensePolynomial, 
-        DenseUVPolynomial, Polynomial};
-    use ark_std::vec::Vec;
     use ark_bls12_381::Fr;
     use ark_ff::UniformRand;
+    use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
+    use ark_std::vec::Vec;
 
     type F = Fr;
 

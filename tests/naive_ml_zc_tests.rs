@@ -1,11 +1,13 @@
 #[cfg(test)]
-mod tests { 
-    use std::time::Instant;
+mod tests {
     use std::iter::zip;
+    use std::time::Instant;
 
     use ark_bls12_381::Fr;
     use zerocheck::{
-        transcripts::ZCTranscript, zc::multilinear_zc::naive::{rand_zero, NaiveMLZeroCheck}, ZeroCheck
+        transcripts::ZCTranscript,
+        zc::multilinear_zc::naive::{rand_zero, NaiveMLZeroCheck},
+        ZeroCheck,
     };
 
     fn test_template(
@@ -14,13 +16,9 @@ mod tests {
         num_products: usize,
         repeat: i32,
     ) -> u128 {
-        let poly = rand_zero::<Fr> (
-            num_vars, 
-            num_multiplicands_range, 
-            num_products
-        );
+        let poly = rand_zero::<Fr>(num_vars, num_multiplicands_range, num_products);
 
-        let zp= NaiveMLZeroCheck::<Fr>::setup(&None).unwrap();
+        let zp = NaiveMLZeroCheck::<Fr>::setup(&None).unwrap();
 
         let instant = Instant::now();
 
@@ -28,13 +26,14 @@ mod tests {
             .map(|_| {
                 NaiveMLZeroCheck::<Fr>::prove(
                     &zp.clone(),
-                    &poly.clone(), 
+                    &poly.clone(),
                     &num_vars,
                     &mut ZCTranscript::init_transcript(),
                     None,
                     None,
                     None,
-                ).unwrap()
+                )
+                .unwrap()
             })
             .collect::<Vec<_>>()
             .last()
@@ -45,11 +44,12 @@ mod tests {
 
         let result = NaiveMLZeroCheck::<Fr>::verify(
             &zp,
-            &poly, 
-            &proof, 
+            &poly,
+            &proof,
             &num_vars,
-            &mut ZCTranscript::init_transcript()
-        ).unwrap();
+            &mut ZCTranscript::init_transcript(),
+        )
+        .unwrap();
 
         assert_eq!(result, true);
         return runtime.as_millis();
@@ -63,16 +63,12 @@ mod tests {
 
     #[test]
     fn bench_naive_mle_zc() {
-        let repeat = 10;
-        let max_work_size = 16;
+        let repeat = 5;
+        let max_work_size = 10;
 
         let (sizes, runtimes): (Vec<usize>, Vec<u128>) = (1..max_work_size)
             .map(|size| {
-                let total_runtime: u128 = test_template(
-                    size, 
-                    (6, 7),
-                    size,
-                    repeat);
+                let total_runtime: u128 = test_template(size, (6, 7), size, repeat);
                 (size, total_runtime)
             })
             .unzip();

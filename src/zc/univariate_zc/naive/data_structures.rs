@@ -1,6 +1,6 @@
-use std::marker::PhantomData;
 use ark_ff::PrimeField;
 use ark_poly::univariate::DensePolynomial;
+use std::marker::PhantomData;
 
 /// This is the data structure of the proof to be sent to the verifer,
 /// to prove that there exists a quotient polynomial q(X), for which,
@@ -14,7 +14,7 @@ use ark_poly::univariate::DensePolynomial;
 #[derive(Clone, Debug)]
 pub struct Proof<F: PrimeField> {
     pub(crate) q: DensePolynomial<F>,
-    pub(crate) f: DensePolynomial<F>
+    pub(crate) f: DensePolynomial<F>,
 }
 
 #[derive(Clone)]

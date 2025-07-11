@@ -1,11 +1,8 @@
 use ark_ff::{batch_inversion, PrimeField};
-use ark_poly::{
-    DenseMultilinearExtension, 
-    MultilinearExtension
-};
-use ark_std::{cfg_into_iter, end_timer, start_timer, vec::Vec};
-use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator};
+use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{cfg_into_iter, vec::Vec};
+use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator};
 
 #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
@@ -16,7 +13,7 @@ use super::{verifier::VerifierMsg, IPforSumCheck};
 
 /// Struct to store the message to be sent by the prover
 /// at the end of each round of the interactive sum-check
-/// protocol. The prover sends the evaluations of the univarite 
+/// protocol. The prover sends the evaluations of the univarite
 /// polynomial at points (0..=max_degree)
 #[derive(Clone, Debug, CanonicalDeserialize, CanonicalSerialize)]
 pub struct ProverMsg<F: PrimeField> {
@@ -30,10 +27,10 @@ pub struct ProverMsg<F: PrimeField> {
 pub struct ProverState<F: PrimeField> {
     // challenges sampled by the verifier during each round
     pub challenges: Vec<F>,
-    // list of (indexed) MLEs which are to be multiplied 
-    // together along with a coefficient 
+    // list of (indexed) MLEs which are to be multiplied
+    // together along with a coefficient
     pub products: Vec<(F, Vec<usize>)>,
-    // list of dense multilinear extensions of multilinear 
+    // list of dense multilinear extensions of multilinear
     // polynomials used
     pub flat_ml_extensions: Vec<DenseMultilinearExtension<F>>,
     // number of variables in the MLEs
@@ -49,15 +46,13 @@ pub struct ProverState<F: PrimeField> {
 
 impl<F: PrimeField> IPforSumCheck<F> {
     /// initialize the prover state at the start of the sumcheck protocol
-    /// 
+    ///
     /// Attribute:
     /// polynomials: a virtual polynomial that is the function over multiple mle's
-    /// 
+    ///
     /// Returns:
     /// the initial prover state at the start of round 0
-    pub fn prover_init(polynomials: VirtualPolynomial<F>)  
-        -> ProverState<F>
-    {
+    pub fn prover_init(polynomials: VirtualPolynomial<F>) -> ProverState<F> {
         // initialize the prover state with necessary
         // information from the virtual polynomial
         let num_variables = polynomials.poly_info.num_vars;
@@ -88,23 +83,19 @@ impl<F: PrimeField> IPforSumCheck<F> {
 
     /// simulate the operations done by the prover
     /// during a single round of the sumcheck protocol
-    /// 
+    ///
     /// Attributes
     /// prover_state: State of the prover
     /// verifier_msg: challenge sampled by the verifier
-    /// 
+    ///
     /// Returns
     /// prover_msg: a univariate polynomials as evaluation
     /// over max_degree + 1 points
     pub fn prover_round(
-        prover_state: &mut ProverState<F>, 
+        prover_state: &mut ProverState<F>,
         verifier_msg: &Option<VerifierMsg<F>>,
         transcripts: &mut ZCTranscript<F>,
     ) -> ProverMsg<F> {
-        let prover_single_round_timer = start_timer!(|| format!(
-            "Interative prover for sumcheck at round {:?}", prover_state.round
-        ));
-
         let mut flattened_ml_extensions: Vec<DenseMultilinearExtension<F>> = prover_state
             .flat_ml_extensions
             .par_iter()
@@ -123,15 +114,11 @@ impl<F: PrimeField> IPforSumCheck<F> {
 
             // update the multilinear extensions with the challenge
             // sent by the verifier
-            let fix_mle_variable_timer = start_timer!(|| format!(
-                "fixing variable of the mle's with the challenge {:?}", r
-            ));
 
             flattened_ml_extensions
                 .par_iter_mut()
                 .for_each(|mle| *mle = mle.fix_variables(&[r]));
 
-            end_timer!(fix_mle_variable_timer);
         } else if prover_state.round > 0 {
             panic!("verifier message is empty");
         }
@@ -144,9 +131,6 @@ impl<F: PrimeField> IPforSumCheck<F> {
         }
 
         // Find the sum of the virtual polynomial over the remaining dimensions of the boolean hypercube
-        let bool_hypercube_sum_timer = start_timer!(|| 
-            "Evaluting over the remaining dim. of the boolean hypercube"
-        );
 
         let i = prover_state.round;
         let nv = prover_state.num_vars;
@@ -164,7 +148,7 @@ impl<F: PrimeField> IPforSumCheck<F> {
                         (
                             vec![(F::zero(), F::zero()); products.len()],
                             vec![F::zero(); products.len() + 1],
-                    )
+                        )
                     },
                     |(mut buf, mut acc), b| {
                         buf.iter_mut() // buf of a products (term): [(g_eval_b, g_step_b)],..,[(h_eval_b, h_step_b)];
@@ -177,13 +161,15 @@ impl<F: PrimeField> IPforSumCheck<F> {
                         acc[0] += buf.iter().map(|(eval, _)| eval).product::<F>(); // product: f_term0(0,0,0); (b=1)product: f_term0(0,1,0); (b=2)product: f_term0(1,0,0);
                         acc[1..].iter_mut().for_each(|acc| {
                             buf.iter_mut().for_each(|(eval, step)| *eval += step as &_); // buf_eval: [g(0,0,1),h(0,0,1)],...,[g(0,0,4),h(0,0,4)]; (b=1)buf_eval: [g(0,1,1),h(0,1,1)],[g(0,1,4),h(0,1,4)]; (b=2)buf_eval: [g(1,0,1),h(1,0,1)],[g(1,0,4),h(1,0,4)];
-                            *acc += buf.iter().map(|(eval, _)| eval).product::<F>(); // product: f_term0(0,0,1),f_term0(0,0,2),f_term0(0,0,4); (b=1)product: f_term0(0,1,1),f_term0(0,1,2),f_term0(0,1,4); (b=2)product: f_term0(1,0,1),f_term0(1,0,2),f_term0(1,0,4);
+                            *acc += buf.iter().map(|(eval, _)| eval).product::<F>();
+                            // product: f_term0(0,0,1),f_term0(0,0,2),f_term0(0,0,4); (b=1)product: f_term0(0,1,1),f_term0(0,1,2),f_term0(0,1,4); (b=2)product: f_term0(1,0,1),f_term0(1,0,2),f_term0(1,0,4);
                         });
                         (buf, acc)
-                    } // acc[1] (H_1_term0(1)): f_term0(0,0,1)+f_term0(0,1,1)+f_term0(1,0,1)+f_term0(1,1,1),..acc[4] (H_1_term0(4)): f_term0(0,0,4)+f_term0(0,1,4)+f_term0(1,0,4)+f_term0(1,1,4)
+                    }, // acc[1] (H_1_term0(1)): f_term0(0,0,1)+f_term0(0,1,1)+f_term0(1,0,1)+f_term0(1,1,1),..acc[4] (H_1_term0(4)): f_term0(0,0,4)+f_term0(0,1,4)+f_term0(1,0,4)+f_term0(1,1,4)
                 )
                 .map(|(_, partial)| partial) // partial (acc[0..4]): eval points to represent a poly term. size(acc)=deg(term)+1
-                .reduce( // save acc[0..4] as sum[0..4]
+                .reduce(
+                    // save acc[0..4] as sum[0..4]
                     || vec![F::zero(); products.len() + 1],
                     |mut sum, partial| {
                         sum.iter_mut()
@@ -211,15 +197,14 @@ impl<F: PrimeField> IPforSumCheck<F> {
             .map(|x| x.clone())
             .collect();
 
-        end_timer!(bool_hypercube_sum_timer);
-        end_timer!(prover_single_round_timer);
-
         // Send the evalutions on the max_degree + 1 points as the prover message
         let prover_msg = ProverMsg {
-            evaluations: products_sum
+            evaluations: products_sum,
         };
 
-        transcripts.append_serializable_element(b"prover_msg", &prover_msg).unwrap();
+        transcripts
+            .append_serializable_element(b"prover_msg", &prover_msg)
+            .unwrap();
 
         prover_msg
     }

@@ -237,10 +237,6 @@ where
             input_poly.poly_info.num_vars, *zero_domain,
             "Dimensions of boolean hypercube do not match the given polynomials"
         );
-        println!(
-            "Start Verifier Opt multilinear for 2^{:?}.",
-            zero_domain
-        );
 
         let flatten_mle_extensions: Vec<DenseMultilinearExtension<_>> = input_poly
             .clone()
@@ -321,9 +317,6 @@ where
         let lhs = subclaim.expected_evaluation;
         let rhs = inp_hat.evaluate(subclaim.point);
 
-        // println!("lhs: {:?}", lhs);
-        // println!("rhs: {:?}", rhs);
-
         // check if the virtual polynomial evaluates to the
         // given value over the sampled challenges
         let result: bool = lhs == rhs;
@@ -362,7 +355,6 @@ mod test {
             None,
         )
         .unwrap();
-        // println!("Proof Generated: {:?}", proof);
 
         let valid = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::verify(
             &zp,
@@ -381,8 +373,6 @@ mod test {
         let poly = custom_zero_test_case::<Fr>(10);
         let num_vars = 10;
 
-        println!("Unique input MLEs: {:?}", poly.flat_ml_extensions.len());
-
         let zp = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::setup(&num_vars).unwrap();
 
         let proof = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::prove(
@@ -395,7 +385,6 @@ mod test {
             None,
         )
         .unwrap();
-        println!("Proof Generated: {:?}", proof);
 
         let valid = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::verify(
             &zp,
@@ -414,8 +403,6 @@ mod test {
         let num_vars = 10;
         let poly = custom_zero_test_case::<Fr>(num_vars);
 
-        println!("Unique input MLEs: {:?}", poly.flat_ml_extensions.len());
-
         let zp = OptMLZeroCheck::<Fr, Ligero<Fr>>::setup(&num_vars).unwrap();
 
         let proof = OptMLZeroCheck::<Fr, Ligero<Fr>>::prove(
@@ -428,8 +415,6 @@ mod test {
             None,
         )
         .unwrap();
-
-        // println!("Proof Generated: {:?}", proof);
 
         let valid = OptMLZeroCheck::<Fr, Ligero<Fr>>::verify(
             &zp,
@@ -448,8 +433,6 @@ mod test {
         let num_vars = 10;
         let poly = custom_zero_test_case::<<EdwardsAffine as AffineRepr>::ScalarField>(num_vars);
 
-        println!("Unique input MLEs: {:?}", poly.flat_ml_extensions.len());
-
         type Fq = <EdwardsAffine as AffineRepr>::ScalarField;
 
         let zp = OptMLZeroCheck::<Fq, Hyrax<EdwardsAffine>>::setup(&num_vars).unwrap();
@@ -464,8 +447,6 @@ mod test {
             None,
         )
         .unwrap();
-
-        // println!("Proof Generated: {:?}", proof);
 
         let valid = OptMLZeroCheck::<Fq, Hyrax<EdwardsAffine>>::verify(
             &zp,

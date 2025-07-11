@@ -1,26 +1,22 @@
 #[cfg(test)]
-mod tests { 
-    use std::time::Instant;
+mod tests {
     use std::iter::zip;
+    use std::time::Instant;
 
-    use ark_bls12_381::{Fr, Bls12_381};
+    use ark_bls12_381::{Bls12_381, Fr};
     use zerocheck::{
-        pcs::multilinear_pcs::mpc::MPC, transcripts::ZCTranscript, zc::multilinear_zc::optimized::{
-            custom_zero_test_case, OptMLZeroCheck
-        }, ZeroCheck
+        pcs::multilinear_pcs::mpc::MPC,
+        transcripts::ZCTranscript,
+        zc::multilinear_zc::optimized::{custom_zero_test_case, OptMLZeroCheck},
+        ZeroCheck,
     };
 
-    fn test_template(
-        num_vars: usize,
-        repeat: i32,
-    ) -> u128 {
-        let poly = custom_zero_test_case::<Fr> (
-            num_vars
-        );
+    fn test_template(num_vars: usize, repeat: i32) -> u128 {
+        let poly = custom_zero_test_case::<Fr>(num_vars);
 
         let inp_params = num_vars;
 
-        let zp= OptMLZeroCheck::<Fr, MPC<Bls12_381>>::setup(&inp_params).unwrap();
+        let zp = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::setup(&inp_params).unwrap();
 
         let instant = Instant::now();
 
@@ -28,13 +24,14 @@ mod tests {
             .map(|_| {
                 OptMLZeroCheck::<Fr, MPC<Bls12_381>>::prove(
                     &zp.clone(),
-                    &poly.clone(), 
+                    &poly.clone(),
                     &num_vars,
                     &mut ZCTranscript::init_transcript(),
                     None, // run_threads
                     None, // batch_commit_threads
                     None, // batch_open_threads
-                ).unwrap()
+                )
+                .unwrap()
             })
             .collect::<Vec<_>>()
             .last()
@@ -45,33 +42,31 @@ mod tests {
 
         let result = OptMLZeroCheck::<Fr, MPC<Bls12_381>>::verify(
             &zp,
-            &poly, 
-            &proof, 
+            &poly,
+            &proof,
             &num_vars,
-            &mut ZCTranscript::init_transcript()
-        ).unwrap();
+            &mut ZCTranscript::init_transcript(),
+        )
+        .unwrap();
 
         assert_eq!(result, true);
         return runtime.as_millis();
     }
 
     #[test]
-    fn sample_naive_mle_test() {
+    fn sample_opt_mle_test() {
         let x = test_template(15, 5);
         println!("Proving time: {:?}", x);
     }
 
     #[test]
     fn bench_opt_mle_zc() {
-        let repeat = 10;
-        let max_work_size = 16;
+        let repeat = 5;
+        let max_work_size = 10;
 
         let (sizes, runtimes): (Vec<usize>, Vec<u128>) = (1..max_work_size)
             .map(|size| {
-                let total_runtime: u128 = test_template(
-                    size, 
-                    repeat
-                );
+                let total_runtime: u128 = test_template(size, repeat);
                 (size, total_runtime)
             })
             .unzip();

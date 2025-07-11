@@ -3,17 +3,15 @@ mod tests {
     use ark_bls12_381::{Bls12_381, Fr};
     use ark_poly::univariate::DensePolynomial;
     use ark_poly::{
-        DenseUVPolynomial, EvaluationDomain, 
-        GeneralEvaluationDomain, Polynomial,
-        Evaluations
+        DenseUVPolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain, Polynomial,
     };
-    use ark_std::{start_timer, end_timer};
+    use ark_std::One;
     use ark_std::UniformRand;
+    use ark_std::{end_timer, start_timer};
+    use std::time::Instant;
     use zerocheck::pcs::univariate_pcs::kzg::KZG;
     use zerocheck::transcripts::ZCTranscript;
     use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
-    use std::time::Instant;
-    use ark_std::One;
     use zerocheck::ZeroCheck;
 
     fn test_template(size: u32) -> u128 {
@@ -37,48 +35,27 @@ mod tests {
         let h = DensePolynomial::from_coefficients_vec(rand_h_coeffs);
         let s = DensePolynomial::from_coefficients_vec(rand_s_coeffs);
 
-        let evals_over_domain_g: Vec<_> = domain
-            .elements()
-            .map(|f| g.evaluate(&f))
-            .collect();
+        let evals_over_domain_g: Vec<_> = domain.elements().map(|f| g.evaluate(&f)).collect();
 
-        let evals_over_domain_h: Vec<_> = domain
-            .elements()
-            .map(|f| h.evaluate(&f))
-            .collect();
+        let evals_over_domain_h: Vec<_> = domain.elements().map(|f| h.evaluate(&f)).collect();
 
-        let evals_over_domain_s: Vec<_> = domain
-            .elements()
-            .map(|f| s.evaluate(&f))
-            .collect();
+        let evals_over_domain_s: Vec<_> = domain.elements().map(|f| s.evaluate(&f)).collect();
 
         let evals_over_domain_o: Vec<_> = domain
             .elements()
             .map(|f| {
-                g.evaluate(&f) * h.evaluate(&f) * s.evaluate(&f) 
-                + (Fr::one() - s.evaluate(&f)) * (g.evaluate(&f) + h.evaluate(&f))
+                g.evaluate(&f) * h.evaluate(&f) * s.evaluate(&f)
+                    + (Fr::one() - s.evaluate(&f)) * (g.evaluate(&f) + h.evaluate(&f))
             })
             .collect();
 
-        let g_evals = Evaluations::from_vec_and_domain(
-            evals_over_domain_g, 
-            domain            
-        );
+        let g_evals = Evaluations::from_vec_and_domain(evals_over_domain_g, domain);
 
-        let h_evals = Evaluations::from_vec_and_domain(
-            evals_over_domain_h, 
-            domain
-        );
+        let h_evals = Evaluations::from_vec_and_domain(evals_over_domain_h, domain);
 
-        let s_evals = Evaluations::from_vec_and_domain(
-            evals_over_domain_s, 
-            domain
-        );
+        let s_evals = Evaluations::from_vec_and_domain(evals_over_domain_s, domain);
 
-        let o_evals = Evaluations::from_vec_and_domain(
-            evals_over_domain_o, 
-            domain
-        );
+        let o_evals = Evaluations::from_vec_and_domain(evals_over_domain_o, domain);
 
         let mut inp_evals = vec![];
         inp_evals.push(g_evals);
@@ -95,32 +72,33 @@ mod tests {
 
         let instant = Instant::now();
 
-        let proof = 
-            OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
-                &zp.clone(),
-                &inp_evals.clone(), 
-                &domain,
-                &mut ZCTranscript::init_transcript(),
-                None, // run_threads
-                None, // batch_commit_threads
-                None, // batch_open_threads
-            ).unwrap();
+        let proof = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
+            &zp.clone(),
+            &inp_evals.clone(),
+            &domain,
+            &mut ZCTranscript::init_transcript(),
+            None, // run_threads
+            None, // batch_commit_threads
+            None, // batch_open_threads
+        )
+        .unwrap();
 
         let runtime = instant.elapsed();
 
         end_timer!(proof_gen_timer);
-        
+
         // println!("Proof Generated");
 
         let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
 
         let result = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
-            &zp, 
-            &inp_evals, 
-            &proof, 
+            &zp,
+            &inp_evals,
+            &proof,
             &domain,
-            &mut ZCTranscript::init_transcript()
-        ).unwrap();
+            &mut ZCTranscript::init_transcript(),
+        )
+        .unwrap();
 
         end_timer!(verify_timer);
 
@@ -141,9 +119,9 @@ mod tests {
     fn bench_opt_uni_zc() {
         let mut sizes = vec![];
         let mut runtimes = vec![];
-        for size in 1..16 {
+        for size in 1..11 {
             let mut total_runtime = 0;
-            for _ in 0..10 {
+            for _ in 0..5 {
                 total_runtime += test_template(size);
             }
             sizes.push(size);
@@ -152,8 +130,12 @@ mod tests {
             println!("Test completed for degree: {:?}", 1 << size);
         }
 
-        for i in 0..15 {
-            println!("Input Polynomial Degree: 2^{:?}\t|| Avg. Runtime: {:?}", sizes[i], (runtimes[i] as f32)/10.0);
+        for i in 0..10 {
+            println!(
+                "Input Polynomial Degree: 2^{:?}\t|| Avg. Runtime: {:?}",
+                sizes[i],
+                (runtimes[i] as f32) / 10.0
+            );
         }
     }
 }

@@ -1,4 +1,4 @@
-pub mod mpc;
 pub mod hyrax;
-pub mod ligero;
 pub mod kzg;
+pub mod ligero;
+pub mod mpc;

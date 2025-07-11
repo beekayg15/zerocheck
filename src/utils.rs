@@ -2,25 +2,24 @@ use ark_crypto_primitives::prf::Blake2s;
 use ark_crypto_primitives::prf::PRF;
 use ark_ec::pairing::Pairing;
 use ark_ec::AffineRepr;
+use ark_ff::BigInteger;
 use ark_ff::Field;
 use ark_ff::PrimeField;
-use ark_ff::BigInteger;
 use sha3::{Digest, Sha3_256};
 
 /// function to convert a vector of field elements to list of bytes
-/// 
+///
 /// Attributes:
 /// bytes - list of bytes(u8 values)
-/// 
+///
 /// Returns
 /// a vec<F> from the list of bytes(u8 values)
 pub fn bytes_to_field_vec<F: PrimeField>(bytes: [u8; 32]) -> Vec<F> {
-    
     // Compute the number of bits required to represent an element in field F
     let bits_per_elem = F::MODULUS_BIT_SIZE as usize;
 
     // Convert bits to bytes, rounding up
-    let bytes_per_elem = (bits_per_elem + 7) / 8; 
+    let bytes_per_elem = (bits_per_elem + 7) / 8;
     let mut result = vec![];
 
     // Iterate over chunks of the byte array and convert each chunk to a field element
@@ -34,10 +33,10 @@ pub fn bytes_to_field_vec<F: PrimeField>(bytes: [u8; 32]) -> Vec<F> {
 }
 
 /// function to convert a vector of field elements to list of bytes
-/// 
+///
 /// Attributes:
 /// field_elems - vector of field elements
-/// 
+///
 /// Returns
 /// a list of bytes(u8 values) from the vec<F>
 pub fn field_vec_to_fixed_bytes<F: PrimeField>(field_elems: Vec<F>) -> [u8; 32] {
@@ -66,10 +65,10 @@ pub fn field_vec_to_fixed_bytes<F: PrimeField>(field_elems: Vec<F>) -> [u8; 32] 
 }
 
 /// function to convert a vector of group elements to list of bytes
-/// 
+///
 /// Attributes:
 /// group_elems - vector of group elements
-/// 
+///
 /// Returns
 /// a list of bytes(u8 values) from the vec<F>
 pub fn group_vec_to_fixed_bytes<E: Pairing>(group_elems: Vec<E::G1Affine>) -> [u8; 32] {
@@ -88,11 +87,11 @@ pub fn group_vec_to_fixed_bytes<E: Pairing>(group_elems: Vec<E::G1Affine>) -> [u
 }
 
 /// function to sample a random value in field F
-/// 
+///
 /// Attributes:
 /// seed - seed to the PRF as vec<F>
 /// inp - input to the PRF as vec<F>
-/// 
+///
 /// Returns
 /// a random value in the Field F
 pub fn get_randomness<F: PrimeField>(seed: Vec<F>, inp: Vec<F>) -> Vec<F> {
@@ -106,14 +105,17 @@ pub fn get_randomness<F: PrimeField>(seed: Vec<F>, inp: Vec<F>) -> Vec<F> {
 }
 
 /// function to sample a random value in field F from Group elements
-/// 
+///
 /// Attributes:
 /// seed - seed to the PRF as vec<G>
 /// inp - input to the PRF as vec<G>
-/// 
+///
 /// Returns
 /// a random value in the Field F
-pub fn get_randomness_from_ecc<E: Pairing, F: PrimeField>(seed: Vec<E::G1Affine>, inp: Vec<E::G1Affine>) -> Vec<F> {
+pub fn get_randomness_from_ecc<E: Pairing, F: PrimeField>(
+    seed: Vec<E::G1Affine>,
+    inp: Vec<E::G1Affine>,
+) -> Vec<F> {
     let seed: [u8; 32] = group_vec_to_fixed_bytes::<E>(seed);
     let inp: [u8; 32] = group_vec_to_fixed_bytes::<E>(inp);
     let mut hasher = Sha3_256::new();
@@ -124,35 +126,35 @@ pub fn get_randomness_from_ecc<E: Pairing, F: PrimeField>(seed: Vec<E::G1Affine>
 }
 
 /// function to generate random indices
-/// 
+///
 /// Attributes:
 /// number_indices - number of random indices to be sampled
 /// seed - seed to the PRF as vec<F>
 /// inp - input to the PRF as vec<F>
 /// max_index - range of the indices to be generated
-/// 
+///
 /// Returns,
 /// `number_indices` random values sampled from [0 ... `max_index - 1`]
 /// using the seed and input to the pseudo-random function
 pub fn get_random_indices<F: PrimeField>(
-    number_indices: usize, 
-    seed: Vec<F>, 
+    number_indices: usize,
+    seed: Vec<F>,
     inp: Vec<F>,
     max_index: usize,
 ) -> Vec<usize> {
     let seed: [u8; 32] = field_vec_to_fixed_bytes(seed);
     let mut inp: [u8; 32] = field_vec_to_fixed_bytes(inp);
-    let mut r:Vec<F> = bytes_to_field_vec(Blake2s::evaluate(&seed, &inp).unwrap());
+    let mut r: Vec<F> = bytes_to_field_vec(Blake2s::evaluate(&seed, &inp).unwrap());
 
     let mut indices: Vec<usize> = vec![];
-    let mut _bytes= [0u8; 8];
+    let mut _bytes = [0u8; 8];
 
     inp = field_vec_to_fixed_bytes(r.clone());
 
-    for _ in 0 .. number_indices {
+    for _ in 0..number_indices {
         r = bytes_to_field_vec(Blake2s::evaluate(&seed, &inp).unwrap());
         inp = field_vec_to_fixed_bytes(r.clone());
-        _bytes.clone_from_slice(&inp[0 .. 8]);
+        _bytes.clone_from_slice(&inp[0..8]);
         indices.push(usize::from_be_bytes(_bytes) % max_index);
     }
 
