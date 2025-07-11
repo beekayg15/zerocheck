@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn bench_opt_uni_zc() {
         let repeat = 5;
-        let max_work_size = 1..10;
+        let max_work_size = 1..11;
 
         let (sizes, runtimes): (Vec<u32>, Vec<u128>) = (max_work_size)
             .map(|size| {

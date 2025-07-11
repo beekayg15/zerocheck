@@ -119,7 +119,7 @@ mod tests {
     fn bench_opt_uni_zc() {
         let mut sizes = vec![];
         let mut runtimes = vec![];
-        for size in 1..10 {
+        for size in 1..11 {
             let mut total_runtime = 0;
             for _ in 0..5 {
                 total_runtime += test_template(size);
@@ -130,7 +130,7 @@ mod tests {
             println!("Test completed for degree: {:?}", 1 << size);
         }
 
-        for i in 0..15 {
+        for i in 0..10 {
             println!(
                 "Input Polynomial Degree: 2^{:?}\t|| Avg. Runtime: {:?}",
                 sizes[i],
