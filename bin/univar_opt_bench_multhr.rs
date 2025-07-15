@@ -7,7 +7,10 @@ use clap::Parser;
 use rayon::prelude::*;
 use std::iter::zip;
 use std::time::Instant;
-use zerocheck::pcs::univariate_pcs::{kzg::KZG, ligero::Ligero};
+use zerocheck::pcs::univariate_pcs::{
+    kzg::KZG,
+    ligero::{Ligero, LigeroPoseidon},
+};
 use zerocheck::transcripts::ZCTranscript;
 use zerocheck::zc::univariate_zc::optimized::data_structures::ZeroCheckParams;
 use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
@@ -159,6 +162,58 @@ fn opt_univ_zc_multhr_benchmark_ligero(
     return runtime.as_millis();
 }
 
+fn opt_univ_zc_multhr_benchmark_ligero_poseidon(
+    input_evals: &[Evaluations<Fr>; 4],
+    domain: GeneralEvaluationDomain<Fr>,
+    global_params: &ZeroCheckParams<LigeroPoseidon<Fr>>,
+    size: u32,
+    run_threads: Option<usize>,
+    batch_commit_threads: Option<usize>,
+    batch_open_threads: Option<usize>,
+) -> u128 {
+    let test_timer = start_timer!(|| {
+        format!(
+            "Opt Univariate Proof Generation Test LigeroPoseidon for 2^{size} work"
+        )
+    });
+
+    let inp_evals = input_evals.to_vec();
+    let instant = Instant::now();
+    let proof_gen_timer = start_timer!(|| "Prove fn called for LigeroPoseidon");
+
+    let proof = OptimizedUnivariateZeroCheck::<Fr, LigeroPoseidon<Fr>>::prove(
+        &global_params,
+        &inp_evals,
+        &domain,
+        &mut ZCTranscript::init_transcript(),
+        run_threads,
+        batch_commit_threads,
+        batch_open_threads,
+    )
+    .unwrap();
+
+    end_timer!(proof_gen_timer);
+    let runtime = instant.elapsed();
+
+    let verify_timer = start_timer!(|| "Verify fn called for LigeroPoseidon");
+
+    let result = OptimizedUnivariateZeroCheck::<Fr, LigeroPoseidon<Fr>>::verify(
+        &global_params,
+        &inp_evals,
+        &proof,
+        &domain,
+        &mut ZCTranscript::init_transcript(),
+    )
+    .unwrap();
+
+    end_timer!(verify_timer);
+
+    assert_eq!(result, true);
+
+    end_timer!(test_timer);
+    return runtime.as_millis();
+}
+
 #[derive(Parser, Debug)]
 struct Args {
     /// Number of repetitions for each test
@@ -244,6 +299,27 @@ fn bench_opt_uni_zc() {
                                 size, repeat_time
                             );
                             opt_univ_zc_multhr_benchmark_ligero(
+                                &input_evals,
+                                domain,
+                                &global_params,
+                                size as u32,
+                                Some(args.run_threads as usize),
+                                Some(args.batch_commit_threads as usize),
+                                Some(args.batch_opening_threads as usize),
+                            )
+                        })
+                        .sum()
+                }
+                "ligero_poseidon" => {
+                    let global_params =
+                        OptimizedUnivariateZeroCheck::<Fr, LigeroPoseidon<Fr>>::setup(&pp).unwrap();
+                    (0..args.repeat)
+                        .map(|repeat_time| {
+                            println!(
+                                "Running LigeroPoseidon test for 2^{} with repeat: {}",
+                                size, repeat_time
+                            );
+                            opt_univ_zc_multhr_benchmark_ligero_poseidon(
                                 &input_evals,
                                 domain,
                                 &global_params,

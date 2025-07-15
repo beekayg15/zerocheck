@@ -6,7 +6,7 @@ use ark_crypto_primitives::{
     sponge::{Absorb, CryptographicSponge, FieldElementSize},
 };
 use ark_ff::{BigInteger, PrimeField};
-use sha2::{Digest, Sha256};
+use sha3::{Digest, Sha3_256 as Sha256}; // use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone)]
 pub struct Sha256Sponge {

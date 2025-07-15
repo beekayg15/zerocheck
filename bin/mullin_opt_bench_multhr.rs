@@ -2,10 +2,16 @@ use ark_bls12_381::{Bls12_381, Fr};
 use ark_ec::AffineRepr;
 use ark_ed_on_bls12_381::EdwardsAffine;
 use clap::Parser;
+use core::hash;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::{
-    pcs::multilinear_pcs::{hyrax::Hyrax, kzg::MultilinearKZG, ligero::Ligero, mpc::MPC},
+    pcs::multilinear_pcs::{
+        hyrax::Hyrax,
+        kzg::MultilinearKZG,
+        ligero::{Ligero, LigeroPoseidon},
+        mpc::MPC,
+    },
     transcripts::ZCTranscript,
     zc::multilinear_zc::optimized::{custom_zero_test_case, OptMLZeroCheck},
     ZeroCheck,
@@ -187,56 +193,111 @@ fn test_template_ligero(
     run_threads: Option<usize>,
     batch_commit_threads: Option<usize>,
     batch_open_threads: Option<usize>,
+    hash_scheme: Option<String>,
 ) -> u128 {
+    let hash_scheme = hash_scheme.unwrap_or_else(|| "sha3".to_string());
     let instant = Instant::now();
 
     // Generate a random polynomial for testing
     let poly = custom_zero_test_case::<Fr>(num_vars);
 
     let inp_params = 2 * (1 << num_vars); // Input parameters for Ligero setup
-    let zp = OptMLZeroCheck::<Fr, Ligero<Fr>>::setup(&inp_params).unwrap();
 
-    let duration = instant.elapsed().as_millis();
-    print!("Polynomial terms: ");
-    for i in 0..poly.products.len() {
-        print!("{} ", poly.products[i].1.len());
-    }
-    println!();
-    println!("Preparing input evaluations and domain for 2^{num_vars} work ....{duration}ms");
+    match hash_scheme.as_str() {
+        "poseidon" => {
+            let zp = OptMLZeroCheck::<Fr, LigeroPoseidon<Fr>>::setup(&inp_params).unwrap();
 
-    // Generate the proof
-    let proof = (0..repeat)
-        .map(|_| {
-            OptMLZeroCheck::<Fr, Ligero<Fr>>::prove(
-                &zp.clone(),
-                &poly.clone(),
+            let duration = instant.elapsed().as_millis();
+            print!("Polynomial terms: ");
+            for i in 0..poly.products.len() {
+                print!("{} ", poly.products[i].1.len());
+            }
+            println!();
+            println!(
+                "Preparing input evaluations and domain for 2^{num_vars} work ....{duration}ms"
+            );
+
+            // Generate the proof
+            let proof = (0..repeat)
+                .map(|_| {
+                    OptMLZeroCheck::<Fr, LigeroPoseidon<Fr>>::prove(
+                        &zp.clone(),
+                        &poly.clone(),
+                        &num_vars,
+                        &mut ZCTranscript::init_transcript(),
+                        run_threads,
+                        batch_commit_threads,
+                        batch_open_threads,
+                    )
+                    .unwrap()
+                })
+                .collect::<Vec<_>>()
+                .last()
+                .cloned()
+                .unwrap();
+            let runtime = instant.elapsed();
+
+            // Verify the proof
+            let result = OptMLZeroCheck::<Fr, LigeroPoseidon<Fr>>::verify(
+                &zp,
+                &poly,
+                &proof,
                 &num_vars,
                 &mut ZCTranscript::init_transcript(),
-                run_threads,
-                batch_commit_threads,
-                batch_open_threads,
             )
-            .unwrap()
-        })
-        .collect::<Vec<_>>()
-        .last()
-        .cloned()
-        .unwrap();
+            .unwrap();
+            assert_eq!(result, true);
 
-    let runtime = instant.elapsed();
+            return runtime.as_millis();
+        }
+        "sha3" => {
+            let zp = OptMLZeroCheck::<Fr, Ligero<Fr>>::setup(&inp_params).unwrap();
 
-    // Verify the proof
-    let result = OptMLZeroCheck::<Fr, Ligero<Fr>>::verify(
-        &zp,
-        &poly,
-        &proof,
-        &num_vars,
-        &mut ZCTranscript::init_transcript(),
-    )
-    .unwrap();
-    assert_eq!(result, true);
+            let duration = instant.elapsed().as_millis();
+            print!("Polynomial terms: ");
+            for i in 0..poly.products.len() {
+                print!("{} ", poly.products[i].1.len());
+            }
+            println!();
+            println!(
+                "Preparing input evaluations and domain for 2^{num_vars} work ....{duration}ms"
+            );
 
-    return runtime.as_millis();
+            // Generate the proof
+            let proof = (0..repeat)
+                .map(|_| {
+                    OptMLZeroCheck::<Fr, Ligero<Fr>>::prove(
+                        &zp.clone(),
+                        &poly.clone(),
+                        &num_vars,
+                        &mut ZCTranscript::init_transcript(),
+                        run_threads,
+                        batch_commit_threads,
+                        batch_open_threads,
+                    )
+                    .unwrap()
+                })
+                .collect::<Vec<_>>()
+                .last()
+                .cloned()
+                .unwrap();
+            let runtime = instant.elapsed();
+
+            // Verify the proof
+            let result = OptMLZeroCheck::<Fr, Ligero<Fr>>::verify(
+                &zp,
+                &poly,
+                &proof,
+                &num_vars,
+                &mut ZCTranscript::init_transcript(),
+            )
+            .unwrap();
+            assert_eq!(result, true);
+
+            return runtime.as_millis();
+        }
+        _ => panic!("Invalid hash scheme for Ligero"),
+    }
 }
 
 #[derive(Parser, Debug)]
@@ -310,6 +371,15 @@ fn bench_opt_mle_zc() {
                     Some(args.run_threads),
                     Some(args.batch_commit_threads),
                     Some(args.batch_opening_threads),
+                    Some("sha3".to_string()), // Default hash scheme for Ligero
+                ),
+                "ligero_poseidon" => test_template_ligero(
+                    size,
+                    repeat,
+                    Some(args.run_threads),
+                    Some(args.batch_commit_threads),
+                    Some(args.batch_opening_threads),
+                    Some("poseidon".to_string()), // Use Poseidon hash scheme for Ligero
                 ),
                 _ => panic!("Invalid poly_commit_scheme"),
             };
