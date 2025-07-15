@@ -2,7 +2,6 @@ use ark_bls12_381::{Bls12_381, Fr};
 use ark_ec::AffineRepr;
 use ark_ed_on_bls12_381::EdwardsAffine;
 use clap::Parser;
-use core::hash;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::{

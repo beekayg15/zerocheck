@@ -377,17 +377,25 @@ def parallel_stacked_bar_chart_univ_mulin_numvar_comm(save_fig=False):
     """
     # extract the averaged data from log files, return the dataframe
     stack_multilin_zc_hyrax_df = plot_multi_lin_zc(
-        file_path="output_log/mullin_opt_bench_24_24_run_1_hyrax_open_4.log",
+        # file_path="output_log/mullin_opt_bench_24_24_run_1_hyrax_open_4.log",
+        file_path="output_log/mullin_opt_bench_24_24_run_12_hyrax_open_48.log",
         start_line="Prover starts Opt multilinear for 2^",
         save_fig=False,
     )
     stack_multilin_zc_kzg_df = plot_multi_lin_zc(
-        file_path="output_log/mullin_opt_bench_24_24_run_1_kzg_open_4.log",
+        # file_path="output_log/mullin_opt_bench_24_24_run_1_kzg_open_4.log",
+        file_path="output_log/mullin_opt_bench_24_24_run_12_kzg_open_48.log",
+        start_line="Prover starts Opt multilinear for 2^",
+        save_fig=False,
+    )
+    stack_multilin_zc_ligeroPoseidon_df = plot_multi_lin_zc(
+        file_path="output_log/mullin_opt_bench_24_24_run_12_ligeroposeidon_open_48.log",
         start_line="Prover starts Opt multilinear for 2^",
         save_fig=False,
     )
     stack_multilin_zc_ligero_df = plot_multi_lin_zc(
-        file_path="output_log/mullin_opt_bench_24_24_run_1_ligero_open_4.log",
+        # file_path="output_log/mullin_opt_bench_24_24_run_1_ligero_open_4.log",
+        file_path="output_log/mullin_opt_bench_24_24_run_12_ligero_open_48.log",
         start_line="Prover starts Opt multilinear for 2^",
         save_fig=False,
     )
@@ -397,15 +405,24 @@ def parallel_stacked_bar_chart_univ_mulin_numvar_comm(save_fig=False):
         "Average Runtime", "Mulin kzg")
     stack_multilin_zc_ligero_df.index = stack_multilin_zc_ligero_df.index.str.replace(
         "Average Runtime", "Mulin ligero")
+    stack_multilin_zc_ligeroPoseidon_df.index = stack_multilin_zc_ligeroPoseidon_df.index.str.replace(
+        "Average Runtime", "Mulin ligeroPoseidon")
     
     # extract the averaged data from log files, return the dataframe
     stack_univar_zc_kzg_df = plot_univar_zc(
-        file_path="output_log/univar_opt_bench_24_24_run_1_kzg_open_5.log",
+        # file_path="output_log/univar_opt_bench_24_24_run_1_kzg_open_5.log",
+        file_path="output_log/univar_opt_bench_24_24_run_12_kzg_open_60.log",
+        start_line="Opt Univariate Proof Generation Test ",
+        save_fig=False,
+    )
+    stack_univar_zc_ligeroPoseidon_df = plot_univar_zc(
+        file_path="output_log/univar_opt_bench_24_24_run_12_ligeroposeidon_open_60.log",
         start_line="Opt Univariate Proof Generation Test ",
         save_fig=False,
     )
     stack_univar_zc_ligero_df = plot_univar_zc(
-        file_path="output_log/univar_opt_bench_24_24_run_1_ligero_open_5.log",
+        # file_path="output_log/univar_opt_bench_24_24_run_1_ligero_open_5.log",
+        file_path="output_log/univar_opt_bench_24_24_run_12_ligero_open_60.log",
         start_line="Opt Univariate Proof Generation Test ",
         save_fig=False,
     )
@@ -413,12 +430,21 @@ def parallel_stacked_bar_chart_univ_mulin_numvar_comm(save_fig=False):
         "Average Runtime", "Univar kzg")
     stack_univar_zc_ligero_df.index = stack_univar_zc_ligero_df.index.str.replace(
         "Average Runtime", "Univar ligero")
+    stack_univar_zc_ligeroPoseidon_df.index = stack_univar_zc_ligeroPoseidon_df.index.str.replace(
+        "Average Runtime", "Univar ligeroPoseidon")
 
     # merge the dataframe, match the same columns between dataframes to the correct column
     merged_multilin_df = pd.concat(
-        [stack_multilin_zc_hyrax_df, stack_multilin_zc_kzg_df, stack_multilin_zc_ligero_df], axis=0)
+        [stack_multilin_zc_hyrax_df, 
+         stack_multilin_zc_kzg_df, 
+        #  stack_multilin_zc_ligeroPoseidon_df, 
+         stack_multilin_zc_ligero_df
+         ], axis=0)
     merged_univar_df = pd.concat(
-        [stack_univar_zc_kzg_df, stack_univar_zc_ligero_df], axis=0)
+        [stack_univar_zc_kzg_df, 
+        #  stack_univar_zc_ligeroPoseidon_df, 
+         stack_univar_zc_ligero_df
+         ], axis=0)
     
     # sort the order by the index column
     merged_multilin_df = merged_multilin_df.sort_index()
@@ -452,7 +478,7 @@ def parallel_stacked_bar_chart_univ_mulin_numvar_comm(save_fig=False):
     plt.tight_layout()
 
     if save_fig:
-        output_path = "output_log/stacked_bar_chart_univ_mulin_bench_24_24_filter.png"
+        output_path = "output_log/stacked_bar_chart_univ_mulin_bench_24_24_run12_filter.png"
         print(f"Save figure to {output_path}")
         plt.savefig(output_path)
 
