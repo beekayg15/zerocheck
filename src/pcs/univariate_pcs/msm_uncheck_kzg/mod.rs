@@ -6,6 +6,9 @@ use ark_poly_commit::kzg10::{Commitment as KZGCommitment, Powers, Proof, Verifie
 use ark_std::rand::thread_rng;
 use std::marker::PhantomData;
 
+pub mod my_kzg10;
+use my_kzg10::fast_commit_unchecked;
+
 pub mod data_structures;
 use data_structures::*;
 use rayon::iter::IndexedParallelIterator;
@@ -61,12 +64,18 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
         Ok((powers, vk))
     }
 
+
+
+
+     
     fn commit(
         ck: &Self::CommitterKey<'_>,
         poly: &Self::Polynomial,
     ) -> Result<Self::Commitment, anyhow::Error> {
-        let (comm, r) =
-            KZG10::<E, DensePolynomial<E::ScalarField>>::commit(&ck, poly, None, None).unwrap();
+        // let (comm, r) =
+        //     KZG10::<E, DensePolynomial<E::ScalarField>>::commit(&ck, poly, None, None).unwrap();
+        
+        let (comm, r) = fast_commit_unchecked(&ck, poly, None, None).unwrap();
 
         assert!(!comm.0.is_zero(), "Commitment should not be zero");
         assert!(!r.is_hiding(), "Commitment should not be hiding");
