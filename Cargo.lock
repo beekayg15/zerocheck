@@ -235,7 +235,7 @@ dependencies = [
 [[package]]
 name = "ark-poly-commit"
 version = "0.5.0"
-source = "git+https://github.com/beekayg15/poly-commit#8449d6d74cc3141f3de981b1be83e78ab5cc2bbb"
+source = "git+https://github.com/beekayg15/poly-commit?branch=master#7a706bffb8334346ed21544110bbe4e60116578c"
 dependencies = [
  "ahash",
  "ark-crypto-primitives",
