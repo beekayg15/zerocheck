@@ -1,10 +1,16 @@
-use ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM, Group};
+use ark_ec::{pairing::Pairing, CurveGroup, PrimeGroup, VariableBaseMSM};
 use ark_poly::{DenseUVPolynomial};
 use ark_poly_commit::{kzg10::{Commitment,  Powers, Randomness}, Error, PCCommitmentState};
-use ark_ff::{BigInteger, Zero};
+use ark_ff::{BigInteger, PrimeField, Zero};
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::path::Path;
 
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::io::{BufReader, Read};
+
+use tempfile::NamedTempFile;
+use std::io::Seek;
 // fn skip_leading_zeros<F: PrimeField, P: DenseUVPolynomial<F>>(
 //     p: &P,
 // ) -> usize {
@@ -20,27 +26,45 @@ fn msm_offloaded<E: Pairing>(
     bases: &[E::G1],
     scalars: &[E::ScalarField],
 ) -> E::G1 {
-    // Write scalars to a temporary file
-    let temp_file_path = "/tmp/scalars.tmp";
-    let file = File::create(temp_file_path).expect("Failed to create temporary file");
-    let mut writer = BufWriter::new(file);
+    assert_eq!(bases.len(), scalars.len(), "Mismatched input lengths");
 
-    for scalar in scalars {
-        let scalar_bytes = scalar.into_repr().to_bytes_le();
-        writer.write_all(&scalar_bytes).expect("Failed to write scalar to file");
+    let mut acc = E::G1::zero();
+
+    for (base, scalar) in bases.iter().zip(scalars) {
+        acc += base.mul_bigint(scalar.into_bigint());
     }
 
-    writer.flush().expect("Failed to flush writer");
-
-    // Perform MSM using the bases and scalars
-    let bases_affine: Vec<E::G1Affine> = bases.iter().map(|b| b.into_affine()).collect();
-    let result = E::G1::msm_unchecked(&bases_affine, scalars);
-
-    // Clean up the temporary file
-    std::fs::remove_file(temp_file_path).expect("Failed to remove temporary file");
-
-    result
+    acc
 }
+
+
+/// Returns slices of aligned bases and scalars with leading zeros trimmed from scalars.
+/// Ensures the lengths match and panics if not enough bases are available.
+pub fn align_msm_inputs<'a, E: Pairing>(
+    bases: &'a [E::G1Affine],
+    scalars: &'a [E::ScalarField],
+) -> (&'a [E::G1Affine], &'a [E::ScalarField]) {
+    // Trim leading zeros from scalars
+    let num_leading_zeros = scalars.iter().take_while(|c| c.is_zero()).count();
+    let trimmed_scalars = &scalars[num_leading_zeros..];
+
+    // Ensure bases are long enough
+    let trimmed_bases = &bases[num_leading_zeros..];
+    assert!(
+        trimmed_bases.len() >= trimmed_scalars.len(),
+        "Not enough bases for the trimmed scalars: bases={}, scalars={}",
+        trimmed_bases.len(),
+        trimmed_scalars.len()
+    );
+
+    // Match length exactly
+    let aligned_bases = &trimmed_bases[..trimmed_scalars.len()];
+
+    (aligned_bases, trimmed_scalars)
+}
+
+
+const CHUNK_SIZE: usize = 1024; // Tune based on memory and disk throughput
 
 pub fn fast_commit_unchecked<E, P>(
     powers: &Powers<E>,
@@ -49,39 +73,76 @@ pub fn fast_commit_unchecked<E, P>(
 where
     E: Pairing,
     P: DenseUVPolynomial<E::ScalarField>,
+    E::G1: CanonicalSerialize + CanonicalDeserialize,
+    E::ScalarField: CanonicalSerialize + CanonicalDeserialize,
 {
-    println!("Wassup from fast_commit_unchecked!");
-    // Degree check
-    // ark_poly_commit::kzg10::KZG10::<E, P>::check_degree_is_too_large(polynomial.degree(), powers.size())?;
+    println!("Wassup from fast_commit_unchecked (disk offload)!");
 
-    // Commit to the polynomial using raw field coeffs (no BigInt conversion)
     let coeffs = polynomial.coeffs();
     let num_leading_zeros = coeffs.iter().take_while(|c| c.is_zero()).count();
-    let plain_coeffs = &coeffs[num_leading_zeros..];
+    let mut scalars = &coeffs[num_leading_zeros..];
+    let mut bases = &powers.powers_of_g[num_leading_zeros..];
 
-    let commitment = E::G1::msm_unchecked(
-        &powers.powers_of_g[num_leading_zeros..],
-        plain_coeffs,
-    );
+    (bases, scalars) = align_msm_inputs::<E>(bases, scalars);
+
+    assert_eq!(scalars.len(), bases.len());
+
+    // --- Step 1: Write bases and scalars to disk ---
+    let mut base_file = NamedTempFile::new().unwrap();
+    let mut scalar_file = NamedTempFile::new().unwrap();
+
+    {
+        let mut base_writer = BufWriter::new(&mut base_file);
+        let mut scalar_writer = BufWriter::new(&mut scalar_file);
+
+        for (b, s) in bases.iter().zip(scalars.iter()) {
+            b.serialize_uncompressed(&mut base_writer);
+            s.serialize_uncompressed(&mut scalar_writer);
+        }
+
+        base_writer.flush();
+        scalar_writer.flush();
+    }
+
+    // Rewind file pointers
+    base_file.as_file_mut().rewind();
+    scalar_file.as_file_mut().rewind();
+
+    let mut commitment = E::G1::zero();
+
+    // --- Step 2: Read and multiply in chunks ---
+    {
+        let mut base_reader = BufReader::new(base_file);
+        let mut scalar_reader = BufReader::new(scalar_file);
+
+        let mut base_buf = vec![0u8; E::G1::default().uncompressed_size()];
+        let mut scalar_buf = vec![0u8; E::ScalarField::default().uncompressed_size()];
+
+        loop {
+            let mut chunk_commit = E::G1::zero();
+            let mut read_count = 0;
+
+            for _ in 0..CHUNK_SIZE {
+                if base_reader.read_exact(&mut base_buf).is_err() ||
+                   scalar_reader.read_exact(&mut scalar_buf).is_err() {
+                    break;
+                }
+
+                let base = E::G1::deserialize_uncompressed(&*base_buf).unwrap();
+                let scalar = E::ScalarField::deserialize_uncompressed(&*scalar_buf).unwrap();
+                chunk_commit += base.mul_bigint(scalar.into_bigint());
+
+                read_count += 1;
+            }
+
+            if read_count == 0 {
+                break; // EOF
+            }
+
+            commitment += chunk_commit;
+        }
+    }
 
     let randomness = Randomness::<E::ScalarField, P>::empty();
-
-    // If hiding is requested
-    // let random_commitment = if let Some(hiding_degree) = hiding_bound {
-    //     let mut rng = rng.ok_or(Error::MissingRng)?;
-    //     randomness = Randomness::rand(hiding_degree, false, None, &mut rng);
-    //     ark_poly_commit::kzg10::KZG10::<E, P>::check_hiding_bound(
-    //         randomness.blinding_polynomial.degree(),
-    //         powers.powers_of_gamma_g.len(),
-    //     )?;
-
-    //     let blind_coeffs = randomness.blinding_polynomial.coeffs();
-    //     E::G1::msm_unchecked(&powers.powers_of_gamma_g, blind_coeffs).into_affine()
-    // } else {
-    //     E::G1::zero().into_affine()
-    // };
-
-    // let final_commitment = commitment + &random_commitment;
-    let final_commitment = commitment;
-    Ok((Commitment(final_commitment.into()), randomness))
+    Ok((Commitment(commitment.into()), randomness))
 }
