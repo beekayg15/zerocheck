@@ -16,6 +16,9 @@ use zerocheck::zc::univariate_zc::optimized::data_structures::ZeroCheckParams;
 use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
 use zerocheck::ZeroCheck;
 
+/* Testing kzg_offloaded */
+use zerocheck::pcs::univariate_pcs::kzg_offloaded::KZG as KZG_offloaded;
+
 /// This function prepares the random input evaluations for the prover test.
 /// Reuse for the same worksize across multiple repeated tests.
 fn prepare_input_evals_domain<'a>(
@@ -58,6 +61,59 @@ fn prepare_input_evals_domain<'a>(
     println!("Preparing input evaluations and domain for 2^{size} work ....{duration}s");
     return (inp_evals, domain, max_degree);
 }
+
+
+
+fn opt_univ_zc_multhr_benchmark_kzg_offloaded(
+    input_evals: &[Evaluations<Fr>; 4],
+    domain: GeneralEvaluationDomain<Fr>,
+    global_params: &ZeroCheckParams<KZG_offloaded<Bls12_381>>,
+    size: u32,
+    run_threads: Option<usize>,
+    batch_commit_threads: Option<usize>,
+    batch_open_threads: Option<usize>,
+) -> u128 {
+    let test_timer =
+        start_timer!(|| format!("Opt Univariate Proof Generation Test KZG for 2^{size} work"));
+
+    let inp_evals = input_evals.to_vec();
+    let instant = Instant::now();
+    let proof_gen_timer = start_timer!(|| "Prove fn called for KZG");
+
+    let proof = OptimizedUnivariateZeroCheck::<Fr, KZG_offloaded<Bls12_381>>::prove(
+        &global_params,
+        &inp_evals,
+        &domain,
+        &mut ZCTranscript::init_transcript(),
+        run_threads,
+        batch_commit_threads,
+        batch_open_threads,
+    )
+    .unwrap();
+
+    end_timer!(proof_gen_timer);
+    let runtime = instant.elapsed();
+
+    let verify_timer = start_timer!(|| "Verify fn called for KZG");
+
+    let result = OptimizedUnivariateZeroCheck::<Fr, KZG_offloaded<Bls12_381>>::verify(
+        &global_params,
+        &inp_evals,
+        &proof,
+        &domain,
+        &mut ZCTranscript::init_transcript(),
+    )
+    .unwrap();
+
+    end_timer!(verify_timer);
+
+    assert_eq!(result, true);
+
+    end_timer!(test_timer);
+    return runtime.as_millis();
+}
+
+
 
 /// Benchmark function for the optimized univariate zero check proof generation and verification.
 /// `inp_evals` is the input evaluations of g, h, s, o.
@@ -268,6 +324,27 @@ fn bench_opt_uni_zc() {
             //     OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
 
             let total_runtime: u128 = match args.poly_commit_scheme.as_str() {
+                "kzg_offloaded" => {
+                    let global_params =
+                        OptimizedUnivariateZeroCheck::<Fr, KZG_offloaded<Bls12_381>>::setup(&pp).unwrap();
+                    (0..args.repeat)
+                        .map(|repeat_time| {
+                            println!(
+                                "Running KZG test for 2^{} with repeat: {}",
+                                size, repeat_time
+                            );
+                            opt_univ_zc_multhr_benchmark_kzg_offloaded(
+                                &input_evals,
+                                domain,
+                                &global_params,
+                                size as u32,
+                                Some(args.run_threads as usize),
+                                Some(args.batch_commit_threads as usize),
+                                Some(args.batch_opening_threads as usize),
+                            )
+                        })
+                        .sum()
+                }
                 "kzg" => {
                     let global_params =
                         OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
