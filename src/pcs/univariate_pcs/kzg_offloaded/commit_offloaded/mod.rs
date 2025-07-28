@@ -11,22 +11,6 @@ use tempfile::NamedTempFile;
 use std::io::Seek;
 
 
-fn msm_offloaded<E: Pairing>(
-    bases: &[E::G1],
-    scalars: &[E::ScalarField],
-) -> E::G1 {
-    assert_eq!(bases.len(), scalars.len(), "Mismatched input lengths");
-
-    let mut acc = E::G1::zero();
-
-    for (base, scalar) in bases.iter().zip(scalars) {
-        acc += base.mul_bigint(scalar.into_bigint());
-    }
-
-    acc
-}
-
-
 /// Returns slices of aligned bases and scalars with leading zeros trimmed from scalars.
 /// Ensures the lengths match and panics if not enough bases are available.
 pub fn align_msm_inputs<'a, E: Pairing>(
