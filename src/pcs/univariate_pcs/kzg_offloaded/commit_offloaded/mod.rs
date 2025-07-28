@@ -49,8 +49,6 @@ where
     E::G1: CanonicalSerialize + CanonicalDeserialize,
     E::ScalarField: CanonicalSerialize + CanonicalDeserialize,
 {
-    println!("Wassup from fast_commit_unchecked (disk offload)!");
-
     let coeffs = polynomial.coeffs();
     let num_leading_zeros = coeffs.iter().take_while(|c| c.is_zero()).count();
     let mut scalars = &coeffs[num_leading_zeros..];
