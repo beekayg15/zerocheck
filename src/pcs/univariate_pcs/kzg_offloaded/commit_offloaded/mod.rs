@@ -1,26 +1,15 @@
-use ark_ec::{pairing::Pairing, CurveGroup, PrimeGroup, VariableBaseMSM};
+use ark_ec::{pairing::Pairing, PrimeGroup};
 use ark_poly::{DenseUVPolynomial};
 use ark_poly_commit::{kzg10::{Commitment,  Powers, Randomness}, Error, PCCommitmentState};
-use ark_ff::{BigInteger, PrimeField, Zero};
-use std::fs::File;
+use ark_ff::{PrimeField, Zero};
 use std::io::{BufWriter, Write};
-use std::path::Path;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::io::{BufReader, Read};
 
 use tempfile::NamedTempFile;
 use std::io::Seek;
-// fn skip_leading_zeros<F: PrimeField, P: DenseUVPolynomial<F>>(
-//     p: &P,
-// ) -> usize {
-//     let mut num_leading_zeros = 0;
-//     while num_leading_zeros < p.coeffs().len() && p.coeffs()[num_leading_zeros].is_zero() {
-//         num_leading_zeros += 1;
-//     }
-//     // let coeffs = convert_to_bigints(&p.coeffs()[num_leading_zeros..]);
-//     num_leading_zeros
-// }
+
 
 fn msm_offloaded<E: Pairing>(
     bases: &[E::G1],
@@ -96,17 +85,17 @@ where
         let mut scalar_writer = BufWriter::new(&mut scalar_file);
 
         for (b, s) in bases.iter().zip(scalars.iter()) {
-            b.serialize_uncompressed(&mut base_writer);
-            s.serialize_uncompressed(&mut scalar_writer);
+            b.serialize_uncompressed(&mut base_writer).unwrap();
+            s.serialize_uncompressed(&mut scalar_writer).unwrap();
         }
 
-        base_writer.flush();
-        scalar_writer.flush();
+        base_writer.flush().unwrap();
+        scalar_writer.flush().unwrap();
     }
 
     // Rewind file pointers
-    base_file.as_file_mut().rewind();
-    scalar_file.as_file_mut().rewind();
+    base_file.as_file_mut().rewind().unwrap();
+    scalar_file.as_file_mut().rewind().unwrap();
 
     let mut commitment = E::G1::zero();
 
