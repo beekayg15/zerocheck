@@ -1,35 +1,16 @@
 use ark_ec::{pairing::Pairing, VariableBaseMSM};
-use ark_ff::{Field, PrimeField};
-use ark_poly::{DenseUVPolynomial, Polynomial};
-use ark_poly_commit::{kzg10::{Commitment,  Powers, Randomness, KZG10}, Error, PCCommitmentState};
+use ark_poly::{DenseUVPolynomial};
+use ark_poly_commit::{kzg10::{Commitment,  Powers, Randomness}, Error, PCCommitmentState};
 use ark_ff::Zero;
-
-use ark_std::{rand::RngCore, vec::Vec};
-
-// fn skip_leading_zeros<F: PrimeField, P: DenseUVPolynomial<F>>(
-//     p: &P,
-// ) -> usize {
-//     let mut num_leading_zeros = 0;
-//     while num_leading_zeros < p.coeffs().len() && p.coeffs()[num_leading_zeros].is_zero() {
-//         num_leading_zeros += 1;
-//     }
-//     // let coeffs = convert_to_bigints(&p.coeffs()[num_leading_zeros..]);
-//     num_leading_zeros
-// }
 
 pub fn fast_commit_unchecked<E, P>(
     powers: &Powers<E>,
     polynomial: &P,
-    hiding_bound: Option<usize>,
-    rng: Option<&mut dyn RngCore>,
 ) -> Result<(Commitment<E>, Randomness<E::ScalarField, P>), Error>
 where
     E: Pairing,
     P: DenseUVPolynomial<E::ScalarField>,
 {
-    // Degree check
-    // ark_poly_commit::kzg10::KZG10::<E, P>::check_degree_is_too_large(polynomial.degree(), powers.size())?;
-
     // Commit to the polynomial using raw field coeffs (no BigInt conversion)
     let coeffs = polynomial.coeffs();
     let num_leading_zeros = coeffs.iter().take_while(|c| c.is_zero()).count();
@@ -40,7 +21,7 @@ where
         plain_coeffs,
     );
 
-    let mut randomness = Randomness::<E::ScalarField, P>::empty();
+    let randomness = Randomness::<E::ScalarField, P>::empty();
 
     // If hiding is requested
     // let random_commitment = if let Some(hiding_degree) = hiding_bound {

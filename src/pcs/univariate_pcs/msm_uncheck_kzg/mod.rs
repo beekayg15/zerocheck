@@ -75,7 +75,7 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
         // let (comm, r) =
         //     KZG10::<E, DensePolynomial<E::ScalarField>>::commit(&ck, poly, None, None).unwrap();
         
-        let (comm, r) = fast_commit_unchecked(&ck, poly, None, None).unwrap();
+        let (comm, r) = fast_commit_unchecked(&ck, poly).unwrap();
 
         assert!(!comm.0.is_zero(), "Commitment should not be zero");
         assert!(!r.is_hiding(), "Commitment should not be hiding");
