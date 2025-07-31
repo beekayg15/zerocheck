@@ -1,4 +1,4 @@
-use ark_ec::{pairing::Pairing, PrimeGroup};
+use ark_ec::{pairing::Pairing, CurveGroup, PrimeGroup, VariableBaseMSM};
 use ark_poly::{DenseUVPolynomial};
 use ark_poly_commit::{kzg10::{Commitment,  Powers, Randomness}, Error, PCCommitmentState};
 use ark_ff::{PrimeField, Zero};
@@ -117,10 +117,11 @@ where
                     break;
                 }
 
-                let base = E::G1::deserialize_uncompressed(&*base_buf).unwrap();
+                let base = E::G1::deserialize_uncompressed(&*base_buf).unwrap().into_affine();
                 let scalar = E::ScalarField::deserialize_uncompressed(&*scalar_buf).unwrap();
-                chunk_commit += base.mul_bigint(scalar.into_bigint());
-
+                // chunk_commit += base.mul_bigint(scalar.into_bigint());
+                let res = <E::G1 as VariableBaseMSM>::msm_unchecked(&vec![base], &vec![scalar]);
+                chunk_commit += res;
                 read_count += 1;
             }
 
