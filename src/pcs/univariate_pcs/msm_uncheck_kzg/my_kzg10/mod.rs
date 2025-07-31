@@ -1,7 +1,10 @@
 use ark_ec::{pairing::Pairing, VariableBaseMSM};
-use ark_poly::{DenseUVPolynomial};
-use ark_poly_commit::{kzg10::{Commitment,  Powers, Randomness}, Error, PCCommitmentState};
 use ark_ff::Zero;
+use ark_poly::DenseUVPolynomial;
+use ark_poly_commit::{
+    kzg10::{Commitment, Powers, Randomness},
+    Error, PCCommitmentState,
+};
 
 pub fn fast_commit_unchecked<E, P>(
     powers: &Powers<E>,
@@ -16,10 +19,7 @@ where
     let num_leading_zeros = coeffs.iter().take_while(|c| c.is_zero()).count();
     let plain_coeffs = &coeffs[num_leading_zeros..];
 
-    let commitment = E::G1::msm_unchecked(
-        &powers.powers_of_g[num_leading_zeros..],
-        plain_coeffs,
-    );
+    let commitment = E::G1::msm_unchecked(&powers.powers_of_g[num_leading_zeros..], plain_coeffs);
 
     let randomness = Randomness::<E::ScalarField, P>::empty();
 

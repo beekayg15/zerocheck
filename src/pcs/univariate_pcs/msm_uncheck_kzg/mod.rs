@@ -64,17 +64,13 @@ impl<E: Pairing> PolynomialCommitmentScheme for KZG<E> {
         Ok((powers, vk))
     }
 
-
-
-
-     
     fn commit(
         ck: &Self::CommitterKey<'_>,
         poly: &Self::Polynomial,
     ) -> Result<Self::Commitment, anyhow::Error> {
         // let (comm, r) =
         //     KZG10::<E, DensePolynomial<E::ScalarField>>::commit(&ck, poly, None, None).unwrap();
-        
+
         let (comm, r) = fast_commit_unchecked(&ck, poly).unwrap();
 
         assert!(!comm.0.is_zero(), "Commitment should not be zero");
