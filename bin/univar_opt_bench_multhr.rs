@@ -8,8 +8,9 @@ use rayon::prelude::*;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::pcs::univariate_pcs::{
-    kzg::KZG,
+    kzg::KZG as serialKZG,
     ligero::{Ligero, LigeroPoseidon},
+    msm_uncheck_kzg::KZG,
 };
 use zerocheck::transcripts::ZCTranscript;
 use zerocheck::zc::univariate_zc::optimized::data_structures::ZeroCheckParams;
@@ -172,9 +173,7 @@ fn opt_univ_zc_multhr_benchmark_ligero_poseidon(
     batch_open_threads: Option<usize>,
 ) -> u128 {
     let test_timer = start_timer!(|| {
-        format!(
-            "Opt Univariate Proof Generation Test LigeroPoseidon for 2^{size} work"
-        )
+        format!("Opt Univariate Proof Generation Test LigeroPoseidon for 2^{size} work")
     });
 
     let inp_evals = input_evals.to_vec();

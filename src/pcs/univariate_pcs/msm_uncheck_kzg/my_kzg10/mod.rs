@@ -5,6 +5,7 @@ use ark_poly_commit::{
     kzg10::{Commitment, Powers, Randomness},
     Error, PCCommitmentState,
 };
+use ark_std::{end_timer, start_timer};
 
 pub fn fast_commit_unchecked<E, P>(
     powers: &Powers<E>,
@@ -19,7 +20,9 @@ where
     let num_leading_zeros = coeffs.iter().take_while(|c| c.is_zero()).count();
     let plain_coeffs = &coeffs[num_leading_zeros..];
 
+    let msm_time = start_timer!(|| "MSM_unchecked to compute commitment to plaintext poly");
     let commitment = E::G1::msm_unchecked(&powers.powers_of_g[num_leading_zeros..], plain_coeffs);
+    end_timer!(msm_time);
 
     let randomness = Randomness::<E::ScalarField, P>::empty();
 
