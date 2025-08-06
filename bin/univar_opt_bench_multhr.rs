@@ -8,9 +8,8 @@ use rayon::prelude::*;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::pcs::univariate_pcs::{
-    kzg::KZG as serialKZG,
+    kzg::KZG,
     ligero::{Ligero, LigeroPoseidon},
-    msm_uncheck_kzg::KZG,
 };
 use zerocheck::transcripts::ZCTranscript;
 use zerocheck::zc::univariate_zc::optimized::data_structures::ZeroCheckParams;
