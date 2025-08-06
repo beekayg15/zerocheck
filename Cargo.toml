@@ -12,7 +12,7 @@ ark-ff = { version = "^0.5.0", default-features = false, features = ["parallel",
 ark-poly = {version = "^0.5.0", features = ["parallel", "std"] }
 ark-std = { version = "^0.5.0", default-features = false, features = ["parallel", "std", "print-trace"] }
 ark-crypto-primitives = {version = "^0.5.0", default-features = false, features = ["crh", "prf", "parallel", "std"]}
-ark-poly-commit = { git = "https://github.com/beekayg15/poly-commit"}
+ark-poly-commit = { git = "https://github.com/beekayg15/poly-commit", branch = "master", features = ["parallel"] }
 ark-ec = { version = "^0.5.0", default-features = false, features = ["parallel", "std"] }
 ark-bls12-381 ={ version = "0.5.0", default-features = false, features = [ "curve" ]}
 num-traits = "0.2"
