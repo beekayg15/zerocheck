@@ -39,11 +39,11 @@ def sweep_sumcheck_configs():
     ]
 
     sweep_num_vars = [20]
-    sweep_sumcheck_pes_range = range(16, 19)
+    sweep_sumcheck_pes_range = [8, 16]  # range(17, 19)
     sweep_eval_engines_range = range(2, 3)
     sweep_product_lanes_range = range(3, 4)
     sweep_onchip_mle_sizes_range = [16384]  # in number of field elements
-    sweep_available_bw_list = [256, 512, 1024]  # in GB/s
+    sweep_available_bw_list = [512,]  # in GB/s
 
     # testing all combinations
     for (available_bw, num_vars, num_pes, num_eval_engines, num_product_lanes, onchip_mle_size, sumcheck_gate) in product(
