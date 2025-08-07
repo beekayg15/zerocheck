@@ -27,6 +27,9 @@ bench/
 *.swo
 *.bak
 *.old
+*.xlsx
+*.png
+*.jpg
 
 # Dependencies and tools
 /.idea/

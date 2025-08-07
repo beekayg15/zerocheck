@@ -12,16 +12,23 @@ poly_list = [test]
 # poly_list = [spartan_1]
 # poly_list = [opencheck]
 
-comp_type = "zkspeed_vanilla"  # nocap, zkspeed_vanilla, zkspeed_jellyfish
+# comp_type = "zkspeed_vanilla"  # nocap, zkspeed_vanilla, zkspeed_jellyfish
+comp_type = "cambridge"
 
 # sumcheck_pes_range = [(1 << i) for i in range(6)]
 # eval_engines_range = range(2, 8)
 # product_lanes_range = range(3, 9)
-onchip_mle_sizes_range = [(1 << i) for i in range(10, 16)]
+
+##################################################################
+# 1. #num_mle*2(double bf) buffers: for buffering input MLEs.
+#     a. Each size: onchip_mle_size (words)
+# 2. One buffer for Tmp MLE
+#     a. its size: (highest_degree_of_f + 1)*onchip_mle_size/2 (words)
+##################################################################
+onchip_mle_sizes_range = [(1 << i) for i in range(10, 16)]  # size: num of MLE entries (words)
+
 bw_ranges = [64, 128, 256, 512, 1024, 2048, 4096] # GB/s
 bw_ranges = [4096] # GB/s
-
-
 
 num_sumcheck_sram_buffers = 20
 num_mle_combine_sram_buffers = 6
@@ -29,7 +36,6 @@ num_mle_combine_sram_buffers = 6
 multifunction_tree_sram_scale_factor = 16
 
 if comp_type == "nocap":
-
     # nocap comp
     num_pes = 32
     num_eval_engines = 3
@@ -55,7 +61,6 @@ elif comp_type == "zkspeed_vanilla":
     modmul_latency = 10
     modadd_latency = 1
     num_vars = 20
-
 elif comp_type == "zkspeed_jellyfish":
     # zkspeed comp
     num_pes = 16
@@ -72,6 +77,18 @@ elif comp_type == "zkspeed_jellyfish":
     poly_list = [jellyfish_gate_hyperplonk]
     # poly_list = [jellyfish_perm_hyperplonk]
     # poly_list = [opencheck]
+elif comp_type == "cambridge":
+    num_pes = 17
+    num_eval_engines = 2
+    num_product_lanes = 5
+    onchip_mle_sizes_range = [16384]
+    bw_ranges = [1024] # GB/s
+    bits_per_element = 256
+    mle_update_latency = 10
+    extensions_latency = 20
+    modmul_latency = 10
+    modadd_latency = 1
+    num_vars = 20
 
 
 freq = 1e9
@@ -157,7 +174,7 @@ for onchip_mle_size in onchip_mle_sizes_range:
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    # plt.savefig(f'plots/high_degree_latencies_onchip_{onchip_mle_size}.png')
+    plt.savefig(f'plots/high_degree_latencies_onchip_{onchip_mle_size}.png')
     plt.show()
 
 print("End...")

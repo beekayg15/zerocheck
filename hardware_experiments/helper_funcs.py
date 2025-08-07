@@ -1,6 +1,7 @@
 import math
 from params import *
 from sumcheck_models import create_sumcheck_schedule
+import numpy as np
 
 def get_phy_cost(available_bw):
     if available_bw <= 512:
@@ -15,7 +16,7 @@ def get_phy_cost(available_bw):
 def get_area_cost(hw_config, latencies, constants, available_bw):
     num_pes, num_eval_engines, num_product_lanes, onchip_mle_size = hw_config
     _, _, modmul_latency, modadd_latency = latencies
-    bits_per_scalar, freq, modmul_area, modadd_area, reg_area, num_accumulate_regs, rr_ctrl_area, per_pe_delay_buffer_count, num_sumcheck_sram_buffers, multifunction_tree_sram_scale_factor = constants
+    bits_per_scalar, freq, modmul_area, modadd_area, reg_area, num_accumulate_regs, rr_ctrl_area, per_pe_delay_buffer_count, num_sumcheck_sram_buffers, tmp_mle_sram_scale_factor = constants
 
     # tree_module = shared_tree_cost(setup_config_dict = {
     #     "basic": {
@@ -59,12 +60,12 @@ def get_area_cost(hw_config, latencies, constants, available_bw):
     sumcheck_buffer_area_mb = num_sumcheck_sram_buffers*onchip_mle_size*bits_per_scalar/BITS_PER_MB
     sumcheck_buffer_area_mm2 = sumcheck_buffer_area_mb*MB_CONVERSION_FACTOR
 
-    multifunction_tree_temp_buffer_area_mb = multifunction_tree_sram_scale_factor*onchip_mle_size*bits_per_scalar/BITS_PER_MB
-    multifunction_tree_temp_buffer_area_mm2 = multifunction_tree_temp_buffer_area_mb*MB_CONVERSION_FACTOR
+    tmp_mle_buffer_area_mb = tmp_mle_sram_scale_factor*onchip_mle_size*bits_per_scalar/BITS_PER_MB
+    tmp_mle_buffer_area_mm2 = tmp_mle_buffer_area_mb*MB_CONVERSION_FACTOR
 
     hbm_phy_area_mm2 = get_phy_cost(available_bw)
 
-    total_area_mm2 = multifunction_tree_compute_area_mm2 + eval_engine_area_mm2 + accumulation_reg_area_mm2 + sumcheck_buffer_area_mm2 + multifunction_tree_temp_buffer_area_mm2
+    total_area_mm2 = multifunction_tree_compute_area_mm2 + eval_engine_area_mm2 + accumulation_reg_area_mm2 + sumcheck_buffer_area_mm2 + tmp_mle_buffer_area_mm2
     total_area_mm2 /= scale_factor_22_to_7nm  # convert to 7nm area
 
     total_modmuls = multifunction_tree_modmuls + eval_engine_modmuls * num_pes

@@ -1,3 +1,4 @@
+gate_to_string = lambda gate: " + ".join(" ".join(sublist) for sublist in gate)
 
 vanilla_gate = [
     ["q1", "w1"],
