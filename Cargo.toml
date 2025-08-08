@@ -61,3 +61,8 @@ path = "bin/mullin_naive_bench_multhr.rs"
 name = "mullin_opt_bench_multhr"
 harness = false
 path = "bin/mullin_opt_bench_multhr.rs"
+
+[[bin]]
+name = "univar_any_polynomial_bench"
+harness = false
+path = "bin/univar_any_polynomial_bench.rs"
