@@ -544,6 +544,7 @@ def add_stepwise_latency(schedule, num_pes, words_per_mle, supplemental_data, no
     updated_schedule = []
  
     num_words_stored = 0
+    num_words_stored_last_step = 0
     num_steps = len(schedule)
  
     pattern = re.compile(r'^fz\d*$')
@@ -648,7 +649,10 @@ def add_stepwise_latency(schedule, num_pes, words_per_mle, supplemental_data, no
                 writeable_rate = calc_rate(bits_per_element, available_write_bw, freq)
 
                 num_words_written = int(min(writeable_rate*step_latency, num_words_generated))
-                num_words_stored += num_words_generated - num_words_written
+                if step_id != num_steps - 1:
+                    num_words_stored += num_words_generated - num_words_written
+                else:  # last step id
+                    num_words_stored_last_step += num_words_generated - num_words_written
 
             else:
                 if no_offchip_write:
@@ -664,7 +668,10 @@ def add_stepwise_latency(schedule, num_pes, words_per_mle, supplemental_data, no
                 writeable_rate = calc_rate(bits_per_element, available_write_bw, freq)
 
                 num_words_written = int(min(writeable_rate*step_latency, num_words_generated))
-                num_words_stored += num_words_generated - num_words_written
+                if step_id != num_steps - 1:
+                    num_words_stored += num_words_generated - num_words_written
+                else:  # last step id
+                    num_words_stored_last_step += num_words_generated - num_words_written
 
             performance_numbers = step_latency, needed_read_bw, num_words_read, available_write_bw, num_words_generated, num_words_written, num_words_stored
 
@@ -688,8 +695,10 @@ def add_stepwise_latency(schedule, num_pes, words_per_mle, supplemental_data, no
     # if we still have words pending writes to HBM, assume max read rate (here "read" is a literal read from the FIFOs implemented as RF) 
     if no_offchip_write:
         additional_write_cycles = 0
+        additional_write_cycles_last = 0
     else:
         additional_write_cycles = math.ceil(num_words_stored/max_read_rate)
+        additional_write_cycles_last = math.ceil(num_words_stored_last_step/max_read_rate)
     
     if additional_write_cycles == 0:
         additional_write_data = additional_write_cycles, 0, 0, 0, total_words_written
@@ -697,6 +706,8 @@ def add_stepwise_latency(schedule, num_pes, words_per_mle, supplemental_data, no
         additional_write_data = additional_write_cycles, available_bw, max_read_rate, num_words_stored, total_words_written
 
     total_step_latency += additional_write_cycles
+    last_step_latency += additional_write_cycles_last
+    latency_to_subtract += additional_write_cycles  # the additional_write_cycles will be added one more time in the total_step_latency, so we subtract it here
     # initial_prefetch_latency = 0
     latency_data = initial_prefetch_latency, total_step_latency, last_step_latency, latency_to_subtract
     return updated_schedule, latency_data, additional_write_data
