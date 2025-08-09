@@ -3,13 +3,18 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from util import is_pareto_efficient
-from params_ntt_v_sum import modmul_area, modadd_area, BITS_PER_MB, MB_CONVERSION_FACTOR
+from params_ntt_v_sum import modmul_area, modadd_area, BITS_PER_MB, MB_CONVERSION_FACTOR, scale_factor_22_to_7nm
 
 def get_area_stats(total_modmuls, total_modadds, total_num_words, bit_width=256):
     """Calculate logic and memory area in mm^2"""
     logic_area = total_modmuls * modmul_area + total_modadds * modadd_area
     memory_area = (total_num_words * bit_width / BITS_PER_MB) * MB_CONVERSION_FACTOR
     total_area = logic_area + memory_area
+
+    logic_area /= scale_factor_22_to_7nm
+    memory_area /= scale_factor_22_to_7nm
+    total_area /= scale_factor_22_to_7nm
+
     return logic_area, memory_area, total_area
 
 def plot_pareto_frontier_from_pickle(n, bw, pickle_dir="pickle_results"):
@@ -273,9 +278,9 @@ def plot_pareto_multi_bw_fixed_n(n, bw_values, pickle_dir="pickle_results"):
             result_n, result_bw, U, pe_amt = key
             if result_n == n and result_bw == bw:
                 # Extract metrics
-                cycles = value['total_cycles']
+                cycles = value['total_cycles']*10
                 modmuls = value['total_modmuls']
-                modadds = value['total_modadds'] if 'total_modadds' in value else modmuls * 2
+                modadds = value['total_modadds']
                 words = value['total_num_words']
                 
                 # Calculate total area (logic + memory)
@@ -342,16 +347,21 @@ def plot_pareto_multi_bw_fixed_n(n, bw_values, pickle_dir="pickle_results"):
         all_points = np.array(all_pareto_points)
         # if np.max(all_points[:, 0]) / np.min(all_points[:, 0]) > 100:
         #     plt.xscale('log')
-        if np.max(all_points[:, 1]) / np.min(all_points[:, 1]) > 100:
-            plt.yscale('log')
+        # if np.max(all_points[:, 1]) / np.min(all_points[:, 1]) > 100:
+        #     plt.yscale('log')
     
     # # Set x-axis in terms of millions (1e6)
     ax = plt.gca()
     x_ticks = ax.get_xticks()
-    ax.set_xticklabels([f"{x/1e6:.1f}" for x in x_ticks])
+    ax.set_ylim(bottom=0, top=25)  # Ensure y-axis starts at 0
+    ax.set_xlim(left=0, right=12*1e6)  # Set x-axis limits from 0 to 3.5e6
+    ax.minorticks_on()
+    ax.grid(which='major', linestyle='-', linewidth=0.5, alpha=0.8)
+    ax.grid(which='minor', linestyle=':', linewidth=0.5, alpha=0.8)
+    # ax.set_xticklabels([f"{x/1e6:.1f}" for x in x_ticks])
     # plt.tight_layout()
 
-    plt.xlabel('Runtime (1e6 cycles)')
+    plt.xlabel('Runtime')
     plt.ylabel('Total Area (mm²)')
     plt.title(f'Pareto Frontiers: Runtime vs Area for n={n} (2^{n} elements)\nAcross Multiple Bandwidths')
 

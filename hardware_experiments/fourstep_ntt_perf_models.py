@@ -32,17 +32,25 @@ def single_fourstep_ntt(M, N, num_pes, mem_latency_for_rows, compute_latency_for
     return int(total_latency)
 
 # this assumes that each butterfly has only 1 modmul and 1 modadd
-def get_compute_latency(ntt_len, num_butterflies, bf_latency, modadd_latency, output_scaled=False):
+def get_compute_latency(ntt_len, num_butterflies, bf_latency, modadd_latency, output_scaled=False, debug=False):
     
     num_stages = math.log2(ntt_len)
     first_stage = modadd_latency + ntt_len/(num_butterflies*2) - 1 # only modadd
     most_stages = bf_latency + ntt_len/(num_butterflies*2) - 1     # modmul
     if output_scaled:
-        last_stage = 3*bf_latency + ntt_len/(num_butterflies*2) - 1    # 3 modmuls, 1 for butterfly, 2 for elementwise multiply
+        last_stage = bf_latency + ntt_len/(num_butterflies*2) - 1    # 3 modmuls, 1 for butterfly, 2 for elementwise multiply
+        scaling_stage = ntt_len/num_butterflies + (bf_latency - modadd_latency) - 1
+        if debug:
+            print(f"Scaling stage: {scaling_stage}")
+            print(f"Last stage: {last_stage}")
+        last_stage += scaling_stage
     else:
         last_stage = most_stages
     
     assert num_stages > 2
+
+    if debug:
+        print(f"First stage: {first_stage}, Most stages: {most_stages}, Last stage: {last_stage}, Num stages: {num_stages}")
 
     compute_latency = first_stage + (num_stages - 2) * most_stages + last_stage
     return int(compute_latency)
