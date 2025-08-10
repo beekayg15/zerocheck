@@ -68,10 +68,15 @@ def get_area_cost(hw_config, latencies, constants, available_bw):
     total_area_mm2 = multifunction_tree_compute_area_mm2 + eval_engine_area_mm2 + accumulation_reg_area_mm2 + sumcheck_buffer_area_mm2 + tmp_mle_buffer_area_mm2
     total_area_mm2 /= scale_factor_22_to_7nm  # convert to 7nm area
 
+    total_onchip_memory_MB = (
+        (num_sumcheck_sram_buffers + tmp_mle_sram_scale_factor) * onchip_mle_size * bits_per_scalar
+        + num_accumulate_regs * bits_per_scalar
+    ) / BITS_PER_MB
+
     total_modmuls = multifunction_tree_modmuls + eval_engine_modmuls * num_pes
     design_modmul_area = total_modmuls * modmul_area
 
-    return round(total_area_mm2, 3), hbm_phy_area_mm2, total_modmuls, design_modmul_area
+    return round(total_area_mm2, 3), hbm_phy_area_mm2, total_modmuls, design_modmul_area, total_onchip_memory_MB
 
 def num_modmul_ops_in_polynomial(num_vars, sumcheck_polynomial, debug=True, return_only_core_ops=False):
     degrees = [len(term) for term in sumcheck_polynomial]
@@ -168,7 +173,7 @@ def sumcheck_only_sweep(sweep_params, sumcheck_polynomials, latencies, constants
                         sumcheck_core_stats[idx][sumcheck_hardware_config] = dict()
                         s_dict = sumcheck_core_stats[idx][sumcheck_hardware_config]
 
-                        total_area_mm2, hbm_phy_area_mm2, total_modmuls, design_modmul_area = get_area_cost(sumcheck_hardware_config, latencies, constants, available_bw)
+                        total_area_mm2, hbm_phy_area_mm2, total_modmuls, design_modmul_area, total_onchip_memory_MB = get_area_cost(sumcheck_hardware_config, latencies, constants, available_bw)
 
                         supplemental_data = bits_per_scalar, available_bw, freq
                         num_build_mle = len({elem for sublist in sumcheck_polynomial for elem in sublist if isinstance(elem, str) and elem.startswith("fz")})
@@ -191,6 +196,7 @@ def sumcheck_only_sweep(sweep_params, sumcheck_polynomials, latencies, constants
                         s_dict['area_with_hbm'] = total_area_mm2 + hbm_phy_area_mm2
                         s_dict['modmul_count'] = total_modmuls
                         s_dict['design_modmul_area'] = design_modmul_area
+                        s_dict['total_onchip_memory_MB'] = total_onchip_memory_MB
                         s_dict['round_latencies'] = round_latencies
                         s_dict['utilization'] = utilization
                         s_dict['per_round_utilization'] = per_round_utilization
