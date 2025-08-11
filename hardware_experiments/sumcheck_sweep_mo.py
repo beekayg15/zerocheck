@@ -81,10 +81,12 @@ def sweep_NTT_configs(n_size_values: list, bw_values: list, polynomial_list: lis
                         value["total_latency"] = value["total_cycles"] * gate_num_unique_mle
 
                         # area cost
-                        value["total_comp_area"] = value["total_modmuls"] * params.modmul_area + value["total_modadds"] * params.modadd_area
+                        value["design_modmul_area"] = value["total_modmuls"] * params.modmul_area  # 22nm, mm^2
+                        value["total_comp_area_22"] = value["design_modmul_area"] + value["total_modadds"] * params.modadd_area
                         value["total_onchip_memory_MB"] = value["total_num_words"] * params.bits_per_scalar / 8 / (1 << 20)
-                        value["total_mem_area_mm2"] = value["total_onchip_memory_MB"] * params.MB_CONVERSION_FACTOR
-                        value["total_area"] = value["total_comp_area"] + value["total_mem_area_mm2"]
+                        value["total_mem_area_22"] = value["total_onchip_memory_MB"] * params.MB_CONVERSION_FACTOR
+                        value["total_area_22"] = value["total_comp_area_22"] + value["total_mem_area_22"]
+                        value["total_area"] = value["total_area_22"] / params.scale_factor_22_to_7nm
                     
                     row.update(value)
                     all_rows.append(row)
@@ -468,7 +470,7 @@ if __name__ == "__main__":
         [["q1", "q2", "q3", "q4", "q5"]],  # a gate of degree 5
         # [["q1", "q2", "q3", "q4", "q5", "q6"]],
         # [["q1", "q2", "q3", "q4", "q5", "q6", "q7"]],
-        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"]],  # a gate of degree 8
+        [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"]],  # a gate of degree 8
         # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9"]],
         # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10"]],
     ]
