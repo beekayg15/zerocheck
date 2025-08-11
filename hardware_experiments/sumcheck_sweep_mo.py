@@ -8,62 +8,143 @@ import seaborn as sns
 from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 from util import is_pareto_efficient
+from test_ntt_func_sim import run_fit_onchip
+from tqdm import tqdm
+import math
 
 
-def sweep_sumcheck_configs():
+def analyze_polynomial_gate(gate):
+    """
+    Analyze a single gate (list of terms).
+    Returns a dict with:
+      - num_terms: number of terms (sublists) in the gate
+      - num_unique_items: number of unique strings in the gate
+      - degree: size of the longest term (max sublist length) e.g.: 2, 3, etc.
+    """
+    num_terms = len(gate)
+    unique_items = set()
+    max_degree = 0
+    for term in gate:
+        unique_items.update(term)
+        if len(term) > max_degree:
+            max_degree = len(term)
+    return {
+        "num_terms": num_terms,
+        "num_unique_mle": len(unique_items),
+        "degree": max_degree
+    }
+
+
+def sweep_NTT_configs(n_size_values: list, bw_values: list, polynomial_list: list):
+    """
+    Sweep all combinations of n and bw, calling run_fit_onchip for each.
+    Returns a dictionary keyed by (n, bw) with the results.
+
+    :param n_size_values: List of NTT sizes to sweep. Should be the exp `μ`. E.g., [16, 17, 18, ...]
+    :param bw_values: List of available bandwidths to sweep (GB/s).
+    :param polynomial_list: List of polynomials to sweep. Each polynomial is a list of terms, where each term is a list of strings.
+    :return: Dictionary of results keyed by (n, bw)
+    """
+
+    all_rows = []
+    for gate in tqdm(polynomial_list, desc="NTT Sweep for gate"):
+        gate_name = gate_to_string(gate)
+        gate_stats = analyze_polynomial_gate(gate)
+        gate_num_terms = gate_stats["num_terms"]
+        gate_num_unique_mle = gate_stats["num_unique_mle"]
+        gate_degree = gate_stats["degree"]
+        gate_degree_n = int(math.log2(gate_degree - 1))  # TODO: degree is not always a power of 2
+
+        for n in tqdm(n_size_values, desc=f"NTT Sweep for n"):
+            for bw in tqdm(bw_values, desc=f"NTT sweep bw"):
+                print(f"Running NTT sweep for n={gate_degree - 1}x2^{n}, bw={bw}...")
+                res = run_fit_onchip(target_n=n+gate_degree_n, target_bw=bw, save_pkl=False)
+                # res is a dict: key=(n_pow, available_bw, unroll_factor, pe_amt), value=dict
+                for key, value in res.items():
+                    n_pow, available_bw, unroll_factor, pe_amt = key
+                    row = {
+                        "gate_name": gate_name,
+                        "gate_num_terms": gate_num_terms,
+                        "gate_num_unique_mle": gate_num_unique_mle,
+                        "gate_degree": gate_degree,
+                        "n": n,
+                        "target_n": n + gate_degree_n,
+                        "n_pow": n_pow,
+                        "available_bw": available_bw,
+                        "unroll_factor": unroll_factor,
+                        "pe_amt": pe_amt,
+                    }
+                    
+                    value = value.copy()
+                    if "total_cycles" in value:
+                        # Repeat NTT for each MLE in series
+                        value["total_latency"] = value["total_cycles"] * gate_num_unique_mle
+
+                        # area cost
+                        value["total_comp_area"] = value["total_modmuls"] * params.modmul_area + value["total_modadds"] * params.modadd_area
+                        value["total_onchip_memory_MB"] = value["total_num_words"] * params.bits_per_scalar / 8 / (1 << 20)
+                        value["total_mem_area_mm2"] = value["total_onchip_memory_MB"] * params.MB_CONVERSION_FACTOR
+                        value["total_area"] = value["total_comp_area"] + value["total_mem_area_mm2"]
+                    
+                    row.update(value)
+                    all_rows.append(row)
+
+    singleNTT = pd.DataFrame(all_rows)
+
+    return singleNTT
+
+
+def sweep_sumcheck_configs(num_var_list: list, available_bw_list: list, polynomial_list: list):
     """
     Sweeps through all combinations of hardware configs and available bandwidths,
     runs sumcheck_only_sweep, and records all results.
 
+    Args:
+        num_var_list: list of num_vars to sweep (e.g., [20])
+        available_bw_list: list of available bandwidths to sweep (e.g., [128, 256, 512, 1024])
+        polynomial_list: list of sumcheck polynomials to sweep (e.g., [ [["q1", "q2"], ["q3", "q4"]], gate2, ...])
     Returns:
         results_dict: dict keyed by (available_bw, num_pes, num_eval_engines, num_product_lanes, onchip_mle_size)
     """
     results_dict = {}
 
     # constant params
-    mle_update_latency = 10
-    extensions_latency = 20
-    modmul_latency = 10
-    modadd_latency = 1
+    mle_update_latency = params.mle_update_latency
+    extensions_latency = params.extensions_latency
+    modmul_latency = params.modmul_latency
+    modadd_latency = params.modadd_latency
     latencies = mle_update_latency, extensions_latency, modmul_latency, modadd_latency
-    bits_per_element = 256
-    freq = 1e9
+    bits_per_element = params.bits_per_scalar
+    freq = params.freq
     modmul_area = params.modmul_area
     modadd_area = params.modadd_area
     reg_area = params.reg_area
     rr_ctrl_area = params.rr_ctrl_area
     per_pe_delay_buffer_count = params.per_pe_delay_buffer_count  # support degree up to 31 now.
 
-    # sweeping params
+    # sweeping params. 
+    # Use polynomial_list, append 'fz' to the end of each term of each gate
     sumcheck_polynomials = [
-        [["q1", "q2", "fz"]],  # a gate of degree 2
-        # [["q1", "q2", "q3", "fz"]],
-        # [["q1", "q2", "q3", "q4", "fz"]],
-        [["q1", "q2", "q3", "q4", "q5", "fz"]],  # a gate of degree 5
-        # [["q1", "q2", "q3", "q4", "q5", "q6", "fz"]],
-        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "fz"]],
-        [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "fz"]],  # a gate of degree 8
-        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "fz"]],
-        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "fz"]],
+        [[*term, "fz"] for term in gate]
+        for gate in polynomial_list
     ]
 
-    sweep_num_vars = [20]
     sweep_sumcheck_pes_range = [2, 4, 8, 16, 32]
     sweep_eval_engines_range = range(2, 15, 4)
     sweep_product_lanes_range = range(3, 15, 4)
     sweep_onchip_mle_sizes_range = [128, 1024, 16384]  # in number of field elements
-    sweep_available_bw_list = [128, 256, 512, 1024]  # in GB/s
 
     # testing all combinations
-    for (available_bw, num_vars, num_pes, num_eval_engines, num_product_lanes, onchip_mle_size, sumcheck_gate) in product(
-        sweep_available_bw_list,
-        sweep_num_vars,
+    loop_iter = product(
+        available_bw_list,
+        num_var_list,
         sweep_sumcheck_pes_range,
         sweep_eval_engines_range,
         sweep_product_lanes_range,
         sweep_onchip_mle_sizes_range,
         sumcheck_polynomials
-    ):
+    )
+    for (available_bw, num_vars, num_pes, num_eval_engines, num_product_lanes, onchip_mle_size, sumcheck_gate) in tqdm(list(loop_iter), desc="Sumcheck sweep"):
         ##################################################################
         # 1. #num_mle*2(double bf) buffers: for buffering input MLEs.
         #     a. Each size: onchip_mle_size (words)
@@ -130,7 +211,23 @@ def sweep_sumcheck_configs():
             }
         }
 
-    return results_dict
+    rows = []
+    for value in results_dict.values():
+        vparams = value["params"]
+        stats_dict = value["result"]
+        # Flatten stats_dict (which may be nested)
+        for idx, config_stats in stats_dict.items():
+            for config, stat_items in config_stats.items():
+                row = dict(vparams)  # copy params
+                row["poly_idx"] = idx
+                row["hardware_config"] = str(config)
+                # Add all stat_items as columns
+                for k, v in stat_items.items():
+                    row[k] = v
+                rows.append(row)
+    df = pd.DataFrame(rows)
+
+    return df
 
 
 def plot_area_latency_one(df, filename):
@@ -177,13 +274,13 @@ def plot_area_latency_one(df, filename):
     plt.close()
 
 
-def plot_gate_acrx_bw(df, filename):
+def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename):
     """
     Draw multiple subplots: each subplot corresponds to one available_bw.
     Within each subplot, use different marker styles to distinguish sumcheck_gate types.
     """
-    available_bw_list = sorted(df["available_bw"].unique())
-    sumcheck_gates = sorted(df["sumcheck_gate"].unique())
+    available_bw_list = sorted(sc_df["available_bw"].unique())
+    sumcheck_gates = sorted(sc_df["sumcheck_gate"].unique())
 
     # Define marker styles for sumcheck_gate
     marker_styles = ['o', 's', '^', 'D', 'P', 'X', '*', 'v', '<', '>']
@@ -196,29 +293,68 @@ def plot_gate_acrx_bw(df, filename):
     if num_subplots == 1:
         axes = axes.reshape(3, 1)
 
+
     for col, bw in enumerate(available_bw_list):
-        sub_df = df[df["available_bw"] == bw]
+        sub_sc_df = sc_df[sc_df["available_bw"] == bw]
+        sub_ntt_df = ntt_df[ntt_df["available_bw"] == bw]
+
         # First row: area vs latency
         ax_area = axes[0, col]
-        for gate in sumcheck_gates:
-            gate_df = sub_df[sub_df["sumcheck_gate"] == gate]
-            if not gate_df.empty:
-                # Pareto filter: minimize both area and latency
-                costs = gate_df[["area", "total_latency"]].values
+        # Find common gates between sumcheck and NTT for this bw
+        common_gates = set(sub_sc_df["sumcheck_gate"].unique())
+        min_latency = None
+        max_latency = None
+        for gate in common_gates:
+            gate_ntt = gate.replace(" fz", "")  # Remove 'fz' suffix for NTT
+            gate_sc_df = sub_sc_df[sub_sc_df["sumcheck_gate"] == gate]
+            gate_ntt_df = sub_ntt_df[sub_ntt_df["gate_name"] == gate_ntt]
+            # Plot sumcheck area-latency (color C0)
+            if not gate_sc_df.empty:
+                costs = gate_sc_df[["area", "total_latency"]].values
                 pareto_mask = is_pareto_efficient(costs)
-                pareto_gate_df = gate_df[pareto_mask]
+                pareto_gate_sc_df = gate_sc_df[pareto_mask]
                 ax_area.scatter(
-                    pareto_gate_df["total_latency"],
-                    pareto_gate_df["area"],
-                    label=gate,
+                    pareto_gate_sc_df["total_latency"],
+                    pareto_gate_sc_df["area"],
+                    label=None,
                     marker=marker_dict[gate],
                     color='C0',
                     s=30,
                     edgecolor="k",
                     alpha=0.8
                 )
+                min_sc = pareto_gate_sc_df["total_latency"].min()
+                max_sc = pareto_gate_sc_df["total_latency"].max()
+                min_latency = min(min_latency, min_sc) if min_latency is not None else min_sc
+                max_latency = max(max_latency, max_sc) if max_latency is not None else max_sc
+            # Plot NTT area-latency (color C3)
+            if not gate_ntt_df.empty:
+                costs_ntt = gate_ntt_df[["total_area", "total_latency"]].values
+                pareto_mask_ntt = is_pareto_efficient(costs_ntt)
+                pareto_gate_ntt_df = gate_ntt_df[pareto_mask_ntt]
+                ax_area.scatter(
+                    pareto_gate_ntt_df["total_latency"],
+                    pareto_gate_ntt_df["total_area"],
+                    label=None,
+                    marker=marker_dict[gate],
+                    color='C3',
+                    s=20,
+                    edgecolor="k",
+                    alpha=0.8
+                )
+                min_ntt = pareto_gate_ntt_df["total_latency"].min()
+                max_ntt = pareto_gate_ntt_df["total_latency"].max()
+                min_latency = min(min_latency, min_ntt) if min_latency is not None else min_ntt
+                max_latency = max(max_latency, max_ntt) if max_latency is not None else max_ntt
+        # Set x range based on min/max of both SumCheck and NTT dots
+        if min_latency is not None and max_latency is not None:
+            xlim_min = min_latency * 0.8
+            xlim_max = max_sc * 3.5  # max_latency * 1.2
+        else:
+            xlim_min = 0
+            xlim_max = None
         ax_area.set_title(f"Available BW: {bw} GB/s")
-        ax_area.set_xlim(left=0)
+        ax_area.set_xlim(left=xlim_min, right=xlim_max)
         ax_area.set_xlabel("Total Latency (x10^6)")
         locs = ax_area.get_xticks()
         locs = [x for x in locs if x >= 0]
@@ -230,10 +366,14 @@ def plot_gate_acrx_bw(df, filename):
         # Custom legend: only show unique marker combos (only for first subplot)
         if col == 0:
             handles = []
-            for gate in sumcheck_gates:
-                handles.append(Line2D([0], [0], marker=marker_dict[gate], color='w', label=gate,
+            for gate in common_gates:
+                gate_ntt = gate.replace(" fz", "")  # Remove 'fz' suffix for NTT
+                handles.append(Line2D([0], [0], marker=marker_dict[gate], color='w', label=gate_ntt,
                                        markerfacecolor='C0', markeredgecolor='k', markersize=10, linestyle='None'))
-            ax_area.legend(handles=handles, title="Gate (marker)", loc='best', fontsize='small')
+            # Add color legend for Sumcheck/NTT
+            handles.append(Line2D([0], [0], marker='o', color='w', label='Sumcheck', markerfacecolor='C0', markeredgecolor='k', markersize=10, linestyle='None'))
+            handles.append(Line2D([0], [0], marker='o', color='w', label='NTT', markerfacecolor='C3', markeredgecolor='k', markersize=10, linestyle='None'))
+            ax_area.legend(handles=handles, title="Gate (marker), Color (type)", loc='best', fontsize='small')
 
         # Save x-tick locations and limits for use in other rows
         xlim = ax_area.get_xlim()
@@ -243,17 +383,17 @@ def plot_gate_acrx_bw(df, filename):
         # Second row: total_onchip_memory_MB vs latency
         ax_mem = axes[1, col]
         for gate in sumcheck_gates:
-            gate_df = sub_df[sub_df["sumcheck_gate"] == gate]
-            if not gate_df.empty:
+            gate_sc_df = sub_sc_df[sub_sc_df["sumcheck_gate"] == gate]
+            if not gate_sc_df.empty:
                 # Pareto filter: minimize both total_onchip_memory_MB and latency
-                costs = gate_df[["total_onchip_memory_MB", "total_latency"]].values
+                costs = gate_sc_df[["total_onchip_memory_MB", "total_latency"]].values
                 pareto_mask = is_pareto_efficient(costs)
-                # pareto_gate_df = gate_df[pareto_mask]
-                pareto_gate_df = gate_df  # no pareto filter
+                # pareto_gate_sc_df = gate_sc_df[pareto_mask]
+                pareto_gate_sc_df = gate_sc_df  # no pareto filter
                 ax_mem.scatter(
-                    pareto_gate_df["total_latency"],
-                    pareto_gate_df["total_onchip_memory_MB"],
-                    label=gate,
+                    pareto_gate_sc_df["total_latency"],
+                    pareto_gate_sc_df["total_onchip_memory_MB"],
+                    label=f"Sumcheck: {gate}",
                     marker=marker_dict[gate],
                     color='C1',
                     s=30,
@@ -271,17 +411,16 @@ def plot_gate_acrx_bw(df, filename):
         # Third row: modmul_count vs latency (Pareto-efficient only)
         ax_modmul = axes[2, col]
         for gate in sumcheck_gates:
-            gate_df = sub_df[sub_df["sumcheck_gate"] == gate]
-            if not gate_df.empty:
+            gate_sc_df = sub_sc_df[sub_sc_df["sumcheck_gate"] == gate]
+            if not gate_sc_df.empty:
                 # Pareto filter: minimize both modmul_count and latency
-                costs = gate_df[["modmul_count", "total_latency"]].values
+                costs = gate_sc_df[["modmul_count", "total_latency"]].values
                 pareto_mask = is_pareto_efficient(costs)
-                pareto_gate_df = gate_df[pareto_mask]
-                # pareto_gate_df = gate_df  # no pareto filter
+                pareto_gate_sc_df = gate_sc_df[pareto_mask]
                 ax_modmul.scatter(
-                    pareto_gate_df["total_latency"],
-                    pareto_gate_df["modmul_count"],
-                    label=gate,
+                    pareto_gate_sc_df["total_latency"],
+                    pareto_gate_sc_df["modmul_count"],
+                    label=f"Sumcheck: {gate}",
                     marker=marker_dict[gate],
                     color='C2',
                     s=30,
@@ -298,42 +437,57 @@ def plot_gate_acrx_bw(df, filename):
 
     plt.tight_layout()
     plt.savefig(filename + "_gate_acrx_bw.png", bbox_inches='tight')
+    print(f"Saved plot to {filename}_gate_acrx_bw.png")
     plt.close()
 
 
-def save_results(results, filename, save_excel=False, draw_plots_type=0):
+def save_results(sumcheck_result: pd.DataFrame, ntt_result: pd.DataFrame, filename, save_excel=False, draw_plots_type=0):
     """
     Save the sweep results to an Excel file.
     Each row contains the sweep parameters (from 'params') and the stats_dict items as columns.
     Optionally, draw a scatter plot: x="total_latency", y="area", color by "available_bw", marker by "sumcheck_gate".
     """
-    rows = []
-    for value in results.values():
-        params = value["params"]
-        stats_dict = value["result"]
-        # Flatten stats_dict (which may be nested)
-        for idx, config_stats in stats_dict.items():
-            for config, stat_items in config_stats.items():
-                row = dict(params)  # copy params
-                row["poly_idx"] = idx
-                row["hardware_config"] = str(config)
-                # Add all stat_items as columns
-                for k, v in stat_items.items():
-                    row[k] = v
-                rows.append(row)
-    df = pd.DataFrame(rows)
+    
     if save_excel:
-        df.to_excel(filename + ".xlsx", index=False)
+        sumcheck_result.to_excel(f"{filename}_sc.xlsx", index=False)
+        ntt_result.to_excel(f"{filename}_ntt.xlsx", index=False)
     if draw_plots_type:
         if draw_plots_type == 1:
-            plot_area_latency_one(df, filename)
+            plot_area_latency_one(sumcheck_result, filename)
         elif draw_plots_type == 2:
-            plot_gate_acrx_bw(df, filename)
+            plot_gate_acrx_bw(sumcheck_result, ntt_result, filename)
 
 
 if __name__ == "__main__":
-    results = sweep_sumcheck_configs()
-    save_results(results, "sumcheck_sweep_results_mo", save_excel=True, draw_plots_type=2)
-    
+    n_values = [20]
+    bw_values = [128, 256, 512, 1024]  # in GB/s
+    polynomial_list = [
+        # [["q1", "q2"]],  # a gate of degree 2
+        [["q1", "q2", "q3"]],
+        # [["q1", "q2", "q3", "q4"]],
+        [["q1", "q2", "q3", "q4", "q5"]],  # a gate of degree 5
+        # [["q1", "q2", "q3", "q4", "q5", "q6"]],
+        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7"]],
+        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"]],  # a gate of degree 8
+        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9"]],
+        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10"]],
+    ]
+
+    # NTT
+    ntt_result_df = sweep_NTT_configs(
+        n_size_values=n_values, 
+        bw_values=bw_values,
+        polynomial_list=polynomial_list,
+    )
+
+    # SumCheck
+    sc_results_df = sweep_sumcheck_configs(
+        num_var_list=n_values, 
+        available_bw_list=bw_values,
+        polynomial_list=polynomial_list,
+    )
+
+    save_results(sc_results_df, ntt_result_df, "sumcheck_sweep_results_mo", save_excel=True, draw_plots_type=2)
+
     print("End...")
 

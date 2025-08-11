@@ -222,7 +222,7 @@ def get_latencies_and_rates(col_words, row_words, num_bfs, num_pes, bit_width, a
     # print(f)
     return mem_latency_cols, mem_latency_rows, compute_latency_cols, compute_latency_rows, first_step_prefetch_latency, fourth_step_prefetch_latency
 
-def run_fit_onchip(target_n=None, target_bw=None):
+def run_fit_onchip(target_n=None, target_bw=None, save_pkl=True):
 
     random.seed(0)
 
@@ -242,7 +242,8 @@ def run_fit_onchip(target_n=None, target_bw=None):
     else:
         bandwidths = [2**i for i in range(6, 13)] # 64 GB/s to 4096 GB/s
     
-    unroll_factors = [1, 2, 4, 8, 16, 32, 64]
+    unroll_factors_pow = range(0, math.ceil(target_n / 2)) if target_n is not None else range(0, 13)
+    unroll_factors = [2**i for i in unroll_factors_pow]
     
     if target_n is not None:
         lengths = [target_n]
@@ -344,12 +345,14 @@ def run_fit_onchip(target_n=None, target_bw=None):
     
     # Create filename based on arguments
     if target_n is not None and target_bw is not None:
-        filename = f"results_n{target_n}_bw{target_bw}.pkl"
-        filepath = os.path.join(output_dir, filename)
-        with open(filepath, 'wb') as f:
-            pickle.dump(results, f)
-        
-    print(f"Results saved to {filepath}")
+        if save_pkl:
+            filename = f"results_n{target_n}_bw{target_bw}.pkl"
+            filepath = os.path.join(output_dir, filename)
+            with open(filepath, 'wb') as f:
+                pickle.dump(results, f)
+            print(f"Results saved to {filepath}")
+
+    return results
 
 
 def run_notfit_onchip():
