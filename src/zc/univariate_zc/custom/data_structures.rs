@@ -1,9 +1,11 @@
 use crate::pcs::PolynomialCommitmentScheme;
 use ark_ff::PrimeField;
-use ark_poly::univariate::DensePolynomial;
+use ark_poly::{univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain};
 use std::{cmp::max, collections::HashMap, marker::PhantomData, sync::Arc};
 use anyhow::{Error, Ok};
 use ark_poly::Polynomial;
+use rayon::ThreadPool;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 /// This is the data structure of the proof to be sent to the verifer,
 /// to prove that there exists a quotient polynomial q(X), for which,
@@ -39,70 +41,62 @@ pub struct ZeroCheckParams<'a, PCS: PolynomialCommitmentScheme> {
 /// namely, the number of variables in the MLEs and the max degree of any
 /// variable in the virtual polynomial
 #[derive(Clone, Debug)]
-pub struct PolynomialInfo<F: PrimeField> {
+pub struct EvaluationInfo<F: PrimeField> {
     // maximum degree of the variables in the output polynomial
     pub max_multiplicand: usize,
-    // number of variables in the MLEs
-    pub num_vars: usize,
     #[doc(hidden)]
     pub phantom: PhantomData<F>,
 }
 
 /// Struct to store the sum of products of MLEs
 #[derive(Clone, Debug)]
-pub struct VirtualPolynomial<F: PrimeField> {
+pub struct VirtualEvaluation<F: PrimeField> {
     // information about the virtual polynomial
-    pub poly_info: PolynomialInfo<F>,
+    pub evals_info: EvaluationInfo<F>,
     // list of (indexed) MLEs which are to be multiplied
     // together along with a coefficient
     pub products: Vec<(F, Vec<usize>)>,
     // list of dense multilinear extensions of multilinear
     // polynomials used
-    pub flat_ml_extensions: Vec<Arc<DensePolynomial<F>>>,
-    raw_pointers_lookup_table: HashMap<*const DensePolynomial<F>, usize>,
+    pub univariate_evaluations: Vec<Arc<Evaluations<F>>>,
+    raw_pointers_lookup_table: HashMap<*const Evaluations<F>, usize>,
 }
 
-impl<F: PrimeField> VirtualPolynomial<F> {
-    /// Creates an empty virtual polynomial with `num_variables`
-    pub fn new(num_variables: usize) -> Self {
-        VirtualPolynomial {
-            poly_info: PolynomialInfo {
+impl<F: PrimeField> VirtualEvaluation<F> {
+    /// Creates an empty virtual evaluation with `degree`
+    pub fn new() -> Self {
+        VirtualEvaluation {
+            evals_info: EvaluationInfo {
                 max_multiplicand: 0,
-                num_vars: num_variables,
                 phantom: PhantomData,
             },
             products: Vec::new(),
-            flat_ml_extensions: Vec::new(),
+            univariate_evaluations: Vec::new(),
             raw_pointers_lookup_table: HashMap::new(),
         }
     }
 
-    /// Add a product of list of multilinear extensions to self
-    /// Returns an error if the list is empty, or the MLE has a different
-    /// `num_vars` from self
-    ///
-    /// The MLEs will be multiplied together, and then multiplied by the scalar
-    /// `coefficient`
+    /// Add a product of list of Evaluations to self
     pub fn add_product(
         &mut self,
-        product: impl IntoIterator<Item = Arc<DensePolynomial<F>>>,
+        product: impl IntoIterator<Item = Arc<Evaluations<F>>>,
         coefficient: F,
     ) {
-        let product: Vec<Arc<DensePolynomial<F>>> = product.into_iter().collect();
+        let product: Vec<Arc<Evaluations<F>>> = product.into_iter().collect();
         let mut indexed_product = Vec::with_capacity(product.len());
         assert!(!product.is_empty());
 
-        self.poly_info.max_multiplicand = max(self.poly_info.max_multiplicand, product.len());
+        self.evals_info.max_multiplicand = max(self.evals_info.max_multiplicand, product.len());
 
         for m in product {
 
-            let m_ptr: *const DensePolynomial<F> = Arc::as_ptr(&m);
+            let m_ptr: *const Evaluations<F> = Arc::as_ptr(&m);
 
             if let Some(index) = self.raw_pointers_lookup_table.get(&m_ptr) {
                 indexed_product.push(*index)
             } else {
-                let curr_index = self.flat_ml_extensions.len();
-                self.flat_ml_extensions.push(m.clone());
+                let curr_index = self.univariate_evaluations.len();
+                self.univariate_evaluations.push(m.clone());
                 self.raw_pointers_lookup_table.insert(m_ptr, curr_index);
                 indexed_product.push(curr_index);
             }
@@ -111,52 +105,233 @@ impl<F: PrimeField> VirtualPolynomial<F> {
         self.products.push((coefficient, indexed_product));
     }
 
-    /// Multiple the current VirtualPolynomial by an MLE:
-    /// - add the MLE to the MLE list;
-    /// - multiple each product by MLE and its coefficient
-    ///
-    /// Returns an error if the MLE has a different `num_vars` from self
-    pub fn mul_dense_polynomial(
+    /// Multiple the current VirtualEvaluation by an Evaluation:
+    /// - add the Evaluation to the Evaluations list;
+    /// - multiply each product by Evaluation and its coefficient
+    pub fn mul_evaluations(
         &mut self,
-        mle: Arc<DensePolynomial<F>>,
+        evals: Arc<Evaluations<F>>,
         coefficient: F,
     ) -> Result<(), Error> {
 
-        let mle_ptr: *const DensePolynomial<F> = Arc::as_ptr(&mle);
+        let evals_ptr: *const Evaluations<F> = Arc::as_ptr(&evals);
 
-        let mle_index = match self.raw_pointers_lookup_table.get(&mle_ptr) {
+        let evals_index = match self.raw_pointers_lookup_table.get(&evals_ptr) {
             Some(&p) => p,
             _ => {
                 self.raw_pointers_lookup_table
-                    .insert(mle_ptr, self.flat_ml_extensions.len());
-                self.flat_ml_extensions.push(mle);
-                self.flat_ml_extensions.len() - 1
+                    .insert(evals_ptr, self.univariate_evaluations.len());
+                self.univariate_evaluations.push(evals);
+                self.univariate_evaluations.len() - 1
             }
         };
 
         for (prod_coef, indices) in self.products.iter_mut() {
-            // - add the MLE to the MLE list;
-            // - multiple each product by MLE and its coefficient.
-            indices.push(mle_index);
+            // - add the Evaluations to the Evaluations list;
+            // - multiple each product by Evaluations and its coefficient.
+            indices.push(evals_index);
             *prod_coef *= coefficient;
         }
 
-        self.poly_info.max_multiplicand += 1;
+        self.evals_info.max_multiplicand += 1;
         Ok(())
     }
 
-    /// Evaluate the virtual polynomial at point `point`
-    /// Returns an error is point.len() does not match `num_variables`
-    pub fn evaluate(&self, point: F) -> F {
+    pub fn evaluate_at_point(&self, point: F) -> F {
+        let mut result = F::zero();
+        for (coef, indices) in self.products.iter() {
+            let mut product = coef.clone();
+            for &index in indices {
+                product *= <Evaluations<F> as Clone>::clone(&self.univariate_evaluations[index]).interpolate().evaluate(&point);
+            }
+            result += product;
+        }
+        result
+    }
+}
 
+
+#[derive(Clone, Debug)]
+pub struct PolynomialInfo<F: PrimeField> {
+    // maximum degree of the variables in the output polynomial
+    pub max_multiplicand: usize,
+    // phantom data to ensure that the struct is generic over F
+    #[doc(hidden)]
+    pub phantom: PhantomData<F>,
+}
+
+/// Struct to store the sum of products of MLEs
+#[derive(Clone, Debug)]
+pub struct VirtualPolynomail<F: PrimeField> {
+    // information about the virtual polynomial
+    pub poly_info: PolynomialInfo<F>,
+    // list of (indexed) MLEs which are to be multiplied
+    // together along with a coefficient
+    pub products: Vec<(F, Vec<usize>)>,
+    // list of dense multilinear extensions of multilinear
+    // polynomials used
+    pub univariate_polynomials: Vec<Arc<DensePolynomial<F>>>,
+}
+
+impl<F: PrimeField> VirtualPolynomail<F> {
+    /// Creates an empty virtual polynomial with `num_variables`
+    pub fn new(virtual_evaluation: VirtualEvaluation<F>, pool_run: Option<&ThreadPool>) -> Self {
+        let univariate_polynomials: Vec<Arc<DensePolynomial<F>>>;
+        if let Some(pool_run) = pool_run {
+            univariate_polynomials = pool_run.install(|| {
+                virtual_evaluation
+                    .univariate_evaluations
+                    .into_iter()
+                    .map(|eval| Arc::new(<Evaluations<F> as Clone>::clone(&eval).interpolate()))
+                    .collect()
+            });
+        } else {
+            univariate_polynomials = virtual_evaluation
+                .univariate_evaluations
+                .into_iter()
+                .map(|eval| Arc::new(<Evaluations<F> as Clone>::clone(&eval).interpolate()))
+                .collect();
+        }
+
+        VirtualPolynomail {
+            poly_info: PolynomialInfo {
+                max_multiplicand: virtual_evaluation.evals_info.max_multiplicand,
+                phantom: PhantomData,
+            },
+            products: virtual_evaluation.products,
+            univariate_polynomials: univariate_polynomials,
+        }
+    }
+
+    /// Returns the degree of the virtual polynomial
+    pub fn degree(&self) -> usize {
         self.products
             .iter()
-            .map(|(c, p)| {
-                *c * p
-                    .iter()
-                    .map(|&i| self.flat_ml_extensions[i].evaluate(&point))
-                    .product::<F>()
+            .map(|(_, indices)| {
+                indices.iter().map(|&index| {
+                    self.univariate_polynomials[index].degree()
+                }).sum::<usize>()
             })
-            .sum()
+            .max()
+            .unwrap_or(0)
+    }   
+
+    /// Evaluates the virtual polynomial at a given point
+    pub fn evaluate(&self, point: F) -> F {
+        let mut result = F::zero();
+        for (coef, indices) in &self.products {
+            let mut product = coef.clone();
+            for &index in indices {
+                product *= self.univariate_polynomials[index].evaluate(&point);
+            }
+            result += product;
+        }
+        result
     }
+
+    /// Evaluates the virtual polynomial at a given domain
+    pub fn evaluate_over_domain(&self, domain: GeneralEvaluationDomain<F>, pool_run: Option<&ThreadPool>) -> Vec<F> {
+        let evals: Vec<Vec<F>>;
+        if let Some(pool_run) = pool_run {
+            evals = pool_run.install(|| {
+                self.univariate_polynomials
+                    .iter()
+                    .map(|poly| (*poly.as_ref()).clone().evaluate_over_domain(domain.clone()).evals)
+                    .collect()
+            });
+        } else {
+            evals = self.univariate_polynomials
+                .iter()
+                .map(|poly| <DensePolynomial<F> as Clone>::clone(&poly).evaluate_over_domain(domain).evals)
+                .collect();
+        }
+
+        let mut result = vec![F::zero(); domain.size()];
+        for i in 0..domain.size() {
+            for (coef, indices) in &self.products {
+                let mut product = coef.clone();
+                for &index in indices {
+                    product *= evals[index][i];
+                }
+                result[i] += product;
+            }
+        }
+        result
+    }
+}
+
+pub fn custom_zero_test_case<F: PrimeField>(degree: usize) -> VirtualEvaluation<F> {
+    let mut poly = VirtualEvaluation::<F>::new();
+    let domain = GeneralEvaluationDomain::<F>::new(degree).unwrap();
+
+    let rand_g_evals: Vec<F> = (0..degree)
+        .into_par_iter()
+        .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
+        .collect();
+    let rand_h_evals: Vec<F> = (0..degree)
+        .into_par_iter()
+        .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
+        .collect();
+    let rand_s_evals: Vec<F> = (0..degree)
+        .into_par_iter()
+        .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
+        .collect();
+
+    let one_minus_s_evals: Vec<F> = (0..degree)
+        .into_par_iter()
+        .map(|i| F::one() - rand_s_evals[i])
+        .collect();
+
+    let g_plus_h_evals: Vec<F> = (0..degree)
+        .into_par_iter()
+        .map(|i| rand_h_evals[i] + rand_g_evals[i])
+        .collect();
+
+    let o_evals: Vec<F> = (0..degree)
+        .into_par_iter()
+        .map(|i| {
+            (rand_g_evals[i] * rand_h_evals[i] * rand_s_evals[i])
+                + (one_minus_s_evals[i] * g_plus_h_evals[i])
+        })
+        .collect();
+
+    let mut p1 = vec![];
+    let mut p2 = vec![];
+    let mut p3 = vec![];
+    let mut p4 = vec![];
+    let mut p5 = vec![];
+    let mut p6 = vec![];
+
+    let g_evals = Evaluations::from_vec_and_domain(rand_g_evals, domain);
+
+    let h_evals = Evaluations::from_vec_and_domain(rand_h_evals, domain);
+
+    let s_evals = Evaluations::from_vec_and_domain(rand_s_evals, domain);
+
+    let o_evals = Evaluations::from_vec_and_domain(o_evals, domain);
+
+    p1.push(Arc::new(g_evals.clone()));
+    p1.push(Arc::new(h_evals.clone()));
+    p1.push(Arc::new(s_evals.clone()));
+
+    p2.push(Arc::new(s_evals.clone()));
+    p2.push(Arc::new(g_evals.clone()));
+
+    p3.push(Arc::new(s_evals.clone()));
+    p3.push(Arc::new(h_evals.clone()));
+
+    p4.push(Arc::new(g_evals.clone()));
+
+    p5.push(Arc::new(h_evals.clone()));
+
+    p6.push(Arc::new(o_evals.clone()));
+
+    poly.add_product(p1, F::from(1));
+    poly.add_product(p2, F::from(-1));
+    poly.add_product(p3, F::from(-1));
+    poly.add_product(p4, F::from(1));
+    poly.add_product(p5, F::from(1));
+    poly.add_product(p6, F::from(-1));
+
+    poly
 }
