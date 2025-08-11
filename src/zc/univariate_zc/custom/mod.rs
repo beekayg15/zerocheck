@@ -319,17 +319,20 @@ mod tests {
     #[test]
     fn test_proof_generation_verification_custom_uni() {
         let test_timer = start_timer!(|| "Proof Generation Test");
-        
-        let degree = 1 << 5;
-        let inp_evals = custom_zero_test_case::<Fr>(degree);
+        let pool_prepare = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
+
+        let degree = 1 << 6;
+        let inp_evals = custom_zero_test_case_with_products::<Fr>(degree, 3, vec![3, 2, 2], &pool_prepare);
         let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
         let max_degree = 3 * degree;
-        let pp = max_degree;
 
-        let zp = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
+        let zp = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&max_degree).unwrap();
 
         let proof = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
             &zp.clone(),
@@ -341,8 +344,6 @@ mod tests {
             None,
         )
         .unwrap();
-
-        println!("Proof: {:?}", proof.q_opening);
 
         end_timer!(proof_gen_timer);
 
@@ -366,10 +367,14 @@ mod tests {
     #[test]
     fn test_proof_generation_verification_custom_uni_ligero() {
         let test_timer = start_timer!(|| "Proof Generation Test");
+        let pool_prepare = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
 
         let degree = 1 << 5;
         let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
-        let inp_evals = custom_zero_test_case::<Fr>(degree);
+        let inp_evals = custom_zero_test_case_with_products::<Fr>(degree, 3, vec![3, 2, 2], &pool_prepare);
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
