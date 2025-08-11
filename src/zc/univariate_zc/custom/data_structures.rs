@@ -335,3 +335,51 @@ pub fn custom_zero_test_case<F: PrimeField>(degree: usize) -> VirtualEvaluation<
 
     poly
 }
+
+pub fn custom_zero_test_case_with_products<F: PrimeField>(
+    degree: usize,
+    num_polys: usize,
+    prod_sizes: Vec<usize>,
+    pool_prepare: &rayon::ThreadPool,
+) -> VirtualEvaluation<F> {
+    for i in prod_sizes.iter() {
+        assert!(i <= &num_polys);
+    }
+
+    let mut inp_evals = VirtualEvaluation::<F>::new();
+    let domain = GeneralEvaluationDomain::<F>::new(degree).unwrap();
+
+    let mut poly_evals = vec![];
+    for _ in 0..num_polys {
+        let rand_evals: Vec<F> = pool_prepare.install(|| {
+            (0..degree)
+                .into_par_iter()
+                .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
+                .collect()
+        });
+        poly_evals.push(rand_evals);
+    }
+
+    let mut zero_evals = vec![F::zero(); degree];
+    for i in prod_sizes.iter() {
+        let mut prod = vec![];
+        let mut prod_evals = vec![F::one(); degree];
+        for j in 0..*i {
+            prod.push(Arc::new(Evaluations::from_vec_and_domain(poly_evals[j].clone(), domain)));
+            for k in 0..degree {
+                prod_evals[k] *= poly_evals[j][k];
+            }
+        }
+        inp_evals.add_product(prod, F::from(1));
+        for i in 0..degree {
+            zero_evals[i] += prod_evals[i];
+        }
+    }
+
+    let zero_evals = pool_prepare.install(|| {
+        Evaluations::from_vec_and_domain(zero_evals, domain)
+    });
+    inp_evals.add_product(vec![Arc::new(zero_evals)], F::from(-1));
+
+    inp_evals
+}

@@ -1,10 +1,7 @@
 use ark_bls12_381::{Bls12_381, Fr};
-use ark_ff::UniformRand;
-use ark_poly::{EvaluationDomain, Evaluations, GeneralEvaluationDomain};
-use ark_std::One;
+use ark_poly::{EvaluationDomain, GeneralEvaluationDomain};
 use ark_std::{end_timer, start_timer};
 use clap::Parser;
-use rayon::prelude::*;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::pcs::univariate_pcs::{
@@ -12,48 +9,25 @@ use zerocheck::pcs::univariate_pcs::{
     ligero::{Ligero, LigeroPoseidon},
 };
 use zerocheck::transcripts::ZCTranscript;
-use zerocheck::zc::univariate_zc::optimized::data_structures::ZeroCheckParams;
-use zerocheck::zc::univariate_zc::optimized::OptimizedUnivariateZeroCheck;
+use zerocheck::zc::univariate_zc::custom::{CustomUnivariateZeroCheck, data_structures::{VirtualEvaluation, ZeroCheckParams}};
 use zerocheck::ZeroCheck;
+use zerocheck::zc::univariate_zc::custom::data_structures::custom_zero_test_case_with_products;
 
 /// This function prepares the random input evaluations for the prover test.
 /// Reuse for the same worksize across multiple repeated tests.
 fn prepare_input_evals_domain<'a>(
-    size: u32,
-) -> ([Evaluations<Fr>; 4], GeneralEvaluationDomain<Fr>, usize) {
+    size: usize,
+    num_polys: usize,
+    prod_sizes: Vec<usize>,
+    pool_prepare: &rayon::ThreadPool,
+) -> (VirtualEvaluation<Fr>, GeneralEvaluationDomain<Fr>, usize) {
     println!("Preparing input evaluations and domain for 2^{size} work");
     let instant = Instant::now();
-    let domain = GeneralEvaluationDomain::<Fr>::new(1 << size).unwrap();
+    let domain = GeneralEvaluationDomain::<Fr>::new(size).unwrap();
 
-    let evals_over_domain_g: Vec<_> = (0..domain.size())
-        .into_par_iter()
-        .map(|_| Fr::rand(&mut ark_std::rand::thread_rng()))
-        .collect();
-    let evals_over_domain_h: Vec<_> = (0..domain.size())
-        .into_par_iter()
-        .map(|_| Fr::rand(&mut ark_std::rand::thread_rng()))
-        .collect();
-    let evals_over_domain_s: Vec<_> = (0..domain.size())
-        .into_par_iter()
-        .map(|_| Fr::rand(&mut ark_std::rand::thread_rng()))
-        .collect();
-    let evals_over_domain_o: Vec<_> = (0..domain.size())
-        .into_par_iter()
-        .map(|i| {
-            let g_eval = evals_over_domain_g[i];
-            let h_eval = evals_over_domain_h[i];
-            let s_eval = evals_over_domain_s[i];
-            g_eval * h_eval * s_eval + (Fr::one() - s_eval) * (g_eval + h_eval)
-        })
-        .collect();
+    let inp_evals = custom_zero_test_case_with_products::<Fr>(size, num_polys, prod_sizes.clone(), pool_prepare);
 
-    let g_evals = Evaluations::from_vec_and_domain(evals_over_domain_g, domain);
-    let h_evals = Evaluations::from_vec_and_domain(evals_over_domain_h, domain);
-    let s_evals = Evaluations::from_vec_and_domain(evals_over_domain_s, domain);
-    let o_evals = Evaluations::from_vec_and_domain(evals_over_domain_o, domain);
-
-    let inp_evals = [g_evals, h_evals, s_evals, o_evals];
-    let max_degree = (domain.size() - 1) * 3; // g.h.s
+    let max_degree = size * num_polys * 2;
     let duration = instant.elapsed().as_secs_f64();
     println!("Preparing input evaluations and domain for 2^{size} work ....{duration}s");
     return (inp_evals, domain, max_degree);
@@ -64,7 +38,7 @@ fn prepare_input_evals_domain<'a>(
 /// `domain` is the domain of the evaluations.
 /// `size` is the work size exponent (2^size).
 fn opt_univ_zc_multhr_benchmark_kzg(
-    input_evals: &[Evaluations<Fr>; 4],
+    input_evals: &VirtualEvaluation<Fr>,
     domain: GeneralEvaluationDomain<Fr>,
     global_params: &ZeroCheckParams<KZG<Bls12_381>>,
     size: u32,
@@ -75,13 +49,12 @@ fn opt_univ_zc_multhr_benchmark_kzg(
     let test_timer =
         start_timer!(|| format!("Opt Univariate Proof Generation Test KZG for 2^{size} work"));
 
-    let inp_evals = input_evals.to_vec();
     let instant = Instant::now();
     let proof_gen_timer = start_timer!(|| "Prove fn called for KZG");
 
-    let proof = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
+    let proof = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
         &global_params,
-        &inp_evals,
+        input_evals,
         &domain,
         &mut ZCTranscript::init_transcript(),
         run_threads,
@@ -95,9 +68,9 @@ fn opt_univ_zc_multhr_benchmark_kzg(
 
     let verify_timer = start_timer!(|| "Verify fn called for KZG");
 
-    let result = OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
+    let result = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
         &global_params,
-        &inp_evals,
+        input_evals,
         &proof,
         &domain,
         &mut ZCTranscript::init_transcript(),
@@ -113,7 +86,7 @@ fn opt_univ_zc_multhr_benchmark_kzg(
 }
 
 fn opt_univ_zc_multhr_benchmark_ligero(
-    input_evals: &[Evaluations<Fr>; 4],
+    input_evals: &VirtualEvaluation<Fr>,
     domain: GeneralEvaluationDomain<Fr>,
     global_params: &ZeroCheckParams<Ligero<Fr>>,
     size: u32,
@@ -125,13 +98,12 @@ fn opt_univ_zc_multhr_benchmark_ligero(
         format!("Opt Univariate Proof Generation Test Ligero for 2^{size} work")
     });
 
-    let inp_evals = input_evals.to_vec();
     let instant = Instant::now();
     let proof_gen_timer = start_timer!(|| "Prove fn called for Ligero");
 
-    let proof = OptimizedUnivariateZeroCheck::<Fr, Ligero<Fr>>::prove(
+    let proof = CustomUnivariateZeroCheck::<Fr, Ligero<Fr>>::prove(
         &global_params,
-        &inp_evals,
+        input_evals,
         &domain,
         &mut ZCTranscript::init_transcript(),
         run_threads,
@@ -145,9 +117,9 @@ fn opt_univ_zc_multhr_benchmark_ligero(
 
     let verify_timer = start_timer!(|| "Verify fn called for Ligero");
 
-    let result = OptimizedUnivariateZeroCheck::<Fr, Ligero<Fr>>::verify(
+    let result = CustomUnivariateZeroCheck::<Fr, Ligero<Fr>>::verify(
         &global_params,
-        &inp_evals,
+        input_evals,
         &proof,
         &domain,
         &mut ZCTranscript::init_transcript(),
@@ -163,7 +135,7 @@ fn opt_univ_zc_multhr_benchmark_ligero(
 }
 
 fn opt_univ_zc_multhr_benchmark_ligero_poseidon(
-    input_evals: &[Evaluations<Fr>; 4],
+    input_evals: &VirtualEvaluation<Fr>,
     domain: GeneralEvaluationDomain<Fr>,
     global_params: &ZeroCheckParams<LigeroPoseidon<Fr>>,
     size: u32,
@@ -175,13 +147,12 @@ fn opt_univ_zc_multhr_benchmark_ligero_poseidon(
         format!("Opt Univariate Proof Generation Test LigeroPoseidon for 2^{size} work")
     });
 
-    let inp_evals = input_evals.to_vec();
     let instant = Instant::now();
     let proof_gen_timer = start_timer!(|| "Prove fn called for LigeroPoseidon");
 
-    let proof = OptimizedUnivariateZeroCheck::<Fr, LigeroPoseidon<Fr>>::prove(
+    let proof = CustomUnivariateZeroCheck::<Fr, LigeroPoseidon<Fr>>::prove(
         &global_params,
-        &inp_evals,
+        input_evals,
         &domain,
         &mut ZCTranscript::init_transcript(),
         run_threads,
@@ -195,9 +166,9 @@ fn opt_univ_zc_multhr_benchmark_ligero_poseidon(
 
     let verify_timer = start_timer!(|| "Verify fn called for LigeroPoseidon");
 
-    let result = OptimizedUnivariateZeroCheck::<Fr, LigeroPoseidon<Fr>>::verify(
+    let result = CustomUnivariateZeroCheck::<Fr, LigeroPoseidon<Fr>>::verify(
         &global_params,
-        &inp_evals,
+        input_evals,
         &proof,
         &domain,
         &mut ZCTranscript::init_transcript(),
@@ -225,6 +196,14 @@ struct Args {
     /// Maximum work size exponent (inclusive, 2^max_size)
     #[arg(long, default_value = "20")]
     max_size: usize,
+
+    /// Number of polynomials to use for the test
+    #[arg(long, default_value = "5")]
+    num_polys: usize,
+
+    /// Number of products to use for the test
+    #[arg(long, value_delimiter = ',', default_value = "5,4,3,2,1")]
+    prod_sizes: Vec<usize>,
 
     /// Number of threads to use for prepare input evaluations
     #[arg(long, default_value = "64")]
@@ -260,15 +239,12 @@ fn bench_opt_uni_zc() {
                 .unwrap();
 
             let (input_evals, domain, pp) =
-                pool_prepare.install(|| prepare_input_evals_domain(size as u32));
-
-            // let global_params =
-            //     OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
+                prepare_input_evals_domain(size, args.num_polys, args.prod_sizes.clone(), &pool_prepare);
 
             let total_runtime: u128 = match args.poly_commit_scheme.as_str() {
                 "kzg" => {
                     let global_params =
-                        OptimizedUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
+                        CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&pp).unwrap();
                     (0..args.repeat)
                         .map(|repeat_time| {
                             println!(
@@ -289,7 +265,7 @@ fn bench_opt_uni_zc() {
                 }
                 "ligero" => {
                     let global_params =
-                        OptimizedUnivariateZeroCheck::<Fr, Ligero<Fr>>::setup(&pp).unwrap();
+                        CustomUnivariateZeroCheck::<Fr, Ligero<Fr>>::setup(&pp).unwrap();
                     (0..args.repeat)
                         .map(|repeat_time| {
                             println!(
@@ -310,7 +286,7 @@ fn bench_opt_uni_zc() {
                 }
                 "ligero_poseidon" => {
                     let global_params =
-                        OptimizedUnivariateZeroCheck::<Fr, LigeroPoseidon<Fr>>::setup(&pp).unwrap();
+                        CustomUnivariateZeroCheck::<Fr, LigeroPoseidon<Fr>>::setup(&pp).unwrap();
                     (0..args.repeat)
                         .map(|repeat_time| {
                             println!(
