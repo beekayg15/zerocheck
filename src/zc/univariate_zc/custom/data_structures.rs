@@ -260,6 +260,8 @@ impl<F: PrimeField> VirtualPolynomail<F> {
     }
 }
 
+// Manually creates a VirtualEvaluation object in the form "ghs + (1-s)(g+h) - o"
+// Where "o" is zeroizing polynomial that cancels "ghs + (1-s)(g+h)" to zero.
 pub fn custom_zero_test_case<F: PrimeField>(degree: usize) -> VirtualEvaluation<F> {
     let mut poly = VirtualEvaluation::<F>::new();
     let domain = GeneralEvaluationDomain::<F>::new(degree).unwrap();
