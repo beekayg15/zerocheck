@@ -336,12 +336,18 @@ pub fn custom_zero_test_case<F: PrimeField>(degree: usize) -> VirtualEvaluation<
     poly
 }
 
+// Manually creating a VirtualEvalution object that evaluates to 0 any where in the domain.
+// For each prod_size, generate a term that has the number of prod_size many polynomials. 
+// e.g. prod_size = 3: abc
+//      prod_size = 2: ab
+// In the end, generate a zeroizing polynomial that cancels out the input polynomial to zero.
 pub fn custom_zero_test_case_with_products<F: PrimeField>(
     degree: usize,
     num_polys: usize,
     prod_sizes: Vec<usize>,
     pool_prepare: &rayon::ThreadPool,
 ) -> VirtualEvaluation<F> {
+    // Make sure a term only has prod_size up to the number of polynomials
     for i in prod_sizes.iter() {
         assert!(i <= &num_polys);
     }
@@ -349,6 +355,7 @@ pub fn custom_zero_test_case_with_products<F: PrimeField>(
     let mut inp_evals = VirtualEvaluation::<F>::new();
     let domain = GeneralEvaluationDomain::<F>::new(degree).unwrap();
 
+    // Randomly generate the evalutions for each polynomial
     let mut poly_evals = vec![];
     for _ in 0..num_polys {
         let rand_evals: Vec<F> = pool_prepare.install(|| {
@@ -360,6 +367,7 @@ pub fn custom_zero_test_case_with_products<F: PrimeField>(
         poly_evals.push(rand_evals);
     }
 
+    // Manually creating each term while keeping track of zero evaluations.
     let mut zero_evals = vec![F::zero(); degree];
     for i in prod_sizes.iter() {
         let mut prod = vec![];
@@ -376,6 +384,7 @@ pub fn custom_zero_test_case_with_products<F: PrimeField>(
         }
     }
 
+    // Adding the zeroizing polynomial that cancels out the input polynomial to zero. 
     let zero_evals = pool_prepare.install(|| {
         Evaluations::from_vec_and_domain(zero_evals, domain)
     });
