@@ -1,7 +1,7 @@
 from ntt import ntt, ntt_dit_rn, ntt_dif_nr, bit_rev_shuffle
 
 class ArchitectureSimulator:
-    def __init__(self, omegas, modulus, mem_latency, compute_latency, prefetch_latency=None, skip_compute=False):
+    def __init__(self, omegas, modulus, r_or_w_mem_latency, r_and_w_mem_latency, compute_latency, prefetch_latency=None, skip_compute=False):
         """
         Initialize the simulator with a provided NTT function.
         """
@@ -14,15 +14,18 @@ class ArchitectureSimulator:
         self.modulus = modulus
         self.out = None
 
-        self.t_read = mem_latency
+        # TODO: latency of step should be max(t_r_or_w, t_compute) if there's only read or only write, 
+        # but if there's both, it should be max(t_r_and_w, t_compute)
+
+        self.r_or_w_mem_latency = r_or_w_mem_latency
+        self.r_and_w_mem_latency = r_and_w_mem_latency
         self.t_compute = compute_latency
-        self.t_write = mem_latency
-        self.t_prefetch = prefetch_latency if prefetch_latency is not None else mem_latency
+        self.t_prefetch = prefetch_latency if prefetch_latency is not None else r_or_w_mem_latency
         self.debug = False
         self.skip_compute = skip_compute
 
         # initial cycle time of fetching the twiddle factors (omegas)
-        # self.cycle_time = mem_latency
+        # self.cycle_time = r_or_w_mem_latency
         self.cycle_time = 0
 
     def set_omegas(self, omegas):
@@ -114,26 +117,24 @@ class ArchitectureSimulator:
         # Put new data and tag into read stage
         self.pipeline["READ"] = (data, tag)
 
-        # Compute active stage times
-        stage_times = []
-        if self.pipeline["READ"] != (None, None):
-            stage_times.append(self.t_read)
-        else:
-            stage_times.append(0)
+        read_present = self.pipeline["READ"][1] is not None
+        write_present = self.pipeline["WRITE"][1] is not None
 
-        if self.pipeline["COMPUTE"] != (None, None):
-            stage_times.append(self.t_compute)
+        if read_present and write_present:
+            mem_time = self.r_and_w_mem_latency
+        elif read_present or write_present:
+            mem_time = self.r_or_w_mem_latency
         else:
-            stage_times.append(0)
+            mem_time = 0
 
-        if self.pipeline["WRITE"] != (None, None):
-            stage_times.append(self.t_write)
+        if self.pipeline["COMPUTE"][1] is not None:
+            compute_time = self.t_compute
         else:
-            stage_times.append(0)
+            compute_time = 0
 
         # Add max active stage time to total cycle time
-        cycles_elapsed = max(stage_times)
-        self.cycle_time += max(stage_times)
+        cycles_elapsed = max(mem_time, compute_time)
+        self.cycle_time += cycles_elapsed
 
         if self.debug:
             print(f"Cycle time: {self.cycle_time}, Cycles elapsed this step: {cycles_elapsed}")
