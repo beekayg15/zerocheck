@@ -297,6 +297,7 @@ where
 mod tests {
     use crate::pcs::univariate_pcs::kzg::KZG;
     use crate::pcs::univariate_pcs::ligero::Ligero;
+    use crate::zc::univariate_zc::custom::parser::prepare_virtual_evaluation_from_string;
 
     use super::*;
     use ark_bls12_381::Bls12_381;
@@ -315,13 +316,14 @@ mod tests {
             .unwrap();
 
         let degree = 1 << 6;
-        let inp_evals =
-            custom_zero_test_case_with_products::<Fr>(degree, 3, vec![3, 2, 2], &pool_prepare);
+        let input = "g*h*s + (1 - s)(g + h)";
+        let inp_evals = prepare_virtual_evaluation_from_string(input, degree, &pool_prepare).unwrap();
         let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
-        let max_degree = 3 * degree;
+        print!("{}", inp_evals.evals_info.max_multiplicand);
+        let max_degree = inp_evals.evals_info.max_multiplicand * degree;
 
         let zp = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&max_degree).unwrap();
 
