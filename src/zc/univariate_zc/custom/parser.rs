@@ -1,10 +1,14 @@
 #![allow(dead_code)]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
 use ark_ff::PrimeField;
-use ark_poly::{univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain};
+use ark_poly::{
+    univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain,
+};
+use rayon::prelude::*;
+use regex::Regex;
 
 use super::data_structures::*;
 
@@ -54,11 +58,27 @@ struct Parser<'a> {
 }
 impl<'a> Parser<'a> {
     fn new(s: &'a str) -> Self {
-        Self { chars: s.chars().collect(), pos: 0, _inp: s }
+        Self {
+            chars: s.chars().collect(),
+            pos: 0,
+            _inp: s,
+        }
     }
-    fn peek(&self) -> Option<char> { self.chars.get(self.pos).copied() }
-    fn bump(&mut self) -> Option<char> { let c = self.peek(); if c.is_some() { self.pos += 1; } c }
-    fn eat_ws(&mut self) { while matches!(self.peek(), Some(c) if c.is_whitespace()) { self.pos += 1; } }
+    fn peek(&self) -> Option<char> {
+        self.chars.get(self.pos).copied()
+    }
+    fn bump(&mut self) -> Option<char> {
+        let c = self.peek();
+        if c.is_some() {
+            self.pos += 1;
+        }
+        c
+    }
+    fn eat_ws(&mut self) {
+        while matches!(self.peek(), Some(c) if c.is_whitespace()) {
+            self.pos += 1;
+        }
+    }
 
     fn parse(&mut self) -> Result<Node, ParseError> {
         self.eat_ws();
@@ -75,8 +95,16 @@ impl<'a> Parser<'a> {
         loop {
             self.eat_ws();
             match self.peek() {
-                Some('+') => { self.bump(); let rhs = self.parse_term()?; node = Node::Add(Box::new(node), Box::new(rhs)); }
-                Some('-') => { self.bump(); let rhs = self.parse_term()?; node = Node::Sub(Box::new(node), Box::new(rhs)); }
+                Some('+') => {
+                    self.bump();
+                    let rhs = self.parse_term()?;
+                    node = Node::Add(Box::new(node), Box::new(rhs));
+                }
+                Some('-') => {
+                    self.bump();
+                    let rhs = self.parse_term()?;
+                    node = Node::Sub(Box::new(node), Box::new(rhs));
+                }
                 _ => break,
             }
         }
@@ -111,8 +139,12 @@ impl<'a> Parser<'a> {
                 self.bump();
                 let inner = self.parse_expr()?;
                 self.eat_ws();
-                if self.peek() == Some(')') { self.bump(); self.parse_pow_suffix(inner) }
-                else { Err(ParseError::UnbalancedParens) }
+                if self.peek() == Some(')') {
+                    self.bump();
+                    self.parse_pow_suffix(inner)
+                } else {
+                    Err(ParseError::UnbalancedParens)
+                }
             }
             Some(c) if is_ident_start(c) => {
                 let id = self.parse_ident();
@@ -144,7 +176,9 @@ impl<'a> Parser<'a> {
                 self.pos += 2;
                 let e = self.parse_unsigned_integer()?;
                 Ok(Node::Pow(Box::new(base), e as u32))
-            } else { Ok(base) }
+            } else {
+                Ok(base)
+            }
         } else {
             Ok(base)
         }
@@ -152,27 +186,60 @@ impl<'a> Parser<'a> {
 
     fn parse_ident(&mut self) -> String {
         let mut s = String::new();
-        if let Some(c) = self.peek() { if is_ident_start(c) { s.push(c); self.bump(); } }
-        while let Some(c) = self.peek() { if is_ident_continue(c) { s.push(c); self.bump(); } else { break; } }
+        if let Some(c) = self.peek() {
+            if is_ident_start(c) {
+                s.push(c);
+                self.bump();
+            }
+        }
+        while let Some(c) = self.peek() {
+            if is_ident_continue(c) {
+                s.push(c);
+                self.bump();
+            } else {
+                break;
+            }
+        }
         s
     }
 
     fn parse_number(&mut self) -> Result<i64, ParseError> {
         let mut s = String::new();
-        while let Some(c) = self.peek() { if c.is_ascii_digit() { s.push(c); self.bump(); } else { break; } }
+        while let Some(c) = self.peek() {
+            if c.is_ascii_digit() {
+                s.push(c);
+                self.bump();
+            } else {
+                break;
+            }
+        }
         s.parse::<i64>().map_err(|_| ParseError::InvalidNumber(s))
     }
 
     fn parse_unsigned_integer(&mut self) -> Result<u64, ParseError> {
         let mut s = String::new();
-        while let Some(c) = self.peek() { if c.is_ascii_digit() { s.push(c); self.bump(); } else { break; } }
-        if s.is_empty() { return Err(ParseError::Other("expected integer".into())); }
-        s.parse::<u64>().map_err(|_| ParseError::Other(format!("invalid {}", s)))
+        while let Some(c) = self.peek() {
+            if c.is_ascii_digit() {
+                s.push(c);
+                self.bump();
+            } else {
+                break;
+            }
+        }
+        if s.is_empty() {
+            return Err(ParseError::Other("expected integer".into()));
+        }
+        s.parse::<u64>()
+            .map_err(|_| ParseError::Other(format!("invalid {}", s)))
     }
 }
 
-fn is_ident_start(c: char) -> bool { c.is_ascii_alphabetic() || c == '_' }
-fn is_ident_continue(c: char) -> bool { c.is_ascii_alphanumeric() || c == '_' }
+fn is_ident_start(c: char) -> bool {
+    c.is_ascii_alphabetic() || c == '_'
+}
+fn is_ident_continue(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
+}
 
 // --- Convert AST to intermediate product-list ---
 // ProductArc = (coefficient: F, refs: Vec<Arc<Evaluations<F>>>)
@@ -189,7 +256,9 @@ where
 {
     match node {
         Node::Var(name) => {
-            let arc = var_map.get(name).ok_or_else(|| ParseError::UnknownVar(name.clone()))?;
+            let arc = var_map
+                .get(name)
+                .ok_or_else(|| ParseError::UnknownVar(name.clone()))?;
             Ok(vec![(int_to_field(1), vec![Arc::clone(arc)])])
         }
         Node::Const(n) => {
@@ -298,6 +367,68 @@ where
     Ok(ve)
 }
 
+// Extract variable names from AST
+pub fn extract_variable_names(input: &str) -> Vec<String> {
+    // Matches identifiers starting with a letter or underscore, then alphanumeric/underscore
+    // This will match q1, my_var, _temp, etc.
+    let re = Regex::new(r"[A-Za-z_][A-Za-z0-9_]*").unwrap();
+    let mut seen = HashSet::new();
+    let mut vars = Vec::new();
+
+    for cap in re.captures_iter(input) {
+        let name = cap.get(0).unwrap().as_str().to_string();
+        // Skip things that look like numbers (defensive)
+        if name.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        // Avoid duplicates while preserving order
+        if seen.insert(name.clone()) {
+            vars.push(name);
+        }
+    }
+
+    vars
+}
+
+pub fn prepare_virtual_evaluation_from_string<F>(
+    input: &str,
+    degree: usize,
+    pool_prepare: &rayon::ThreadPool,
+) -> Result<VirtualEvaluation<F>, ParseError>
+where
+    F: PrimeField + Clone,
+{
+    let domain = GeneralEvaluationDomain::<F>::new(degree).unwrap();
+
+    // Factory to create constant evaluations on the domain
+    let const_factory = |n: i64| {
+        let vals: Vec<F> = (0..degree).map(|_| F::from(n as u64)).collect();
+        Arc::new(Evaluations::from_vec_and_domain(vals, domain))
+    };
+    let int_to_field = |n: i64| F::from((n as i128) as i64 as u64);
+
+    // parse
+    let variable_names = extract_variable_names(input);
+
+    // Prepare variable map: variable names -> random evaluations
+    let mut var_map: HashMap<String, Arc<Evaluations<F>>> = HashMap::new();
+
+    // Randomly gernerate evals for variables
+    for var in variable_names.into_iter() {
+        let vals = pool_prepare.install(|| {
+            (0..degree)
+                .into_par_iter()
+                .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
+                .collect()
+        });
+        let arc = Arc::new(Evaluations::from_vec_and_domain(vals, domain));
+        var_map.insert(var, arc);
+    }
+    let ve = parse_to_virtual_evaluation::<F>(input, &var_map, &const_factory, &int_to_field)
+        .expect("parse ok");
+    Ok(ve)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,8 +449,14 @@ mod tests {
         let s_vals: Vec<Fr> = (0..degree).map(|i| Fr::from(i as u64 + 3u64)).collect();
 
         let g_arc = Arc::new(Evaluations::from_vec_and_domain(g_vals, domain));
-        let h_arc = Arc::new(Evaluations::from_vec_and_domain(h_vals, g_arc.domain().clone()));
-        let s_arc = Arc::new(Evaluations::from_vec_and_domain(s_vals, g_arc.domain().clone()));
+        let h_arc = Arc::new(Evaluations::from_vec_and_domain(
+            h_vals,
+            g_arc.domain().clone(),
+        ));
+        let s_arc = Arc::new(Evaluations::from_vec_and_domain(
+            s_vals,
+            g_arc.domain().clone(),
+        ));
 
         let mut var_map: HashMap<String, Arc<Evaluations<Fr>>> = HashMap::new();
         var_map.insert("g".to_string(), g_arc.clone());
@@ -329,7 +466,10 @@ mod tests {
         // const -> eval factory (create constant vector on same domain)
         let const_factory = |n: i64| {
             let vals: Vec<Fr> = (0..degree).map(|_| Fr::from(n as u64)).collect();
-            Arc::new(Evaluations::from_vec_and_domain(vals, g_arc.domain().clone()))
+            Arc::new(Evaluations::from_vec_and_domain(
+                vals,
+                g_arc.domain().clone(),
+            ))
         };
         let int_to_field = |n: i64| Fr::from((n as i128) as i64 as u64);
 
