@@ -12,6 +12,7 @@ from test_ntt_func_sim import run_fit_onchip
 from tqdm import tqdm
 import math
 import os
+from pathlib import Path
 
 
 def analyze_polynomial_gate(gate):
@@ -277,7 +278,7 @@ def plot_area_latency_one(df, filename):
     plt.close()
 
 
-def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename):
+def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename, xranges=None, yranges=None):
     """
     Draw multiple subplots: each subplot corresponds to one available_bw.
     Within each subplot, use different marker styles to distinguish sumcheck_gate types.
@@ -295,21 +296,21 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename):
     if num_subplots == 1:
         axes_area = [axes_area]
 
-    # Set manual xlim for each subplot (col)
-    # xlim_area = [(4.4e6, 6e6), (2e6, 4e6), (0, 4e6), (0, 2e6)]
-    # xlim_area = [(3.5e6, 6.5e6), (1.5e6, 5.5e6), (0, 2.5e6), (0, 2.5e6)]
-    # xlim_area = [(3e6, 6e6), (1.8e6, 5e6), (0, 2e6), (0, 2e6)]
-    xlim_area = [(3.6e6, 4.6e6), (1.8e6, 3.4e6), (0, 3e6), (0, 3e6)]
-    # ylim_area = [(0, 70), (0, 70), (0, 70)]
-    # ylim_area = [(0, 160), (0, 70), (0, 70)]
-    # ylim_area = [(0, 100), (0, 70), (0, 70)]
-    ylim_area = [(0, 180), (0, 70), (0, 70)]
-    
+    if xranges is not None:
+        if len(xranges) != num_subplots:
+            raise ValueError(f"xranges {xranges} must have length {num_subplots}")
+    if yranges is not None:
+        if len(yranges) != 3:  # area, Mem MB, modmul num
+            raise ValueError(f"yranges {yranges} must have length {3}")
+
+    # Save xlims from area plot for each subplot
+    saved_xlims = []
     for col, bw in enumerate(available_bw_list):
         sub_sc_df = sc_df[sc_df["available_bw"] == bw]
         sub_ntt_df = ntt_df[ntt_df["available_bw"] == bw]
         ax_area = axes_area[col]
         common_gates = set(sub_sc_df["sumcheck_gate"].unique())
+        all_pareto_latencies = []
         for gate in common_gates:
             gate_ntt = gate.replace(" fz", "")
             gate_sc_df = sub_sc_df[sub_sc_df["sumcheck_gate"] == gate]
@@ -328,6 +329,7 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename):
                     edgecolor="k",
                     alpha=0.8
                 )
+                all_pareto_latencies.extend(pareto_gate_sc_df["total_latency"].values)
             if not gate_ntt_df.empty:
                 costs_ntt = gate_ntt_df[["total_area", "total_latency"]].values
                 pareto_mask_ntt = is_pareto_efficient(costs_ntt)
@@ -342,15 +344,25 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename):
                     edgecolor="k",
                     alpha=0.8
                 )
+        # Set xlim: use xranges if provided, else use (0.8*min, 1.2*max) of Pareto-efficient sumcheck points
+        if xranges is not None:
+            ax_area.set_xlim(*xranges[col])
+            saved_xlims.append(tuple(xranges[col]))
+        else:
+            if all_pareto_latencies:
+                min_x = min(all_pareto_latencies)
+                max_x = max(all_pareto_latencies)
+                ax_area.set_xlim(0.8 * min_x, 1.2 * max_x)
+            saved_xlims.append(ax_area.get_xlim())
         ax_area.set_title(f"Available BW: {bw} GB/s")
-        ax_area.set_xlim(*xlim_area[col])
         ax_area.set_xlabel("Total Latency (x10^6)")
         # Format x-tick labels to show values divided by 1e6
         xticks = ax_area.get_xticks()
         ax_area.set_xticklabels([f"{x/1e6:g}" for x in xticks])
         ax_area.grid(True, which='both', color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
         ax_area.minorticks_on()
-        ax_area.set_ylim(*ylim_area[0])
+        if yranges is not None:
+            ax_area.set_ylim(*yranges[0])
         if col == 0:
             ax_area.set_ylabel("Area")
         if col == 0:
@@ -364,7 +376,7 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename):
             ax_area.legend(handles=handles, title="Gate (marker), Color (type)", loc='best', fontsize='small')
 
     fig_area.tight_layout()
-    fig_area.savefig(filename + "_gate_acrx_bw_area.png", bbox_inches='tight')
+    fig_area.savefig(f"{filename}_gate_acrx_bw_area.png", bbox_inches='tight')
     print(f"Saved plot to {filename}_gate_acrx_bw_area.png")
     plt.close(fig_area)
 
@@ -409,19 +421,22 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename):
                     edgecolor="k",
                     alpha=0.8
                 )
-        # Use the same xlim as the first plot
-        if xlim_area[col] is not None:
-            ax_mem.set_xlim(*xlim_area[col])
-        ax_mem.set_xlabel("Total Latency (x10^6)")
-        xticks = ax_mem.get_xticks()
+        # Use the saved xlim from area plot
+        ax_mem.set_xlim(*saved_xlims[col])
+        # Set x-ticks and labels to match the first plot
+        xticks = axes_area[col].get_xticks()
+        ax_mem.set_xticks(xticks)
         ax_mem.set_xticklabels([f"{x/1e6:g}" for x in xticks])
+        ax_mem.set_xlabel("Total Latency (x10^6)")
         ax_mem.grid(True, which='both', color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
         ax_mem.minorticks_on()
+        if yranges is not None:
+            ax_mem.set_ylim(*yranges[1])
         if col == 0:
             ax_mem.set_ylabel("Total Onchip Memory (MB)")
         ax_mem.set_title(f"Available BW: {bw} GB/s")
     fig_mem.tight_layout()
-    fig_mem.savefig(filename + "_gate_acrx_bw_mem.png", bbox_inches='tight')
+    fig_mem.savefig(f"{filename}_gate_acrx_bw_mem.png", bbox_inches='tight')
     print(f"Saved plot to {filename}_gate_acrx_bw_mem.png")
     plt.close(fig_mem)
 
@@ -466,108 +481,213 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename):
                     edgecolor="k",
                     alpha=0.8
                 )
-        # Use the same xlim as the first plot
-        if xlim_area[col] is not None:
-            ax_modmul.set_xlim(*xlim_area[col])
-        ax_modmul.set_xlabel("Total Latency (x10^6)")
-        xticks = ax_modmul.get_xticks()
+        # Use the saved xlim from area plot
+        ax_modmul.set_xlim(*saved_xlims[col])
+        # Set x-ticks and labels to match the first plot
+        xticks = axes_area[col].get_xticks()
+        ax_modmul.set_xticks(xticks)
         ax_modmul.set_xticklabels([f"{x/1e6:g}" for x in xticks])
+        ax_modmul.set_xlabel("Total Latency (x10^6)")
         ax_modmul.grid(True, which='both', color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
         ax_modmul.minorticks_on()
+        if yranges is not None:
+            ax_modmul.set_ylim(*yranges[2])
         if col == 0:
             ax_modmul.set_ylabel("Modmul Count")
         ax_modmul.set_title(f"Available BW: {bw} GB/s")  # Add title to each subplot
     fig_modmul.tight_layout()
-    fig_modmul.savefig(filename + "_gate_acrx_bw_modmul.png", bbox_inches='tight')
+    fig_modmul.savefig(f"{filename}_gate_acrx_bw_modmul.png", bbox_inches='tight')
     print(f"Saved plot to {filename}_gate_acrx_bw_modmul.png")
     plt.close(fig_modmul)
 
 
-def save_results(sumcheck_result: pd.DataFrame, ntt_result: pd.DataFrame, filename, save_excel=False, draw_plots_type=0):
+def save_results(sumcheck_result: pd.DataFrame, ntt_result: pd.DataFrame, filename, save_excel=False):
     """
-    Save the sweep results to an Excel file.
+    Save the sweep results to Excel files.
     Each row contains the sweep parameters (from 'params') and the stats_dict items as columns.
-    Optionally, draw a scatter plot: x="total_latency", y="area", color by "available_bw", marker by "sumcheck_gate".
     """
-    
     if save_excel:
         sumcheck_result.to_excel(f"{filename}_sc.xlsx", index=False)
         ntt_result.to_excel(f"{filename}_ntt.xlsx", index=False)
-    if draw_plots_type:
-        if draw_plots_type == 1:
-            plot_area_latency_one(sumcheck_result, filename)
-        elif draw_plots_type == 2:
-            plot_gate_acrx_bw(sumcheck_result, ntt_result, filename)
+        print(f"Saved results to {filename}_sc.xlsx and {filename}_ntt.xlsx")
+
+
+def load_results(filename):
+    """
+    Load the sweep results from Excel files into DataFrames.
+    Returns (sumcheck_result_df, ntt_result_df).
+    """
+    print(f"Loading results from {filename}_sc.xlsx and {filename}_ntt.xlsx")
+    sumcheck_path = f"{filename}_sc.xlsx"
+    ntt_path = f"{filename}_ntt.xlsx"
+    sumcheck_result_df = pd.read_excel(sumcheck_path)
+    ntt_result_df = pd.read_excel(ntt_path)
+    return sumcheck_result_df, ntt_result_df
 
 
 if __name__ == "__main__":
     n_values = 19
     bw_values = [64, 128, 1024, 2048]  # in GB/s
 
-    polynomial_list = {
-        # Degree increases, MLE fixed, term fixed
-        "deg_inc_mle_inc_term_fixed": [
-            # [["q1", "q2"]],
-            [["q1", "q2", "q3"]],  # a gate of degree 3
-            # [["q1", "q2", "q3", "q4"]],
-            [["q1", "q2", "q3", "q4", "q5"]],  # a gate of degree 5
-            # [["q1", "q2", "q3", "q4", "q5", "q6"]],
-            # [["q1", "q2", "q3", "q4", "q5", "q6", "q7"]],
-            # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"]],
-            # a gate of degree 9
-            [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9"]],
-            # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10"]],
-        ],
+    ################################################
+    poly_style_name = "deg_inc_mle_inc_term_fixed"
+    polynomial_list = [
+        # [["q1", "q2"]],
+        [["q1", "q2", "q3"]],  # a gate of degree 3
+        # [["q1", "q2", "q3", "q4"]],
+        [["q1", "q2", "q3", "q4", "q5"]],  # a gate of degree 5
+        # [["q1", "q2", "q3", "q4", "q5", "q6"]],
+        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7"]],
+        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"]],
+        # a gate of degree 9
+        [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9"]],
+        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10"]],
+    ]
 
-        # Degree increases, MLE increases, term fixed (your original example)
-        "deg_inc_mle_fixed_term_fixed": [
-            [["q1", "q2", "q3"]],
-            [["q1", "q2", "q3", "q3", "q3"]],
-            [["q1", "q2", "q3", "q3", "q3", "q3", "q3", "q3", "q3"]],
-        ],
+    output_dir = Path(f"outplot_mo/n_{n_values}")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    # ntt_result_df = sweep_NTT_configs(
+    #     n_size_values=[n_values],
+    #     bw_values=bw_values,
+    #     polynomial_list=polynomial_list,
+    # )
+    # sc_results_df = sweep_sumcheck_configs(
+    #     num_var_list=[n_values],
+    #     available_bw_list=bw_values,
+    #     polynomial_list=polynomial_list,
+    # )
+    # save_results(
+    #     sc_results_df,
+    #     ntt_result_df,
+    #     output_dir.joinpath(f"{poly_style_name}"),
+    #     save_excel=True
+    # )
+    sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-        # Degree fixed, MLE fixed, term increases
-        "deg_fixed_mle_fixed_term_inc": [
-            [["q1", "q2", "q3"], ["q1", "q2", "q4"]],
-            [["q1", "q2", "q3"], ["q1", "q2", "q4"], ["q1", "q3", "q4"]],
-            [["q1", "q2", "q3"], ["q1", "q2", "q4"], ["q1", "q3", "q4"], ["q2", "q3", "q4"]],
-        ],
+    xlim_area = [(3e6, 12e6), (2e6, 4e6), (0, 4e6), (0, 2e6)]
+    ylim_area = [(0, 165), (0, 13), (0, 8500)]
+    plot_gate_acrx_bw(sc_df=sc_results_df, 
+                      ntt_df=ntt_result_df,
+                      filename=output_dir.joinpath(f"{poly_style_name}"),
+                      xranges=xlim_area,
+                      yranges=ylim_area)
 
-        # Degree fixed, MLE increases, term increases
-        "deg_fixed_mle_inc_term_inc": [
-            [["q1", "q2"], ["q1", "q2", "q3"]],
-            [["q1", "q2", "q3"], ["q1", "q2", "q4"], ["q1", "q3", "q4"]],
-            [["q1", "q2", "q3"], ["q1", "q3", "q4"], ["q2", "q3", "q4"], ["q1", "q2", "q5"]],
-            [["q1", "q2", "q3"], ["q1", "q2", "q4"], ["q1", "q2", "q5"], ["q1", "q2", "q6"], [
-                "q1", "q2", "q7"], ["q1", "q2", "q8"], ["q1", "q2", "q9"]],
-        ],
-    }
+    # ################################################
+    poly_style_name = "deg_inc_mle_fixed_term_fixed"
+    polynomial_list = [
+        [["q1", "q2", "q3"]],
+        [["q1", "q2", "q3", "q3", "q3"]],
+        [["q1", "q2", "q3", "q3", "q3", "q3", "q3", "q3", "q3"]],
+    ]
 
-    for poly_key, polynomial_list_1 in polynomial_list.items():
-        # NTT
-        ntt_result_df = sweep_NTT_configs(
-            n_size_values=[n_values], 
-            bw_values=bw_values,
-            polynomial_list=polynomial_list_1,
-        )
+    output_dir = Path(f"outplot_mo/n_{n_values}")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    # ntt_result_df = sweep_NTT_configs(
+    #     n_size_values=[n_values],
+    #     bw_values=bw_values,
+    #     polynomial_list=polynomial_list,
+    # )
+    # sc_results_df = sweep_sumcheck_configs(
+    #     num_var_list=[n_values],
+    #     available_bw_list=bw_values,
+    #     polynomial_list=polynomial_list,
+    # )        
+    # save_results(
+    #     sc_results_df,
+    #     ntt_result_df,
+    #     output_dir.joinpath(f"{poly_style_name}"),
+    #     save_excel=True
+    # )
+    sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-        # SumCheck
-        sc_results_df = sweep_sumcheck_configs(
-            num_var_list=[n_values], 
-            available_bw_list=bw_values,
-            polynomial_list=polynomial_list_1,
-        )
+    xlim_area = [(3e6, 10e6), (1.5e6, 8.5e6), (0, 3e6), (0, 3e6)]
+    ylim_area = [(0, 320), (0, 7), (0, 4500)]
+    plot_gate_acrx_bw(sc_df=sc_results_df, 
+                      ntt_df=ntt_result_df,
+                      filename=output_dir.joinpath(f"{poly_style_name}"),
+                      xranges=xlim_area,
+                      yranges=ylim_area)
+    
+    ################################################
+    poly_style_name = "deg_fixed_mle_fixed_term_inc"
+    polynomial_list = [
+        [["q1", "q2", "q3"], ["q1", "q2", "q4"]],
+        [["q1", "q2", "q3"], ["q1", "q2", "q4"], ["q1", "q3", "q4"]],
+        [["q1", "q2", "q3"], ["q1", "q2", "q4"], [
+            "q1", "q3", "q4"], ["q2", "q3", "q4"]],
+    ]
 
-        output_dir = f"outplot_mo/n_{n_values}"
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir, exist_ok=True)
-        save_results(
-            sc_results_df, 
-            ntt_result_df, 
-            f"{output_dir}/sumcheck_sweep_mo_{poly_key}", 
-            save_excel=False, 
-            draw_plots_type=2
-        )
+    output_dir = Path(f"outplot_mo/n_{n_values}")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    # ntt_result_df = sweep_NTT_configs(
+    #     n_size_values=[n_values],
+    #     bw_values=bw_values,
+    #     polynomial_list=polynomial_list,
+    # )
+    # sc_results_df = sweep_sumcheck_configs(
+    #     num_var_list=[n_values],
+    #     available_bw_list=bw_values,
+    #     polynomial_list=polynomial_list,
+    # )    
+    # save_results(
+    #     sc_results_df,
+    #     ntt_result_df,
+    #     output_dir.joinpath(f"{poly_style_name}"),
+    #     save_excel=True
+    # )
+    sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
+    xlim_area = [(4e6, 8e6), (2e6, 4e6), (0, 2e6), (0, 2e6)]
+    ylim_area = [(0, 160), (0, 6.4), (0, 2200)]
+    plot_gate_acrx_bw(sc_df=sc_results_df, 
+                      ntt_df=ntt_result_df,
+                      filename=output_dir.joinpath(f"{poly_style_name}"),
+                      xranges=xlim_area,
+                      yranges=ylim_area)
+    
+    ################################################
+    poly_style_name = "deg_fixed_mle_inc_term_inc"
+    polynomial_list = [
+        [["q1", "q2"], ["q1", "q2", "q3"]],
+        [["q1", "q2", "q3"], ["q1", "q2", "q4"], ["q1", "q3", "q4"]],
+        [["q1", "q2", "q3"], ["q1", "q3", "q4"], [
+            "q2", "q3", "q4"], ["q1", "q2", "q5"]],
+        [["q1", "q2", "q3"], ["q1", "q2", "q4"], ["q1", "q2", "q5"], ["q1", "q2", "q6"], [
+            "q1", "q2", "q7"], ["q1", "q2", "q8"], ["q1", "q2", "q9"]],
+    ]
+
+    output_dir = Path(f"outplot_mo/n_{n_values}")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    # ntt_result_df = sweep_NTT_configs(
+    #     n_size_values=[n_values],
+    #     bw_values=bw_values,
+    #     polynomial_list=polynomial_list,
+    # )
+    # sc_results_df = sweep_sumcheck_configs(
+    #     num_var_list=[n_values],
+    #     available_bw_list=bw_values,
+    #     polynomial_list=polynomial_list,
+    # )
+    # save_results(
+    #     sc_results_df,
+    #     ntt_result_df,
+    #     output_dir.joinpath(f"{poly_style_name}"),
+    #     save_excel=True
+    # )
+    sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+
+    xlim_area = [(3e6, 10e6), (2e6, 7.5e6), (0, 3e6), (0, 3e6)]
+    ylim_area = [(0, 160), (0, 11.5), (0, 2200)]
+    plot_gate_acrx_bw(sc_df=sc_results_df, 
+                      ntt_df=ntt_result_df,
+                      filename=output_dir.joinpath(f"{poly_style_name}"),
+                      xranges=xlim_area,
+                      yranges=ylim_area)
+    
+    ################################################
     print("End...")
 
