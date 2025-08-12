@@ -2,7 +2,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
-
 use ark_ff::PrimeField;
 use ark_poly::{
     univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain,
@@ -390,6 +389,15 @@ pub fn extract_variable_names(input: &str) -> Vec<String> {
     vars
 }
 
+// Generate virtual evaluation from a string input.
+// Rule for input:
+// - Variables: alphanumeric names starting with a letter (e.g., `x`, `var1`)
+// - Constants: integers (e.g., `42`, `-3`)
+// - Operations: `+`, `-`, `*`, `^` (power), parentheses for grouping (terms have to be connected by operators)
+// e.g. `x + 2*y - 3*z^2 + (4 - x)`
+//
+// A zeroizing variable `o` is automatically added, for testing purposes.
+
 pub fn prepare_virtual_evaluation_from_string<F>(
     input: &str,
     degree: usize,
@@ -426,7 +434,42 @@ where
     }
     let ve = parse_to_virtual_evaluation::<F>(input, &var_map, &const_factory, &int_to_field)
         .expect("parse ok");
-    Ok(ve)
+
+    // return Ok(ve);
+    // Adding a zeroizing variable "o" to the evaluation
+    // Clone the existing VirtualEvaluation for "o"
+    let o = ve.clone();
+
+    // Evaluate ve at each domain point
+    let vals: Vec<F> = domain
+        .elements()
+        .map(|pt| ve.evaluate_at_point(pt))
+        .collect();
+
+    // Create Evaluations and wrap in Arc
+    let o_eval = Arc::new(Evaluations::from_vec_and_domain(vals, domain));
+    var_map.insert("o".to_string(), o_eval);
+
+    // Create ve_minus_o by subtracting o from ve
+    let mut ve_minus_o = VirtualEvaluation::new();
+
+    // Add all products from ve
+    for (coef, indices) in ve.products.iter() {
+        let refs = indices
+            .iter()
+            .map(|&idx| ve.univariate_evaluations[idx].clone());
+        ve_minus_o.add_product(refs, coef.clone());
+    }
+
+    // Add all products from o with coefficient multiplied by -1
+    for (coef, indices) in o.products.iter() {
+        let refs = indices
+            .iter()
+            .map(|&idx| o.univariate_evaluations[idx].clone());
+        ve_minus_o.add_product(refs, F::from(-1) * coef.clone());
+    }
+
+    Ok(ve_minus_o)
 }
 
 #[cfg(test)]
@@ -481,6 +524,6 @@ mod tests {
         // Basic sanity: products should be non-empty
         assert!(ve.products.len() > 0);
         // max_multiplicand should be set >= 1
-        assert!(ve.evals_info.max_multiplicand >= 1);
+        assert!(ve.evals_info.max_multiplicand == 3);
     }
 }
