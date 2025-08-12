@@ -306,6 +306,56 @@ mod tests {
     use ark_std::start_timer;
 
     #[test]
+    // This function tests the proof and verification combined with parser
+    fn test_proof_generation_verification_with_parser(){
+        let test_timer = start_timer!(|| "Proof Generation Test");
+        let pool_prepare = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
+
+        let degree = 1 << 6;
+        let inp_evals =
+            custom_zero_test_case_with_products::<Fr>(degree, 3, vec![3, 2, 2], &pool_prepare);
+        let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
+
+        let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
+
+        let max_degree = 3 * degree;
+
+        let zp = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&max_degree).unwrap();
+
+        let proof = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
+            &zp.clone(),
+            &inp_evals,
+            &domain,
+            &mut ZCTranscript::init_transcript(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        end_timer!(proof_gen_timer);
+
+        let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
+
+        let result = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
+            &zp,
+            &inp_evals,
+            &proof,
+            &domain,
+            &mut ZCTranscript::init_transcript(),
+        )
+        .unwrap();
+
+        end_timer!(verify_timer);
+        assert_eq!(result, true);
+
+        end_timer!(test_timer);
+    }
+
+    #[test]
     fn test_proof_generation_verification_custom_uni() {
         let test_timer = start_timer!(|| "Proof Generation Test");
         let pool_prepare = rayon::ThreadPoolBuilder::new()
