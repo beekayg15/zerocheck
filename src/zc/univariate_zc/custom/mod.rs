@@ -14,6 +14,8 @@ use crate::pcs::PolynomialCommitmentScheme;
 use crate::transcripts::ZCTranscript;
 use crate::ZeroCheck;
 
+pub mod parser;
+
 /// Optimized Zero-Check protocol for if a polynomial
 /// f = g*h*s + (1 - s)(g + h) - o evaluates to 0
 /// over a specific domain using NTTs and INTTs
@@ -104,7 +106,8 @@ where
         let ifft_time = start_timer!(|| "IFFT for g,h,s,o from evaluations to coefficients");
 
         // compute the polynomials corresponding to g, h, and s using interpolation (IFFT)
-        let virtual_polynomial: VirtualPolynomail<F> = VirtualPolynomail::new(input_poly.clone(), Some(&pool_run));
+        let virtual_polynomial: VirtualPolynomail<F> =
+            VirtualPolynomail::new(input_poly.clone(), Some(&pool_run));
 
         end_timer!(ifft_time);
         let coset_time = start_timer!(|| "Compute coset domain");
@@ -162,13 +165,8 @@ where
             .collect();
 
         // Use the pool_commit thread pool to perform the batch_commit operation
-        let input_polynomial_comms = pool_commit.install(|| {
-            PCS::batch_commit(
-                &zero_params.ck,
-                &flatten_polynomials,
-            )
-            .unwrap()
-        });
+        let input_polynomial_comms = pool_commit
+            .install(|| PCS::batch_commit(&zero_params.ck, &flatten_polynomials).unwrap());
         end_timer!(commit_time);
         let commit_q_time = start_timer!(|| "Commit to (q) polynomial");
 
@@ -210,13 +208,7 @@ where
 
         // Generate the opening proof that g(r), h(r), s(r), and o(r) are the evaluations of the polynomials
         let mut opening_proofs = pool_open.install(|| {
-            PCS::batch_open(
-                &zero_params.ck,
-                &batch_comms,
-                &batch_polynomials,
-                r,
-            )
-            .unwrap()
+            PCS::batch_open(&zero_params.ck, &batch_comms, &batch_polynomials, r).unwrap()
         });
 
         let q_opening_proof = opening_proofs[opening_proofs.len() - 1].clone();
@@ -309,10 +301,7 @@ mod tests {
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_bls12_381::Fr;
-    use ark_poly::{
-        EvaluationDomain,
-        GeneralEvaluationDomain,
-    };
+    use ark_poly::{EvaluationDomain, GeneralEvaluationDomain};
     use ark_std::end_timer;
     use ark_std::start_timer;
 
@@ -325,7 +314,8 @@ mod tests {
             .unwrap();
 
         let degree = 1 << 6;
-        let inp_evals = custom_zero_test_case_with_products::<Fr>(degree, 3, vec![3, 2, 2], &pool_prepare);
+        let inp_evals =
+            custom_zero_test_case_with_products::<Fr>(degree, 3, vec![3, 2, 2], &pool_prepare);
         let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
@@ -374,7 +364,8 @@ mod tests {
 
         let degree = 1 << 5;
         let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
-        let inp_evals = custom_zero_test_case_with_products::<Fr>(degree, 3, vec![3, 2, 2], &pool_prepare);
+        let inp_evals =
+            custom_zero_test_case_with_products::<Fr>(degree, 3, vec![3, 2, 2], &pool_prepare);
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
