@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     // This function tests the proof and verification combined with parser
-    fn test_proof_generation_verification_with_parser(){
+    fn test_proof_generation_verification_with_parser() {
         let test_timer = start_timer!(|| "Proof Generation Test");
         let pool_prepare = rayon::ThreadPoolBuilder::new()
             .num_threads(1)
@@ -317,12 +317,12 @@ mod tests {
 
         let degree = 1 << 6;
         let input = "g*h*s + (1 - s)*(g + h)";
-        let inp_evals = prepare_virtual_evaluation_from_string(input, degree, &pool_prepare).unwrap();
+        let inp_evals =
+            prepare_virtual_evaluation_from_string(input, degree, &pool_prepare).unwrap();
         let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
-        print!("{}", inp_evals.evals_info.max_multiplicand);
         let max_degree = inp_evals.evals_info.max_multiplicand * degree;
 
         let zp = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&max_degree).unwrap();
