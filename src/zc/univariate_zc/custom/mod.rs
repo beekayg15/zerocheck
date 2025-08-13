@@ -316,7 +316,7 @@ mod tests {
             .unwrap();
 
         let degree = 1 << 6;
-        let input = "g*h*s + (1 - s)(g + h)";
+        let input = "g*h*s + (1 - s)*(g + h)";
         let inp_evals = prepare_virtual_evaluation_from_string(input, degree, &pool_prepare).unwrap();
         let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
 
