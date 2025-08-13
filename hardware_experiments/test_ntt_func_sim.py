@@ -246,7 +246,7 @@ def expected_latency(M, N, num_pes, prefetch_latencies, mem_latencies, compute_l
 
     return col_ntt_latency + row_ntt_latency
 
-def run_fit_onchip(target_n=None, target_bw=None, progress_print=False, save_pkl=True):
+def run_fit_onchip(target_n=None, target_bw=None, progress_print=False, save_pkl=True, unroll_factors_pow=None):
 
     random.seed(0)
 
@@ -266,7 +266,10 @@ def run_fit_onchip(target_n=None, target_bw=None, progress_print=False, save_pkl
     else:
         bandwidths = [2**i for i in range(6, 13)] # 64 GB/s to 4096 GB/s
     
-    unroll_factors_pow = range(0, math.ceil(target_n / 2)) if target_n is not None else range(0, 13)
+    if unroll_factors_pow is None:
+        unroll_factors_pow = range(0, math.ceil(target_n / 2)) if target_n is not None else range(0, 13)
+    else:
+        unroll_factors_pow = range(0, unroll_factors_pow)
     unroll_factors = [2**i for i in unroll_factors_pow]
     
     if target_n is not None:

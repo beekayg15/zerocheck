@@ -61,6 +61,7 @@ def sweep_NTT_configs(n_size_values: list, bw_values: list, polynomial_list: lis
             for bw in tqdm(bw_values, desc=f"NTT sweep bw"):
                 print(f"Running NTT sweep for n={gate_degree - 1}x2^{n}, bw={bw}...")
                 res = run_fit_onchip(target_n=n+gate_degree_n, target_bw=bw, save_pkl=False)
+                res_input_iNTT = run_fit_onchip(target_n=n, target_bw=bw, save_pkl=False, unroll_factors_pow=math.ceil((n+gate_degree_n)/2))
                 # res is a dict: key=(n_pow, available_bw, unroll_factor, pe_amt), value=dict
                 for key, value in res.items():
                     n_pow, available_bw, unroll_factor, pe_amt = key
@@ -71,16 +72,17 @@ def sweep_NTT_configs(n_size_values: list, bw_values: list, polynomial_list: lis
                         "gate_degree": gate_degree,
                         "n": n,
                         "target_n": n + gate_degree_n,
-                        "n_pow": n_pow,
+                        "n_pow": n_pow,  # target_n
                         "available_bw": available_bw,
                         "unroll_factor": unroll_factor,
                         "pe_amt": pe_amt,
                     }
                     
                     value = value.copy()
+                    value_input_iNTT = res_input_iNTT.get((n, available_bw, unroll_factor, pe_amt), {})
                     if "total_cycles" in value:
                         # Repeat NTT for each MLE in series
-                        value["total_latency"] = value["total_cycles"] * (gate_num_unique_mle + 1)  # q
+                        value["total_latency"] = value_input_iNTT["total_cycles"] * gate_num_unique_mle + value["total_cycles"] * (gate_num_unique_mle + 1)  # +q
 
                         # area cost
                         value["design_modmul_area"] = value["total_modmuls"] * params.modmul_area  # 22nm, mm^2
@@ -547,33 +549,33 @@ if __name__ == "__main__":
     output_dir = Path(f"outplot_mo/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    # ntt_result_df = sweep_NTT_configs(
-    #     n_size_values=[n_values],
-    #     bw_values=bw_values,
-    #     polynomial_list=polynomial_list,
-    # )
-    # sc_results_df = sweep_sumcheck_configs(
-    #     num_var_list=[n_values],
-    #     available_bw_list=bw_values,
-    #     polynomial_list=polynomial_list,
-    # )
-    # save_results(
-    #     sc_results_df,
-    #     ntt_result_df,
-    #     output_dir.joinpath(f"{poly_style_name}"),
-    #     save_excel=True
-    # )
-    sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+    ntt_result_df = sweep_NTT_configs(
+        n_size_values=[n_values],
+        bw_values=bw_values,
+        polynomial_list=polynomial_list,
+    )
+    sc_results_df = sweep_sumcheck_configs(
+        num_var_list=[n_values],
+        available_bw_list=bw_values,
+        polynomial_list=polynomial_list,
+    )
+    save_results(
+        sc_results_df,
+        ntt_result_df,
+        output_dir.joinpath(f"{poly_style_name}"),
+        save_excel=True
+    )
+    # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-    xlim_area = [(3e6, 12e6), (2e6, 4e6), (0, 4e6), (0, 2e6)]
-    ylim_area = [(0, 165), (0, 13), (0, 8500)]
+    xlim_area = None # [(3e6, 13e6), (1.8e6, 12e6), (0, 6.5e6), (0, 6.5e6)]
+    ylim_area = None # [(0, 180), (0, 13), (0, 2500)]
     plot_gate_acrx_bw(sc_df=sc_results_df, 
                       ntt_df=ntt_result_df,
                       filename=output_dir.joinpath(f"{poly_style_name}"),
                       xranges=xlim_area,
                       yranges=ylim_area)
 
-    # ################################################
+    ################################################
     poly_style_name = "deg_inc_mle_fixed_term_fixed"
     polynomial_list = [
         [["q1", "q2", "q3"]],
@@ -584,26 +586,26 @@ if __name__ == "__main__":
     output_dir = Path(f"outplot_mo/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    # ntt_result_df = sweep_NTT_configs(
-    #     n_size_values=[n_values],
-    #     bw_values=bw_values,
-    #     polynomial_list=polynomial_list,
-    # )
-    # sc_results_df = sweep_sumcheck_configs(
-    #     num_var_list=[n_values],
-    #     available_bw_list=bw_values,
-    #     polynomial_list=polynomial_list,
-    # )        
-    # save_results(
-    #     sc_results_df,
-    #     ntt_result_df,
-    #     output_dir.joinpath(f"{poly_style_name}"),
-    #     save_excel=True
-    # )
-    sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+    ntt_result_df = sweep_NTT_configs(
+        n_size_values=[n_values],
+        bw_values=bw_values,
+        polynomial_list=polynomial_list,
+    )
+    sc_results_df = sweep_sumcheck_configs(
+        num_var_list=[n_values],
+        available_bw_list=bw_values,
+        polynomial_list=polynomial_list,
+    )        
+    save_results(
+        sc_results_df,
+        ntt_result_df,
+        output_dir.joinpath(f"{poly_style_name}"),
+        save_excel=True
+    )
+    # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-    xlim_area = [(3e6, 10e6), (1.5e6, 8.5e6), (0, 3e6), (0, 3e6)]
-    ylim_area = [(0, 320), (0, 7), (0, 4500)]
+    xlim_area = None # [(3e6, 10e6), (1.5e6, 8.5e6), (0, 3e6), (0, 3e6)]
+    ylim_area = None # [(0, 320), (0, 7), (0, 4500)]
     plot_gate_acrx_bw(sc_df=sc_results_df, 
                       ntt_df=ntt_result_df,
                       filename=output_dir.joinpath(f"{poly_style_name}"),
@@ -622,26 +624,26 @@ if __name__ == "__main__":
     output_dir = Path(f"outplot_mo/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    # ntt_result_df = sweep_NTT_configs(
-    #     n_size_values=[n_values],
-    #     bw_values=bw_values,
-    #     polynomial_list=polynomial_list,
-    # )
-    # sc_results_df = sweep_sumcheck_configs(
-    #     num_var_list=[n_values],
-    #     available_bw_list=bw_values,
-    #     polynomial_list=polynomial_list,
-    # )    
-    # save_results(
-    #     sc_results_df,
-    #     ntt_result_df,
-    #     output_dir.joinpath(f"{poly_style_name}"),
-    #     save_excel=True
-    # )
-    sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+    ntt_result_df = sweep_NTT_configs(
+        n_size_values=[n_values],
+        bw_values=bw_values,
+        polynomial_list=polynomial_list,
+    )
+    sc_results_df = sweep_sumcheck_configs(
+        num_var_list=[n_values],
+        available_bw_list=bw_values,
+        polynomial_list=polynomial_list,
+    )    
+    save_results(
+        sc_results_df,
+        ntt_result_df,
+        output_dir.joinpath(f"{poly_style_name}"),
+        save_excel=True
+    )
+    # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-    xlim_area = [(4e6, 8e6), (2e6, 4e6), (0, 2e6), (0, 2e6)]
-    ylim_area = [(0, 160), (0, 6.4), (0, 2200)]
+    xlim_area = None # [(4e6, 10e6), (2e6, 6e6), (0, 2e6), (0, 2e6)]
+    ylim_area = None # [(0, 160), (0, 6.4), (0, 2200)]
     plot_gate_acrx_bw(sc_df=sc_results_df, 
                       ntt_df=ntt_result_df,
                       filename=output_dir.joinpath(f"{poly_style_name}"),
@@ -662,26 +664,26 @@ if __name__ == "__main__":
     output_dir = Path(f"outplot_mo/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    # ntt_result_df = sweep_NTT_configs(
-    #     n_size_values=[n_values],
-    #     bw_values=bw_values,
-    #     polynomial_list=polynomial_list,
-    # )
-    # sc_results_df = sweep_sumcheck_configs(
-    #     num_var_list=[n_values],
-    #     available_bw_list=bw_values,
-    #     polynomial_list=polynomial_list,
-    # )
-    # save_results(
-    #     sc_results_df,
-    #     ntt_result_df,
-    #     output_dir.joinpath(f"{poly_style_name}"),
-    #     save_excel=True
-    # )
-    sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+    ntt_result_df = sweep_NTT_configs(
+        n_size_values=[n_values],
+        bw_values=bw_values,
+        polynomial_list=polynomial_list,
+    )
+    sc_results_df = sweep_sumcheck_configs(
+        num_var_list=[n_values],
+        available_bw_list=bw_values,
+        polynomial_list=polynomial_list,
+    )
+    save_results(
+        sc_results_df,
+        ntt_result_df,
+        output_dir.joinpath(f"{poly_style_name}"),
+        save_excel=True
+    )
+    # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-    xlim_area = [(3e6, 10e6), (2e6, 7.5e6), (0, 3e6), (0, 3e6)]
-    ylim_area = [(0, 160), (0, 11.5), (0, 2200)]
+    xlim_area = None # [(3e6, 15.5e6), (2e6, 11.5e6), (0, 3e6), (0, 3e6)]
+    ylim_area = None # [(0, 160), (0, 11.5), (0, 2200)]
     plot_gate_acrx_bw(sc_df=sc_results_df, 
                       ntt_df=ntt_result_df,
                       filename=output_dir.joinpath(f"{poly_style_name}"),
