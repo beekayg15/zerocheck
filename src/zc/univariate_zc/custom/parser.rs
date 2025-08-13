@@ -260,11 +260,11 @@ where
                 .ok_or_else(|| ParseError::UnknownVar(name.clone()))?;
             Ok(vec![(int_to_field(1), vec![Arc::clone(arc)])])
         }
+
         Node::Const(n) => {
-            // represent numeric constant as a constant evaluation vector (Arc<Evaluations<F>>)
-            let const_arc = const_to_eval(*n);
-            Ok(vec![(int_to_field(1), vec![const_arc])])
+            Ok(vec![(int_to_field(*n), vec![])]) // coefficient only, no evaluation
         }
+
         Node::Add(l, r) => {
             let mut left = ast_to_products::<F>(l, var_map, const_to_eval, int_to_field)?;
             let right = ast_to_products::<F>(r, var_map, const_to_eval, int_to_field)?;
@@ -319,21 +319,19 @@ where
 }
 
 /// Multiply two product-lists: cross product and combine refs/coefs
-fn mul_product_lists<F>(a: &Vec<ProductArc<F>>, b: &Vec<ProductArc<F>>) -> Vec<ProductArc<F>>
-where
-    F: PrimeField + Clone,
-{
-    let mut res = Vec::with_capacity(a.len() * b.len());
-    for (ca, ra) in a.iter() {
-        for (cb, rb) in b.iter() {
-            let mut refs = Vec::with_capacity(ra.len() + rb.len());
-            refs.extend(ra.iter().cloned());
-            refs.extend(rb.iter().cloned());
-            let coef = ca.clone() * cb.clone();
-            res.push((coef, refs));
+fn mul_product_lists<F: PrimeField>(
+    left: &Vec<(F, Vec<Arc<Evaluations<F>>>)>,
+    right: &Vec<(F, Vec<Arc<Evaluations<F>>>)>,
+) -> Vec<(F, Vec<Arc<Evaluations<F>>>)> {
+    let mut result = Vec::new();
+    for (lc, lrefs) in left {
+        for (rc, rrefs) in right {
+            let mut new_refs = lrefs.clone();
+            new_refs.extend(rrefs.iter().cloned());
+            result.push((*lc * *rc, new_refs));
         }
     }
-    res
+    result
 }
 
 // --- Public entry point ---
