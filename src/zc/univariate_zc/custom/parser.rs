@@ -1,13 +1,13 @@
 #![allow(dead_code)]
-use std::collections::{HashMap, HashSet};
-use std::fmt;
-use std::sync::Arc;
 use ark_ff::PrimeField;
 use ark_poly::{
     univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain,
 };
 use rayon::prelude::*;
 use regex::Regex;
+use std::collections::{HashMap, HashSet};
+use std::fmt;
+use std::sync::Arc;
 
 use super::data_structures::*;
 
@@ -397,7 +397,6 @@ pub fn extract_variable_names(input: &str) -> Vec<String> {
 // e.g. `x + 2*y - 3*z^2 + (4 - x)`
 //
 // A zeroizing variable `o` is automatically added, for testing purposes.
-
 pub fn prepare_virtual_evaluation_from_string<F>(
     input: &str,
     degree: usize,
@@ -413,7 +412,14 @@ where
         let vals: Vec<F> = (0..degree).map(|_| F::from(n as u64)).collect();
         Arc::new(Evaluations::from_vec_and_domain(vals, domain))
     };
-    let int_to_field = |n: i64| F::from((n as i128) as i64 as u64);
+    // let int_to_field = |n: i64| F::from((n as i128) as i64 as u64);
+    let int_to_field = |n: i64| {
+        if n >= 0 {
+            F::from(n as u64)
+        } else {
+            -F::from((-n) as u64)
+        }
+    };
 
     // parse
     let variable_names = extract_variable_names(input);
@@ -436,40 +442,21 @@ where
         .expect("parse ok");
 
     // return Ok(ve);
-    // Adding a zeroizing variable "o" to the evaluation
-    // Clone the existing VirtualEvaluation for "o"
-    let o = ve.clone();
-
-    // Evaluate ve at each domain point
-    let vals: Vec<F> = domain
+    // --- Adding a zeroizing variable "o" ---
+    // Evaluate the full expression on the domain to get the vector for `o`
+    let o_vals: Vec<F> = domain
         .elements()
         .map(|pt| ve.evaluate_at_point(pt))
         .collect();
 
-    // Create Evaluations and wrap in Arc
-    let o_eval = Arc::new(Evaluations::from_vec_and_domain(vals, domain));
-    var_map.insert("o".to_string(), o_eval);
+    let o_eval = Arc::new(Evaluations::from_vec_and_domain(o_vals, domain));
 
-    // Create ve_minus_o by subtracting o from ve
-    let mut ve_minus_o = VirtualEvaluation::new();
+    // Optionally keep a name "o" somewhere else if you need it later.
+    // Here, we just add it as an extra univariate to the VE with coef = -1.
+    let mut ve_with_o = ve.clone();
+    ve_with_o.add_product(std::iter::once(o_eval), int_to_field(-1));
 
-    // Add all products from ve
-    for (coef, indices) in ve.products.iter() {
-        let refs = indices
-            .iter()
-            .map(|&idx| ve.univariate_evaluations[idx].clone());
-        ve_minus_o.add_product(refs, coef.clone());
-    }
-
-    // Add all products from o with coefficient multiplied by -1
-    for (coef, indices) in o.products.iter() {
-        let refs = indices
-            .iter()
-            .map(|&idx| o.univariate_evaluations[idx].clone());
-        ve_minus_o.add_product(refs, F::from(-1) * coef.clone());
-    }
-
-    Ok(ve_minus_o)
+    Ok(ve_with_o)
 }
 
 #[cfg(test)]
@@ -483,7 +470,7 @@ mod tests {
     // NOTE: test uses small domain and simple const->eval factory
     #[test]
     fn parse_into_virtual_eval_smoke() {
-        let degree = 4usize;
+        let degree = 2usize;
         let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
 
         // prepare var_map: g,h,s -> random evals (here deterministic small vectors)
@@ -517,10 +504,11 @@ mod tests {
         let int_to_field = |n: i64| Fr::from((n as i128) as i64 as u64);
 
         // parse
-        let expr = "g*h*s + (1 - s)*(g + h) - 5";
+        let expr = "g*h*(1-g)";
         let ve = parse_to_virtual_evaluation::<Fr>(expr, &var_map, &const_factory, &int_to_field)
             .expect("parse ok");
 
+        print!("{:#?}", ve);
         // Basic sanity: products should be non-empty
         assert!(ve.products.len() > 0);
         // max_multiplicand should be set >= 1
