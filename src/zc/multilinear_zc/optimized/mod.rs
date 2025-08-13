@@ -10,6 +10,7 @@ mod data_structures;
 pub use data_structures::*;
 
 mod sumcheck;
+pub mod parser;
 
 use crate::{pcs::PolynomialCommitmentScheme, transcripts::ZCTranscript, ZeroCheck};
 
