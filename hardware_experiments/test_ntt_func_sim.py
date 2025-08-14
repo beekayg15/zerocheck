@@ -11,6 +11,7 @@ from util import calc_rate
 from fourstep_ntt_perf_models import get_compute_latency
 from params_ntt_v_sum import *
 from plot_funcs import plot_pareto_frontier_from_pickle, plot_pareto_all_configs_from_pickle, plot_pareto_multi_bw_fixed_n
+from poly_analyzer import analyze_polynomial, count_operations
 
 def get_area_stats(total_modmuls, total_modadds, total_num_words, bit_width=256):
     logic_area = total_modmuls*modmul_area + total_modadds*modadd_area
@@ -175,6 +176,7 @@ def get_read_latency(num_words, num_read_ports, max_read_rate):
     read_latency = int(math.ceil(num_words/actual_read_rate))
     return read_latency
 
+# col words = num words in a column (M), row words = num words in a row (N)
 def get_latencies_and_rates(col_words, row_words, num_bfs, num_pes, bit_width, available_bw, freq, modadd_latency=1, modmul_latency=20, bf_latency=21, debug=False):
     max_read_rate = calc_rate(bit_width, available_bw, freq)  # Example: 1 GHz frequency, 1 TB/s
     
@@ -229,7 +231,7 @@ def get_latencies_and_rates(col_words, row_words, num_bfs, num_pes, bit_width, a
     return r_or_w_mem_latency_cols, r_or_w_mem_latency_rows, r_and_w_mem_latency_cols, r_and_w_mem_latency_rows, \
         compute_latency_cols, compute_latency_rows, first_step_prefetch_latency, fourth_step_prefetch_latency
 
-# we should get this value from the simulator
+# we should get this value from the simulator. this is the latency for a single NTT
 def expected_latency(M, N, num_pes, prefetch_latencies, mem_latencies, compute_latencies):
     
     first_step_prefetch_latency, fourth_step_prefetch_latency = prefetch_latencies
@@ -246,9 +248,63 @@ def expected_latency(M, N, num_pes, prefetch_latencies, mem_latencies, compute_l
 
     return col_ntt_latency + row_ntt_latency
 
-def run_fit_onchip(target_n=None, target_bw=None, progress_print=False):
+
+def characterize_poly(polynomial, debug=False):
+    unique_count, reused_count = analyze_polynomial(polynomial)
+
+    if debug:
+        print(f"Polynomial: {polynomial}")
+        print(f"Unique entries: {unique_count}")
+        print(f"Reused entries: {reused_count}")
+
+    num_adds, num_products = count_operations(polynomial)
+
+    return unique_count, reused_count, num_adds, num_products
+
+# elementwise time is time to stream values on chip
+def estimate_elementwise_latency(poly_features, mat_dims, butterflies_per_pe, num_pes, bit_width, available_bw, freq, modadd_latency=1, modmul_latency=20, bmax=5):
+
+    max_read_rate = calc_rate(bit_width, available_bw, freq)
+    
+    # we have 2*(number of butterflies) read ports but only (number of butterfly) modmuls
+    # so best we can do is read those many elements per cycle to feed into the modmuls
+    num_read_ports = butterflies_per_pe
+    
+    
+    # this is also equivalent to num_rows, num_cols = mat_dims
+    col_words, row_words = mat_dims
+
+    # read row-wise, this latency is for num_pes in parallel
+    fetch_cycles = get_read_latency(row_words*num_pes, num_read_ports*num_pes, max_read_rate)
+    # print(row_words)
+    # print(max_read_rate)
+    # print(fetch_cycles)
+    num_unique_mles, num_reused_mles, num_adds, num_products = poly_features
+    compute_cycles = modadd_latency*num_adds + modmul_latency*num_products
+
+    # get the number of unique MLEs, and get the number of MLEs that are reused
+    assert num_reused_mles <= bmax - 2
+
+    num_groups = col_words/num_pes
+    fetch_cycles *= num_groups
+    fetch_cycles *= num_unique_mles
+
+    # compute is pipelined with fetch. this is an approximation
+    # TODO: verify this approximation
+    elementwise_time = fetch_cycles + compute_cycles*num_groups
+
+    return elementwise_time
+
+
+def run_fit_onchip(target_n=None, target_bw=None, progress_print=False, polynomial=None):
 
     random.seed(0)
+
+    if polynomial is None:
+        polynomial = [["f"]]
+
+    poly_features = characterize_poly(polynomial)
+    num_unique_mles = poly_features[0]
 
     # sweep parameters: n, bandwidth, U, PEs
 
@@ -316,7 +372,7 @@ def run_fit_onchip(target_n=None, target_bw=None, progress_print=False):
                     arch_2 = ArchitectureSimulator(omegas_N, modulus, r_or_w_mem_latency_rows, r_and_w_mem_latency_rows, compute_latency_rows, prefetch_latency=fourth_step_prefetch_latency, skip_compute=skip_compute)
                     final_matrix, cycle_time_2 = simulate_4step_all_onchip(arch_2, pe_amt, temp_matrix_T, omega_L, modulus, output_scale=False, skip_compute=skip_compute)
 
-                    total_cycles = cycle_time_1 + cycle_time_2
+                    single_ntt_cycles = cycle_time_1 + cycle_time_2
 
                     # Calculate expected latency for this configuration
                     expected_cycles = expected_latency(M, N, pe_amt, 
@@ -325,20 +381,26 @@ def run_fit_onchip(target_n=None, target_bw=None, progress_print=False):
                                                       (compute_latency_cols, compute_latency_rows))
 
                     # Check for discrepancies
-                    if total_cycles != expected_cycles:
+                    if single_ntt_cycles != expected_cycles:
                         print(f"Expected latency (cycles): {expected_cycles}")
-                        print(f"Actual latency (cycles): {total_cycles}")
+                        print(f"Actual latency (cycles): {single_ntt_cycles}")
                         print("Mismatch between expected and actual latency!")
                         exit()
 
-                    # double check if global needs another buffer
+                    transposed_mat_dims = (N, M)
+
+                    all_ntt_cycles = single_ntt_cycles*num_unique_mles
+                    elementwise_cycles = estimate_elementwise_latency(poly_features, transposed_mat_dims, U, pe_amt, bit_width, available_bw, freq, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bmax=5)
+
+                    total_cycles = all_ntt_cycles + elementwise_cycles
+
+                    # 5 buffers in each PE, each of length M
                     ping_pong_double_buffer_words = M*4*pe_amt
 
                     local_twiddle_words = M / 2     # shared among all PEs
                     global_scale_twiddle_words = M  # shared among all PEs
                     global_twiddle_words = M * pe_amt  # each PE computes its own global twiddle column
 
-                    # 5.5 * M * pe_amt # M > N, so 4 buffers of M words for double buffered ping pong, 1/2 buffer for local twiddles, 1 buffer for global twiddles
                     total_num_words = ping_pong_double_buffer_words + local_twiddle_words + global_scale_twiddle_words + global_twiddle_words
 
                     total_modmuls = U*pe_amt
@@ -346,6 +408,9 @@ def run_fit_onchip(target_n=None, target_bw=None, progress_print=False):
 
                     results[(n, available_bw, U, pe_amt)] = {
                         "total_cycles": total_cycles,
+                        "single_ntt_cycles": single_ntt_cycles,
+                        "all_ntt_cycles": all_ntt_cycles,
+                        "elementwise_cycles": elementwise_cycles,
                         "total_modmuls": total_modmuls,
                         "total_modadds": total_modadds,
                         "total_num_words": total_num_words
@@ -375,7 +440,13 @@ def run_fit_onchip(target_n=None, target_bw=None, progress_print=False):
     print("Results:")
     for key, value in results.items():
         n, available_bw, U, pe_amt = key
-        print(f"n={n}, bw={available_bw}, U={U}, pe_amt={pe_amt} -> total_cycles: {value['total_cycles']}, total_modmuls: {value['total_modmuls']}, total_num_words: {value['total_num_words']}")
+        print(f"n={n}, bw={available_bw}, U={U}, pe_amt={pe_amt} -> "
+              f"total_cycles: {value['total_cycles']}, "
+              f"single_ntt_cycles: {value['single_ntt_cycles']}, "
+              f"all_ntt_cycles: {value['all_ntt_cycles']}, "
+              f"elementwise_cycles: {value['elementwise_cycles']}, "
+              f"total_modmuls: {value['total_modmuls']}, "
+              f"total_num_words: {value['total_num_words']}")
 
     # Save results to pickle file
     output_dir = "pickle_results"
@@ -473,6 +544,10 @@ def run_one_config_fit_onchip():
 
     random.seed(0)
 
+    polynomial = [["g", "h", "s"], ["o"]]
+    poly_features = characterize_poly(polynomial)
+    num_unique_mles, num_reused_mles, num_adds, num_products = poly_features
+
     # sweep parameters: n, bandwidth, U, PEs
 
     bit_width = 256
@@ -527,7 +602,7 @@ def run_one_config_fit_onchip():
     arch_2.set_debug(True)  # Enable debug output
     final_matrix, cycle_time_2 = simulate_4step_all_onchip(arch_2, pe_amt, temp_matrix_T, omega_L, modulus, output_scale=False, skip_compute=skip_compute)
 
-    total_cycles = cycle_time_1 + cycle_time_2
+    single_ntt_cycles = cycle_time_1 + cycle_time_2
 
     # Calculate expected latency for this configuration
     expected_cycles = expected_latency(M, N, pe_amt, 
@@ -536,20 +611,28 @@ def run_one_config_fit_onchip():
                                       (compute_latency_cols, compute_latency_rows))
 
     print(f"Expected latency (cycles): {expected_cycles}")
-    print(f"Actual latency (cycles): {total_cycles}")
+    print(f"Actual latency (cycles): {single_ntt_cycles}")
 
     # Check for discrepancies
-    if total_cycles != expected_cycles:
+    if single_ntt_cycles != expected_cycles:
         print("Mismatch between expected and actual latency!")
         exit()
 
-    ping_pong_double_buffer_words = M*4*pe_amt
     
+    
+    transposed_mat_dims = (N, M)
+
+    all_ntt_cycles = single_ntt_cycles*num_unique_mles
+    elementwise_cycles = estimate_elementwise_latency(poly_features, transposed_mat_dims, U, pe_amt, bit_width, available_bw, freq, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bmax=5)
+
+    total_cycles = all_ntt_cycles + elementwise_cycles
+
+
+    ping_pong_double_buffer_words = M*4*pe_amt
     local_twiddle_words = M / 2     # shared among all PEs
     global_scale_twiddle_words = M  # shared among all PEs
     global_twiddle_words = M * pe_amt  # each PE computes its own global twiddle column
 
-    #5.5 * M * pe_amt# M > N, so 4 buffers of M words for double buffered ping pong, 1/2 buffer for local twiddles, 1 buffer for global twiddles
 
     total_num_words = ping_pong_double_buffer_words + local_twiddle_words + global_scale_twiddle_words + global_twiddle_words
     total_modmuls = U*pe_amt
@@ -558,14 +641,14 @@ def run_one_config_fit_onchip():
 
     results[(n, available_bw, U, pe_amt)] = {
         "total_cycles": total_cycles,
+        "single_ntt_cycles": single_ntt_cycles,
+        "all_ntt_cycles": all_ntt_cycles,
+        "elementwise_cycles": elementwise_cycles,
         "total_modmuls": total_modmuls,
         "total_modadds": total_modadds,
         "total_num_words": total_num_words
     }
 
-    # print(f"Cycle time: {cycle_time_1 + cycle_time_2}")
-
-    # if n < 13:
     if check_correctness:
         print(f"hw_config: n={n}, bw={available_bw}, U={U}, pe_amt={pe_amt}")
         final_vector = flatten(final_matrix)
@@ -587,7 +670,13 @@ def run_one_config_fit_onchip():
     print("Results:")
     for key, value in results.items():
         n, available_bw, U, pe_amt = key
-        print(f"n={n}, bw={available_bw}, U={U}, pe_amt={pe_amt} -> total_cycles: {value['total_cycles']}, total_modmuls: {value['total_modmuls']}, total_num_words: {value['total_num_words']}")
+        print(f"n={n}, bw={available_bw}, U={U}, pe_amt={pe_amt} -> "
+            f"total_cycles: {value['total_cycles']}, "
+            f"single_ntt_cycles: {value['single_ntt_cycles']}, "
+            f"all_ntt_cycles: {value['all_ntt_cycles']}, "
+            f"elementwise_cycles: {value['elementwise_cycles']}, "
+            f"total_modmuls: {value['total_modmuls']}, "
+            f"total_num_words: {value['total_num_words']}")
 
 def run_pareto_analysis(n=None, bw=None, multi_bw=False):
     """
@@ -696,6 +785,8 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
+    polynomial = [["g", "h", "s"], ["o"]]
+
     if args.mode == 'test':
         print("Running simple test...")
         run_simple_test()
@@ -715,13 +806,13 @@ if __name__ == "__main__":
     else:  # sweep mode
         if args.n is not None and args.bw is not None:
             print(f"Running sweep for n={args.n}, bw={args.bw}")
-            run_fit_onchip(target_n=args.n, target_bw=args.bw)
+            run_fit_onchip(target_n=args.n, target_bw=args.bw, polynomial=polynomial)
         elif args.n is not None:
             print(f"Running sweep for n={args.n}, all bandwidths")
-            run_fit_onchip(target_n=args.n)
+            run_fit_onchip(target_n=args.n, polynomial=polynomial)
         elif args.bw is not None:
             print(f"Running sweep for bw={args.bw}, all problem sizes")
-            run_fit_onchip(target_bw=args.bw)
+            run_fit_onchip(target_bw=args.bw, polynomial=polynomial)
         else:
             print("Running full parameter sweep...")
-            run_fit_onchip()
+            run_fit_onchip(polynomial=polynomial)
