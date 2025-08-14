@@ -390,8 +390,55 @@ pub fn extract_variable_names(input: &str) -> Vec<String> {
 // - Constants: integers (e.g., `42`, `-3`)
 // - Operations: `+`, `-`, `*`, `^` (power), parentheses for grouping (terms have to be connected by operators)
 // e.g. `x + 2*y - 3*z^2 + (4 - x)`
-//
-// A zeroizing variable `o` is automatically added, for testing purposes.
+pub fn prepare_virtual_evaluation_from_string<F>(
+    input: &str,
+    degree: usize,
+    pool_prepare: &rayon::ThreadPool,
+) -> Result<VirtualEvaluation<F>, ParseError>
+where
+    F: PrimeField + Clone,
+{
+    let domain = GeneralEvaluationDomain::<F>::new(degree).unwrap();
+
+    // Factory to create constant evaluations on the domain
+    let const_factory = |n: i64| {
+        let vals: Vec<F> = (0..degree).map(|_| F::from(n as u64)).collect();
+        Arc::new(Evaluations::from_vec_and_domain(vals, domain))
+    };
+    // let int_to_field = |n: i64| F::from((n as i128) as i64 as u64);
+    let int_to_field = |n: i64| {
+        if n >= 0 {
+            F::from(n as u64)
+        } else {
+            -F::from((-n) as u64)
+        }
+    };
+
+    // parse
+    let variable_names = extract_variable_names(input);
+
+    // Prepare variable map: variable names -> random evaluations
+    let mut var_map: HashMap<String, Arc<Evaluations<F>>> = HashMap::new();
+
+    // Randomly gernerate evals for variables
+    for var in variable_names.into_iter() {
+        let vals = pool_prepare.install(|| {
+            (0..degree)
+                .into_par_iter()
+                .map(|_| F::rand(&mut ark_std::rand::thread_rng()))
+                .collect()
+        });
+        let arc = Arc::new(Evaluations::from_vec_and_domain(vals, domain));
+        var_map.insert(var, arc);
+    }
+    let ve = parse_to_virtual_evaluation::<F>(input, &var_map, &const_factory, &int_to_field)
+        .expect("parse ok");
+
+    return Ok(ve);
+}
+
+// The augmented version of `prepare_virtual_evaluation_from_string` that
+// adds a zeroizing variable `o` to the virtual evaluation.
 pub fn prepare_zero_virtual_evaluation_from_string<F>(
     input: &str,
     degree: usize,
