@@ -16,7 +16,7 @@ use zerocheck::{
         kzg::KZG,
         ligero::{Ligero, LigeroPoseidon},
     },
-    zc::univariate_zc::custom::parser::prepare_virtual_evaluation_from_string,
+    zc::univariate_zc::custom::parser::prepare_zero_virtual_evaluation_from_string,
 };
 
 /// This function prepares the random input evaluations for the prover test.
@@ -30,7 +30,7 @@ fn prepare_input_evals_domain<'a>(
     let instant = Instant::now();
 
     let degree = 1 << size;
-    let inp_evals = prepare_virtual_evaluation_from_string(&intput_poly, degree, &pool_prepare).unwrap();
+    let inp_evals = prepare_zero_virtual_evaluation_from_string(&intput_poly, degree, &pool_prepare).unwrap();
     let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
 
     let max_degree = inp_evals.evals_info.max_multiplicand * degree;

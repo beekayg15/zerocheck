@@ -395,7 +395,7 @@ pub fn extract_variable_names(input: &str) -> Vec<String> {
 // e.g. `x + 2*y - 3*z^2 + (4 - x)`
 //
 // A zeroizing variable `o` is automatically added, for testing purposes.
-pub fn prepare_virtual_evaluation_from_string<F>(
+pub fn prepare_zero_virtual_evaluation_from_string<F>(
     input: &str,
     degree: usize,
     pool_prepare: &rayon::ThreadPool,

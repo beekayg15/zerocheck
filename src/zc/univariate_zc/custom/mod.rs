@@ -297,7 +297,7 @@ where
 mod tests {
     use crate::pcs::univariate_pcs::kzg::KZG;
     use crate::pcs::univariate_pcs::ligero::Ligero;
-    use crate::zc::univariate_zc::custom::parser::prepare_virtual_evaluation_from_string;
+    use crate::zc::univariate_zc::custom::parser::prepare_zero_virtual_evaluation_from_string;
 
     use super::*;
     use ark_bls12_381::Bls12_381;
@@ -318,7 +318,7 @@ mod tests {
         let degree = 1 << 6;
         let input = "g*h*s + (1 - s)*(g + h)";
         let inp_evals =
-            prepare_virtual_evaluation_from_string(input, degree, &pool_prepare).unwrap();
+            prepare_zero_virtual_evaluation_from_string(input, degree, &pool_prepare).unwrap();
         let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
