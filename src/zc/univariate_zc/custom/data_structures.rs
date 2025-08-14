@@ -163,7 +163,7 @@ pub struct PolynomialInfo<F: PrimeField> {
 
 /// Struct to store the sum of products of MLEs
 #[derive(Clone, Debug)]
-pub struct VirtualPolynomail<F: PrimeField> {
+pub struct VirtualPolynomial<F: PrimeField> {
     // information about the virtual polynomial
     pub poly_info: PolynomialInfo<F>,
     // list of (indexed) MLEs which are to be multiplied
@@ -174,7 +174,7 @@ pub struct VirtualPolynomail<F: PrimeField> {
     pub univariate_polynomials: Vec<Arc<DensePolynomial<F>>>,
 }
 
-impl<F: PrimeField> VirtualPolynomail<F> {
+impl<F: PrimeField> VirtualPolynomial<F> {
     /// Creates an empty virtual polynomial with `num_variables`
     pub fn new(virtual_evaluation: VirtualEvaluation<F>, pool_run: Option<&ThreadPool>) -> Self {
         let univariate_polynomials: Vec<Arc<DensePolynomial<F>>>;
@@ -194,7 +194,7 @@ impl<F: PrimeField> VirtualPolynomail<F> {
                 .collect();
         }
 
-        VirtualPolynomail {
+        VirtualPolynomial {
             poly_info: PolynomialInfo {
                 max_multiplicand: virtual_evaluation.evals_info.max_multiplicand,
                 phantom: PhantomData,

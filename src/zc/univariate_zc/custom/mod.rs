@@ -106,8 +106,8 @@ where
         let ifft_time = start_timer!(|| "IFFT for g,h,s,o from evaluations to coefficients");
 
         // compute the polynomials corresponding to g, h, and s using interpolation (IFFT)
-        let virtual_polynomial: VirtualPolynomail<F> =
-            VirtualPolynomail::new(input_poly.clone(), Some(&pool_run));
+        let virtual_polynomial: VirtualPolynomial<F> =
+            VirtualPolynomial::new(input_poly.clone(), Some(&pool_run));
 
         end_timer!(ifft_time);
         let coset_time = start_timer!(|| "Compute coset domain");
