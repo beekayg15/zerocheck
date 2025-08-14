@@ -5,7 +5,6 @@ use clap::Parser;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::transcripts::ZCTranscript;
-use zerocheck::zc::univariate_zc::custom::data_structures::custom_zero_test_case_with_products;
 use zerocheck::zc::univariate_zc::custom::{
     data_structures::{VirtualEvaluation, ZeroCheckParams},
     CustomUnivariateZeroCheck,
@@ -30,7 +29,8 @@ fn prepare_input_evals_domain<'a>(
     let instant = Instant::now();
 
     let degree = 1 << size;
-    let inp_evals = prepare_virtual_evaluation_from_string(&intput_poly, degree, &pool_prepare).unwrap();
+    let inp_evals =
+        prepare_virtual_evaluation_from_string(&intput_poly, degree, &pool_prepare).unwrap();
     let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
 
     let max_degree = inp_evals.evals_info.max_multiplicand * degree;
@@ -239,7 +239,8 @@ fn bench_opt_uni_zc() {
                 .build()
                 .unwrap();
 
-            let (input_evals, domain, pp) = prepare_input_evals_domain(size, &pool_prepare, args.f.clone());
+            let (input_evals, domain, pp) =
+                prepare_input_evals_domain(size, &pool_prepare, args.f.clone());
 
             let total_runtime: u128 = match args.poly_commit_scheme.as_str() {
                 "kzg" => {

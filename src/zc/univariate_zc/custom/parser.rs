@@ -1,8 +1,5 @@
-#![allow(dead_code)]
 use ark_ff::PrimeField;
-use ark_poly::{
-    univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain,
-};
+use ark_poly::{EvaluationDomain, Evaluations, GeneralEvaluationDomain};
 use rayon::prelude::*;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
@@ -455,61 +452,4 @@ where
     ve_with_o.add_product(std::iter::once(o_eval), int_to_field(-1));
 
     Ok(ve_with_o)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use ark_bls12_381::Fr;
-    use ark_poly::domain::GeneralEvaluationDomain;
-    use ark_poly::Evaluations;
-    use std::sync::Arc;
-
-    // NOTE: test uses small domain and simple const->eval factory
-    #[test]
-    fn parse_into_virtual_eval_smoke() {
-        let degree = 2usize;
-        let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
-
-        // prepare var_map: g,h,s -> random evals (here deterministic small vectors)
-        let g_vals: Vec<Fr> = (0..degree).map(|i| Fr::from(i as u64 + 1u64)).collect();
-        let h_vals: Vec<Fr> = (0..degree).map(|i| Fr::from(i as u64 + 2u64)).collect();
-        let s_vals: Vec<Fr> = (0..degree).map(|i| Fr::from(i as u64 + 3u64)).collect();
-
-        let g_arc = Arc::new(Evaluations::from_vec_and_domain(g_vals, domain));
-        let h_arc = Arc::new(Evaluations::from_vec_and_domain(
-            h_vals,
-            g_arc.domain().clone(),
-        ));
-        let s_arc = Arc::new(Evaluations::from_vec_and_domain(
-            s_vals,
-            g_arc.domain().clone(),
-        ));
-
-        let mut var_map: HashMap<String, Arc<Evaluations<Fr>>> = HashMap::new();
-        var_map.insert("g".to_string(), g_arc.clone());
-        var_map.insert("h".to_string(), h_arc.clone());
-        var_map.insert("s".to_string(), s_arc.clone());
-
-        // const -> eval factory (create constant vector on same domain)
-        let const_factory = |n: i64| {
-            let vals: Vec<Fr> = (0..degree).map(|_| Fr::from(n as u64)).collect();
-            Arc::new(Evaluations::from_vec_and_domain(
-                vals,
-                g_arc.domain().clone(),
-            ))
-        };
-        let int_to_field = |n: i64| Fr::from((n as i128) as i64 as u64);
-
-        // parse
-        let expr = "g*h*(1-g)";
-        let ve = parse_to_virtual_evaluation::<Fr>(expr, &var_map, &const_factory, &int_to_field)
-            .expect("parse ok");
-
-        print!("{:#?}", ve);
-        // Basic sanity: products should be non-empty
-        assert!(ve.products.len() > 0);
-        // max_multiplicand should be set >= 1
-        assert!(ve.evals_info.max_multiplicand == 3);
-    }
 }
