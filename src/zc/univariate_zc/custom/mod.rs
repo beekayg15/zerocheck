@@ -97,10 +97,10 @@ where
 
         // compute the vanishing polynomial of the zero domain
         // let z_poly = zero_domain.vanishing_polynomial();
-        let z_deg = zero_domain.size();
+        let z_size = zero_domain.size();
 
         let prove_time = start_timer!(|| format!(
-            "OptimizedUnivariateZeroCheck::prove, with {z_deg} zero_domain size."
+            "OptimizedUnivariateZeroCheck::prove, with {z_size} zero_domain size."
         ));
 
         let ifft_time = start_timer!(|| "IFFT for g,h,s,o from evaluations to coefficients");
@@ -113,11 +113,11 @@ where
         let coset_time = start_timer!(|| "Compute coset domain");
 
         // compute degree of quotient polynomial to
-        let f_deg = virtual_polynomial.degree();
-        let q_deg = f_deg - z_deg;
+        let f_size = virtual_polynomial.degree();
+        let q_size = f_size - z_size;
 
         // Compute the coset domain to interpolate q(X)
-        let q_domain = GeneralEvaluationDomain::<F>::new(q_deg).unwrap();
+        let q_domain = GeneralEvaluationDomain::<F>::new(q_size).unwrap();
         let offset = F::GENERATOR;
         let coset_domain: GeneralEvaluationDomain<F> = q_domain.get_coset(offset).unwrap();
 
