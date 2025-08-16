@@ -204,7 +204,7 @@ impl<F: PrimeField> VirtualPolynomial<F> {
         }
     }
 
-    /// Returns the degree of the virtual polynomial
+    /// Returns the size (number of coefficients) of the virtual polynomial
     pub fn degree(&self) -> usize {
         self.products
             .iter()
