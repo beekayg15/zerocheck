@@ -117,7 +117,7 @@ where
         let q_deg = f_deg - z_deg;
 
         // Compute the coset domain to interpolate q(X)
-        let q_domain = GeneralEvaluationDomain::<F>::new(q_deg + 1).unwrap();
+        let q_domain = GeneralEvaluationDomain::<F>::new(q_deg).unwrap();
         let offset = F::GENERATOR;
         let coset_domain: GeneralEvaluationDomain<F> = q_domain.get_coset(offset).unwrap();
 
