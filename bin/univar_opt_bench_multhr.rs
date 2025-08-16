@@ -33,7 +33,7 @@ fn prepare_input_evals_domain<'a>(
     let inp_evals = prepare_zero_virtual_evaluation_from_string(&intput_poly, degree, &pool_prepare).unwrap();
     let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
 
-    let max_degree = inp_evals.evals_info.max_multiplicand * degree;
+    let max_degree = (inp_evals.evals_info.max_multiplicand - 1) * degree;
     let duration = instant.elapsed().as_secs_f64();
     println!("Preparing input evaluations and domain for 2^{size} work ....{duration}s");
     return (inp_evals, domain, max_degree);
