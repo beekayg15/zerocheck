@@ -209,10 +209,9 @@ impl<F: PrimeField> VirtualPolynomial<F> {
         self.products
             .iter()
             .map(|(_, indices)| {
-                indices
-                    .iter()
-                    .map(|&index| self.univariate_polynomials[index].degree())
-                    .sum::<usize>()
+                indices.iter().map(|&index| {
+                    self.univariate_polynomials[index].degree() + 1
+                }).sum::<usize>()
             })
             .max()
             .unwrap_or(0)
