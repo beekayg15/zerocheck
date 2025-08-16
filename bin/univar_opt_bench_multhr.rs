@@ -28,11 +28,14 @@ fn prepare_input_evals_domain<'a>(
     println!("Preparing input evaluations and domain for 2^{size} work");
     let instant = Instant::now();
 
-    let degree = 1 << size;
-    let inp_evals = prepare_zero_virtual_evaluation_from_string(&intput_poly, degree, &pool_prepare).unwrap();
-    let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
+    let number_of_coeffs = 1 << size;
+    let inp_evals = prepare_zero_virtual_evaluation_from_string(&intput_poly, number_of_coeffs, &pool_prepare).unwrap();
+    let domain = GeneralEvaluationDomain::<Fr>::new(number_of_coeffs).unwrap();
 
-    let max_degree = (inp_evals.evals_info.max_multiplicand - 1) * degree;
+    // The degree of the input polynomial
+    // -1 here because the max_degree is for setting up the global params, 
+    // and the set up takes in mathematical `degree`, which is `number_of_coeffs - 1`.
+    let max_degree = (inp_evals.evals_info.max_multiplicand - 1) * number_of_coeffs -1;
     let duration = instant.elapsed().as_secs_f64();
     println!("Preparing input evaluations and domain for 2^{size} work ....{duration}s");
     return (inp_evals, domain, max_degree);
