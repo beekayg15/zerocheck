@@ -196,11 +196,11 @@ struct Args {
     repeat: usize,
 
     /// Minimum work size exponent (2^min_size)
-    #[arg(long, default_value = "10")]
+    #[arg(long, default_value = "8")]
     min_size: usize,
 
     /// Maximum work size exponent (inclusive, 2^max_size)
-    #[arg(long, default_value = "20")]
+    #[arg(long, default_value = "8")]
     max_size: usize,
 
     /// Number of threads to use for prepare input evaluations
