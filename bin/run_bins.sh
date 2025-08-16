@@ -18,6 +18,19 @@ MAX_SIZE=16
 # echo "Running: $CMD"
 # eval $CMD
 
+# Polynomials for testing
+POLY="q1*q2*q3"
+POLY="q1*q2*q3*q4*q5"
+POLY="q1*q2*q3*q4*q5*q6*q7*q8*q*q"
+POLY="q1*q2*q3 + q1*q2*q4"
+POLY="q1*q2*q3 + q1*q2*q4 + q1*q3*q4"
+POLY="q1*q2*q3 + q1*q2*q4 + q1*q3*q4 + q2*q3*q4"
+POLY="q1*q2 + q1*q2*q3"
+POLY="q1*q2*q3 + q1*q2*q4 + q1*q3*q4"
+POLY="q1*q2*q3 + q1*q3*q4 + q2*q3*q4 + q1*q2*q5"
+POLY="q1*q2*q3 + q1*q2*q4 + q1*q2*q5 + q1*q2*q6 + q1*q2*q7 + q1*q2*q8 + q1*q2*q9"
+
+
 
 
 ############################################################
