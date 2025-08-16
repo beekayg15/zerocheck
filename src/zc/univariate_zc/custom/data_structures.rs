@@ -209,7 +209,7 @@ impl<F: PrimeField> VirtualPolynomail<F> {
             .iter()
             .map(|(_, indices)| {
                 indices.iter().map(|&index| {
-                    self.univariate_polynomials[index].degree()
+                    self.univariate_polynomials[index].degree() + 1
                 }).sum::<usize>()
             })
             .max()
