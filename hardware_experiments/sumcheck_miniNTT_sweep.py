@@ -364,8 +364,9 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename, xrang
         ax_mem = axes_mem[col]
         common_gates = set(sub_sc_df["sumcheck_gate"].unique())
         for gate in common_gates:
+            ntt_gate = gate.replace(" fz", "") if isinstance(gate, str) else gate
             gate_sc_df = sub_sc_df[sub_sc_df["sumcheck_gate"] == gate]
-            gate_ntt_df = sub_ntt_df[sub_ntt_df["sumcheck_gate"] == gate]
+            gate_ntt_df = sub_ntt_df[sub_ntt_df["sumcheck_gate"] == ntt_gate]
             if not gate_sc_df.empty:
                 costs = gate_sc_df[["total_onchip_memory_MB", "total_latency"]].values
                 pareto_mask = is_pareto_efficient(costs)
@@ -421,8 +422,9 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename, xrang
         ax_modmul = axes_modmul[col]
         common_gates = set(sub_sc_df["sumcheck_gate"].unique())
         for gate in common_gates:
+            ntt_gate = gate.replace(" fz", "") if isinstance(gate, str) else gate
             gate_sc_df = sub_sc_df[sub_sc_df["sumcheck_gate"] == gate]
-            gate_ntt_df = sub_ntt_df[sub_ntt_df["sumcheck_gate"] == gate]
+            gate_ntt_df = sub_ntt_df[sub_ntt_df["sumcheck_gate"] == ntt_gate]
             if not gate_sc_df.empty:
                 costs = gate_sc_df[["modmul_count", "total_latency"]].values if "modmul_count" in gate_sc_df.columns else gate_sc_df[["total_modmuls", "total_latency"]].values
                 pareto_mask = is_pareto_efficient(costs)
