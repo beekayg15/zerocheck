@@ -296,6 +296,145 @@ def estimate_elementwise_latency(poly_features, mat_dims, butterflies_per_pe, nu
     return elementwise_time
 
 
+def simulate_mini_ntt_onchip(ntt_len, num_butterflies, modadd_latency=1, modmul_latency=20, bit_width=256):
+    """
+    Simulate a mini NTT that fits on-chip. This is one core fitting one polynomial.
+    Args:
+        ntt_len: Length of the NTT (e.g., 1024)
+        num_butterflies: Number of butterflies (unroll factor)
+        modadd_latency: Latency of a modular addition (default 1)
+        modmul_latency: Latency of a modular multiplication (default 20)
+        bit_width: Bit width for memory calculation (default 256)
+    Returns:
+        A dict with total_cycles, total_modmuls, total_modadds, total_num_words
+    """
+    num_stages = int(math.log2(ntt_len))
+    max_butterflies_per_stage = ntt_len // 2
+
+    # The maximum allowed butterflies is (ntt_len//2) * num_stages
+    max_total_butterflies = max_butterflies_per_stage * num_stages
+    if num_butterflies > max_total_butterflies:
+        num_butterflies = max_total_butterflies
+
+    # Case 1: one stage per round
+    if num_butterflies <= max_butterflies_per_stage:
+        output_scaled = False
+        total_cycles = get_compute_latency(
+            ntt_len, num_butterflies, modmul_latency + modadd_latency, modadd_latency, output_scaled=output_scaled
+        )
+    # # Case 2: k stages per round, k is integer, num_butterflies = k * (ntt_len//2)
+    # elif num_butterflies % max_butterflies_per_stage == 0:
+    #     k = num_butterflies // max_butterflies_per_stage
+    #     if k > num_stages:
+    #         raise ValueError(f"k ({k}) cannot be greater than num_stages ({num_stages})")
+    #     rounds = math.ceil(num_stages / k)
+    #     stage_latencies = []
+    #     for r in range(rounds):
+    #         stages_left = num_stages - r * k
+    #         stages_this_round = min(k, stages_left)
+    #         round_latency = 0
+    #         for s in range(stages_this_round):
+    #             stage_idx = r * k + s
+    #             is_last = (stage_idx == num_stages - 1)
+    #             stage_latency = get_compute_latency(
+    #                 ntt_len, max_butterflies_per_stage, modmul_latency + modadd_latency, modadd_latency, output_scaled=is_last
+    #             )
+    #             round_latency += stage_latency
+    #         stage_latencies.append(round_latency)
+    #     total_cycles = sum(stage_latencies)
+    else:
+        # Not a valid case: skip or raise error
+        raise ValueError(
+            f"num_butterflies ({num_butterflies}) must be <= ntt_len//2 or an integer multiple of ntt_len//2"
+        )
+
+    # Number of modmuls and modadds is equal to the number of butterflies (units), not the total number of operations
+    total_modmuls = num_butterflies
+    total_modadds = num_butterflies
+
+    # On-chip memory: ping-pong buffer (ntt_len * 2) + local twiddle words (ntt_len / 2)
+    ping_pong_buffer_words = ntt_len * 2
+    local_twiddle_words = 0  # ntt_len / 2. Shared across cores
+    total_num_words = ping_pong_buffer_words + local_twiddle_words
+
+    return {
+        "total_cycles": total_cycles,
+        "total_modmuls": total_modmuls,
+        "total_modadds": total_modadds,
+        "total_num_words": total_num_words
+    }
+
+
+def run_miniNTT_fit_onchip(target_n:int, polynomial, modadd_latency=1, modmul_latency=20, bit_width=256):
+    """
+    For a given polynomial, run num_unique_mles miniNTT cores in parallel for NTT of length (d-1)*N,
+    sweeping number of butterflies from 1 to the largest possible.
+    Args:
+        target_n: Problem size exponent (e.g., 16 for 2^16)
+        polynomial: The polynomial (list of lists) to analyze. [["q1", "q2"], ["q3"]]
+        modadd_latency: Latency of a modular addition (default 1)
+        modmul_latency: Latency of a modular multiplication (default 20)
+        bit_width: Bit width for memory calculation (default 256)
+    Returns:
+        A dict: key=(num_butterflies), value=dict of cost for that config
+    """
+    # Analyze polynomial to get number of unique MLEs and max degree
+    poly_features = characterize_poly(polynomial)
+    num_unique_mles = poly_features[0]
+    num_reused_mles = poly_features[1]
+    num_adds_poly = poly_features[2]
+    num_products_poly = poly_features[3]
+
+    input_ntt_len = 2 ** target_n
+    max_degree = max(len(term) for term in polynomial)
+    N = 2 ** target_n
+    ntt_len = (max_degree - 1) * N
+
+    # Sweep number of butterflies from 1 to ntt_len//2 (radix-2)
+    max_butterflies = max(1, ntt_len // 2)
+    num_stages = int(math.log2(ntt_len))
+    sweep_butterflies = [2 ** i for i in range(int(math.log2(max_butterflies)) + 1) if 2 ** i <= max_butterflies]
+    if 1 not in sweep_butterflies:
+        sweep_butterflies = [1] + sweep_butterflies
+    # # Add extra sweep points: k * max_butterflies, for k = 2..num_stages
+    # for k in range(2, num_stages + 1):
+    #     val = k * max_butterflies
+    #     if val <= num_stages * max_butterflies and val not in sweep_butterflies:
+    #         sweep_butterflies.append(val)
+    sweep_butterflies = sorted(sweep_butterflies)
+
+    results = {}
+    for num_butterflies in sweep_butterflies:
+        # 1. Input iNTTs
+        input_ntt_result = simulate_mini_ntt_onchip(
+            input_ntt_len, min(num_butterflies, input_ntt_len // 2), modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width
+        )
+        total_cycles = input_ntt_result["total_cycles"]
+
+        # 2. Bigger NTTs
+        mini_ntt_result = simulate_mini_ntt_onchip(
+            ntt_len, num_butterflies, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width
+        )
+        # Parallel execution: latency is that of one core, resources scale with num_unique_mles
+        total_cycles += mini_ntt_result["total_cycles"]
+        total_modmuls = mini_ntt_result["total_modmuls"] * num_unique_mles
+        total_modadds = mini_ntt_result["total_modadds"] * num_unique_mles
+        total_num_words = mini_ntt_result["total_num_words"] * num_unique_mles + ntt_len / 2  # +local_twiddle_words
+
+        # 3. q iNTT
+        total_cycles += mini_ntt_result["total_cycles"]
+
+        results[num_butterflies] = {
+            "ntt_len": ntt_len,
+            "num_unique_mles": num_unique_mles,
+            "total_cycles": total_cycles,
+            "total_modmuls": total_modmuls,
+            "total_modadds": total_modadds,
+            "total_num_words": total_num_words,
+        }
+    return results
+
+
 def run_fit_onchip(target_n=None, target_bw=None, progress_print=False, polynomial=None, save_pkl=True, unroll_factors_pow=None):
 
     random.seed(0)

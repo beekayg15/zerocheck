@@ -191,7 +191,7 @@ def sumcheck_only_sweep(sweep_params, sumcheck_polynomials, latencies, constants
 
                         utilization = calc_utilization(modmul_ops, total_modmuls, total_latency)
 
-                        s_dict['total_latency'] = total_latency
+                        s_dict['total_latency'] = total_latency + (2 * num_pes * num_vars)  # + PE accumulation per round
                         s_dict['area'] = total_area_mm2
                         s_dict['area_with_hbm'] = total_area_mm2 + hbm_phy_area_mm2
                         s_dict['modmul_count'] = total_modmuls
