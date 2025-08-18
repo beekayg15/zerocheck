@@ -8,7 +8,7 @@ import seaborn as sns
 from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 from util import is_pareto_efficient
-from test_ntt_func_sim import run_fit_onchip, run_miniNTT_fit_onchip, characterize_poly
+from test_ntt_func_sim import run_fit_onchip, run_miniNTT_partial_onchip, characterize_poly
 from tqdm import tqdm
 import math
 import os
@@ -37,47 +37,52 @@ def analyze_polynomial_gate(gate):
     }
 
 
-def sweep_miniNTT_all_onchip_configs(n_size_values: list, polynomial_list: list):
+def sweep_miniNTT_part_onchip_configs(n_size_values: list, bw_values: list, polynomial_list: list):
     """
-    Sweep all combinations of n and polynomial, calling run_miniNTT_fit_onchip for each.
+    Sweep all combinations of n, bandwidth, and polynomial, calling run_miniNTT_partial_onchip for each.
     Returns a DataFrame with the results.
 
     :param n_size_values: List of NTT sizes to sweep. Should be the exp `μ`. E.g., [16, 17, 18, ...]
+    :param bw_values: List of bandwidths to sweep (GB/s)
     :param polynomial_list: List of polynomials to sweep. Each polynomial is a list of terms, where each term is a list of strings.
     :return: DataFrame of results
     """
     all_rows = []
     for gate in tqdm(polynomial_list, desc="miniNTT Sweep for gate"):
+        gate_name = gate_to_string(gate)
         poly_features = characterize_poly(gate)
         num_gate_unique_mles, num_gate_reused_mles, num_gate_adds, num_gate_products = poly_features
-
-        gate_name = gate_to_string(gate)
         for n in tqdm(n_size_values, desc=f"miniNTT Sweep for n"):
             max_degree = max(len(term) for term in gate)
             N = 2 ** n
             ntt_len = (max_degree - 1) * N
-
-            # iNTT, NTT, iNTT:
-            res_dict = run_miniNTT_fit_onchip(target_n=n, polynomial=gate, modadd_latency=params.modadd_latency, modmul_latency=params.modmul_latency)
-            # res_dict: key=(num_butterflies), value=dict of cost for that config
-            for num_butterflies, value in res_dict.items():
-                row = {
-                    "sumcheck_gate": gate_name,
-                    "n": n,
-                    "num_butterflies": num_butterflies,
-                }
-                value = value.copy()
-                # Area calculations (example, adjust as needed for your params)
-                value["design_modmul_area"] = value["total_modmuls"] * params.modmul_area  # 22nm, mm^2
-                value["total_comp_area_22"] = value["design_modmul_area"] + value["total_modadds"] * params.modadd_area
-                value["total_onchip_memory_MB"] = value["total_num_words"] * params.bits_per_scalar / 8 / (1 << 20)
-                value["total_mem_area_22"] = value["total_onchip_memory_MB"] * params.MB_CONVERSION_FACTOR
-                value["total_area_22"] = value["total_comp_area_22"] + value["total_mem_area_22"]
-                value["total_area"] = value["total_area_22"] / params.scale_factor_22_to_7nm
-                value["total_latency"] = value["total_cycles"] + num_gate_adds * (ntt_len // (2*num_butterflies*num_gate_unique_mles)) \
-                    + 1 * ntt_len // (num_butterflies*num_gate_unique_mles)  # term-add term-mul element-wise
-                row.update(value)
-                all_rows.append(row)
+            for bw in tqdm(bw_values, desc=f"miniNTT Sweep for bw"):
+                res_dict = run_miniNTT_partial_onchip(
+                    target_n=n,
+                    polynomial=gate,
+                    target_bw=bw,
+                    modadd_latency=params.modadd_latency,
+                    modmul_latency=params.modmul_latency,
+                    bit_width=params.bits_per_scalar,
+                    freq=params.freq
+                )
+                for num_butterflies, value in res_dict.items():
+                    row = {
+                        "sumcheck_gate": gate_name,
+                        "n": n,
+                        "available_bw": bw,
+                        "num_butterflies": num_butterflies,
+                    }
+                    value = value.copy()
+                    value["design_modmul_area"] = value["total_modmuls"] * params.modmul_area  # 22nm, mm^2
+                    value["total_comp_area_22"] = value["design_modmul_area"] + value["total_modadds"] * params.modadd_area
+                    value["total_onchip_memory_MB"] = value["total_num_words"] * params.bits_per_scalar / 8 / (1 << 20)
+                    value["total_mem_area_22"] = value["total_onchip_memory_MB"] * params.MB_CONVERSION_FACTOR
+                    value["total_area_22"] = value["total_comp_area_22"] + value["total_mem_area_22"]
+                    value["total_area"] = value["total_area_22"] / params.scale_factor_22_to_7nm
+                    value["total_latency"] = value["total_cycles"] + num_gate_adds * (ntt_len // (2*num_butterflies)) + 1 * ntt_len // num_butterflies
+                    row.update(value)
+                    all_rows.append(row)
     miniNTT_df = pd.DataFrame(all_rows)
     return miniNTT_df
 
@@ -118,9 +123,9 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
     ]
 
     max_num_vars = max(num_var_list)
-    sweep_sumcheck_pes_range = [2 ** i for i in range(1, max_num_vars)]
-    sweep_eval_engines_range = range(2, 7, 2)
-    sweep_product_lanes_range = range(3, 6, 2)
+    sweep_sumcheck_pes_range = [128] #[2 ** i for i in range(1, max_num_vars)]
+    sweep_eval_engines_range = range(4, 5, 2) #range(2, 7, 2)
+    sweep_product_lanes_range = range(5, 6, 2) #range(3, 6, 2)
     # sweep_onchip_mle_sizes_range = [128, 1024, 16384]  # in number of field elements
 
     # testing all combinations
@@ -143,7 +148,7 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
         gate_degree = max(len(term) for term in sumcheck_gate)
         num_accumulate_regs = gate_degree + 1
         num_unique_mle_in_gate = len(set(sum(sumcheck_gate, [])))
-        num_sumcheck_sram_buffers = num_unique_mle_in_gate * 1.5  # no double buffering, but MLE update storage
+        num_sumcheck_sram_buffers = num_unique_mle_in_gate * 2  # double buffering
         tmp_mle_sram_scale_factor = (gate_degree + 1) / 2
         constants = (
             bits_per_element,
@@ -161,7 +166,7 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
         # make the same onchip mem size for sumcheck and NTT
         assert gate_degree >= 2, "Gate degree must be at least 2"
         ntt_length = (gate_degree - 2) * (2**num_vars)
-        num_word_in_ntt = (num_unique_mle_in_gate - 1) * ntt_length * 2 + ntt_length / 2
+        num_word_in_ntt = ntt_length * 4 + ntt_length / 2
         onchip_mle_size = num_word_in_ntt // (num_sumcheck_sram_buffers + tmp_mle_sram_scale_factor)
 
         sweep_params = (
@@ -274,13 +279,14 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename, xrang
     Draw multiple subplots: each subplot corresponds to one available_bw.
     Within each subplot, use different marker styles to distinguish sumcheck_gate types.
     """
-    n_list = sorted(sc_df["num_vars"].unique())
+    # Use available_bw_list for subplots, as in sumcheck_NTT_sweep.py
+    available_bw_list = sorted(sc_df["available_bw"].unique())
     sumcheck_gates = sorted(sc_df["sumcheck_gate"].unique())
     marker_styles = ['o', 'X', '^', 's', 'D', 'P', '*', 'v', '<', '>']
     marker_dict = {gate: marker_styles[i % len(marker_styles)] for i, gate in enumerate(sumcheck_gates)}
 
     # --- First row: area vs latency ---
-    num_subplots = len(n_list)
+    num_subplots = len(available_bw_list)
     fig_area, axes_area = plt.subplots(1, num_subplots, figsize=(6 * num_subplots, 6), sharey=True)
     if num_subplots == 1:
         axes_area = [axes_area]
@@ -291,9 +297,9 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename, xrang
         if len(yranges) != 3:
             raise ValueError(f"yranges {yranges} must have length {3}")
     saved_xlims = []
-    for col, n in enumerate(n_list):
-        sub_sc_df = sc_df[sc_df["num_vars"] == n]
-        sub_ntt_df = ntt_df[ntt_df["n"] == n]
+    for col, bw in enumerate(available_bw_list):
+        sub_sc_df = sc_df[sc_df["available_bw"] == bw]
+        sub_ntt_df = ntt_df[ntt_df["available_bw"] == bw]
         ax_area = axes_area[col]
         common_gates = set(sub_sc_df["sumcheck_gate"].unique())
         all_pareto_latencies = []
@@ -339,7 +345,7 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename, xrang
                 max_x = max(all_pareto_latencies)
                 ax_area.set_xlim(0.8 * min_x, 1.2 * max_x)
             saved_xlims.append(ax_area.get_xlim())
-        ax_area.set_title(f"n = {n}")
+        ax_area.set_title(f"Available BW: {bw} GB/s")
         ax_area.set_xlabel("Total Latency (x10^3)")
         xticks = ax_area.get_xticks()
         ax_area.set_xticklabels([f"{x/1e3:g}" for x in xticks])
@@ -368,9 +374,9 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename, xrang
     fig_mem, axes_mem = plt.subplots(1, num_subplots, figsize=(6 * num_subplots, 6), sharey=True)
     if num_subplots == 1:
         axes_mem = [axes_mem]
-    for col, n in enumerate(n_list):
-        sub_sc_df = sc_df[sc_df["num_vars"] == n]
-        sub_ntt_df = ntt_df[ntt_df["n"] == n]
+    for col, bw in enumerate(available_bw_list):
+        sub_sc_df = sc_df[sc_df["available_bw"] == bw]
+        sub_ntt_df = ntt_df[ntt_df["available_bw"] == bw]
         ax_mem = axes_mem[col]
         common_gates = set(sub_sc_df["sumcheck_gate"].unique())
         for gate in common_gates:
@@ -416,7 +422,7 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename, xrang
             ax_mem.set_ylim(*yranges[1])
         if col == 0:
             ax_mem.set_ylabel("Total Onchip Memory (MB)")
-        ax_mem.set_title(f"n = {n}")
+        ax_mem.set_title(f"Available BW: {bw} GB/s")
     fig_mem.tight_layout()
     fig_mem.savefig(f"{filename}_gate_acrx_bw_mem.png", bbox_inches='tight')
     print(f"Saved plot to {filename}_gate_acrx_bw_mem.png")
@@ -426,9 +432,9 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename, xrang
     fig_modmul, axes_modmul = plt.subplots(1, num_subplots, figsize=(6 * num_subplots, 6), sharey=True)
     if num_subplots == 1:
         axes_modmul = [axes_modmul]
-    for col, n in enumerate(n_list):
-        sub_sc_df = sc_df[sc_df["num_vars"] == n]
-        sub_ntt_df = ntt_df[ntt_df["n"] == n]
+    for col, bw in enumerate(available_bw_list):
+        sub_sc_df = sc_df[sc_df["available_bw"] == bw]
+        sub_ntt_df = ntt_df[ntt_df["available_bw"] == bw]
         ax_modmul = axes_modmul[col]
         common_gates = set(sub_sc_df["sumcheck_gate"].unique())
         for gate in common_gates:
@@ -474,7 +480,7 @@ def plot_gate_acrx_bw(sc_df: pd.DataFrame, ntt_df: pd.DataFrame, filename, xrang
             ax_modmul.set_ylim(*yranges[2])
         if col == 0:
             ax_modmul.set_ylabel("Modmul Count")
-        ax_modmul.set_title(f"n = {n}")
+        ax_modmul.set_title(f"Available BW: {bw} GB/s")
     fig_modmul.tight_layout()
     fig_modmul.savefig(f"{filename}_gate_acrx_bw_modmul.png", bbox_inches='tight')
     print(f"Saved plot to {filename}_gate_acrx_bw_modmul.png")
@@ -506,8 +512,8 @@ def load_results(filename):
 
 
 if __name__ == "__main__":
-    n_values = 16
-    # bw_values = [128, 256, 1024, 2048]  # in GB/s
+    n_values = 20
+    bw_values = [128]  # in GB/s  , 256, 1024, 2048
 
     ################################################
     poly_style_name = "deg_inc_mle_inc_term_fixed"
@@ -526,16 +532,17 @@ if __name__ == "__main__":
         # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10"]],
     ]
 
-    output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
+    output_dir = Path(f"outplot_mo_part_onchip/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    ntt_result_df = sweep_miniNTT_all_onchip_configs(
+    ntt_result_df = sweep_miniNTT_part_onchip_configs(
         n_size_values=[n_values],
+        bw_values=bw_values,
         polynomial_list=polynomial_list,
     )
     sc_results_df = sweep_onchip_sumcheck_configs(
         num_var_list=[n_values],
-        available_bw_list=[1e9],
+        available_bw_list=bw_values,
         polynomial_list=polynomial_list,
     )
     save_results(
@@ -546,8 +553,8 @@ if __name__ == "__main__":
     )
     # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-    xlim_area = [(0e3, 30e3)]
-    ylim_area = [(0, 400), (8, 14), (0, 2500)]
+    xlim_area = [(0e3, 5000e3), (0e3, 2500e3), (0e3, 800e3), (0e3, 400e3)]
+    ylim_area = [(0, 20000), (0, 200), (0, 0.6e4)]
     plot_gate_acrx_bw(sc_df=sc_results_df, 
                       ntt_df=ntt_result_df,
                       filename=output_dir.joinpath(f"{poly_style_name}"),
@@ -565,7 +572,7 @@ if __name__ == "__main__":
     # output_dir = Path(f"outplot_mo/n_{n_values}")
     # if not os.path.exists(output_dir):
     #     os.makedirs(output_dir, exist_ok=True)
-    # # ntt_result_df = sweep_miniNTT_all_onchip_configs(
+    # # ntt_result_df = sweep_miniNTT_part_onchip_configs(
     # #     n_size_values=[n_values],
     # #     bw_values=bw_values,
     # #     polynomial_list=polynomial_list,
@@ -603,7 +610,7 @@ if __name__ == "__main__":
     # output_dir = Path(f"outplot_mo/n_{n_values}")
     # if not os.path.exists(output_dir):
     #     os.makedirs(output_dir, exist_ok=True)
-    # # ntt_result_df = sweep_miniNTT_all_onchip_configs(
+    # # ntt_result_df = sweep_miniNTT_part_onchip_configs(
     # #     n_size_values=[n_values],
     # #     bw_values=bw_values,
     # #     polynomial_list=polynomial_list,
@@ -643,7 +650,7 @@ if __name__ == "__main__":
     # output_dir = Path(f"outplot_mo/n_{n_values}")
     # if not os.path.exists(output_dir):
     #     os.makedirs(output_dir, exist_ok=True)
-    # # ntt_result_df = sweep_miniNTT_all_onchip_configs(
+    # # ntt_result_df = sweep_miniNTT_part_onchip_configs(
     # #     n_size_values=[n_values],
     # #     bw_values=bw_values,
     # #     polynomial_list=polynomial_list,

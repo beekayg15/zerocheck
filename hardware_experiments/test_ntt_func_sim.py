@@ -350,7 +350,7 @@ def simulate_mini_ntt_onchip(ntt_len, num_butterflies, modadd_latency=1, modmul_
 
     # Number of modmuls and modadds is equal to the number of butterflies (units), not the total number of operations
     total_modmuls = num_butterflies
-    total_modadds = num_butterflies
+    total_modadds = num_butterflies * 2  # modadd, modsub
 
     # On-chip memory: ping-pong buffer (ntt_len * 2) + local twiddle words (ntt_len / 2)
     ping_pong_buffer_words = ntt_len * 2
@@ -419,10 +419,85 @@ def run_miniNTT_fit_onchip(target_n:int, polynomial, modadd_latency=1, modmul_la
         total_cycles += mini_ntt_result["total_cycles"]
         total_modmuls = mini_ntt_result["total_modmuls"] * num_unique_mles
         total_modadds = mini_ntt_result["total_modadds"] * num_unique_mles
-        total_num_words = mini_ntt_result["total_num_words"] * num_unique_mles + ntt_len / 2  # +local_twiddle_words
+        total_num_words = mini_ntt_result["total_num_words"] * num_unique_mles + ntt_len / 2  # pingpong, +local_twiddle_words
 
         # 3. q iNTT
         total_cycles += mini_ntt_result["total_cycles"]
+
+        results[num_butterflies] = {
+            "ntt_len": ntt_len,
+            "num_unique_mles": num_unique_mles,
+            "total_cycles": total_cycles,
+            "total_modmuls": total_modmuls,
+            "total_modadds": total_modadds,
+            "total_num_words": total_num_words,
+        }
+    return results
+
+
+def run_miniNTT_partial_onchip(target_n: int, polynomial, target_bw: int, modadd_latency=1, modmul_latency=20, bit_width=256, freq=1e9):
+    """
+    For a given polynomial, run num_unique_mles miniNTT cores in parallel for NTT of length (d-1)*N,
+    sweeping number of butterflies from 1 to the largest possible, considering bandwidth.
+    Args:
+        target_n: Problem size exponent (e.g., 16 for 2^16)
+        polynomial: The polynomial (list of lists) to analyze. [["q1", "q2"], ["q3"]]
+        target_bw: Available bandwidth in GB/s
+        modadd_latency: Latency of a modular addition (default 1)
+        modmul_latency: Latency of a modular multiplication (default 20)
+        bit_width: Bit width for memory calculation (default 256)
+        freq: Frequency in Hz (default 1e9)
+    Returns:
+        A dict: key=(num_butterflies), value=dict of cost for that config
+    """
+    poly_features = characterize_poly(polynomial)
+    num_unique_mles = poly_features[0]
+    max_degree = max(len(term) for term in polynomial)
+    N = 2 ** target_n
+    ntt_len = (max_degree - 1) * N
+    input_ntt_len = 2 ** target_n
+
+    # Sweep number of butterflies from 1 to ntt_len//2 (radix-2)
+    max_butterflies = max(1, ntt_len // 2)
+    sweep_butterflies = [2 ** i for i in range(int(math.log2(max_butterflies)) + 1) if 2 ** i <= max_butterflies]
+    if 1 not in sweep_butterflies:
+        sweep_butterflies = [1] + sweep_butterflies
+    sweep_butterflies = sorted(sweep_butterflies)
+
+    # Calculate cycles to fetch input_ntt_len elements, each of bit_width bits, over target_bw GB/s at freq Hz
+    bw_words_per_sec = (target_bw * (1 << 30) * 8) // bit_width  # GB/s to word/s
+    fetch_cycles = math.ceil(input_ntt_len / (bw_words_per_sec / freq))
+
+    results = {}
+    for num_butterflies in sweep_butterflies:
+        # 1. Input iNTT (assume full input needs to be streamed in)
+        input_cycles = simulate_mini_ntt_onchip(
+            input_ntt_len, min(num_butterflies, input_ntt_len // 2),
+            modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width
+        )["total_cycles"]
+
+        # 2. Bigger NTTs (high degree)
+        mini_ntt_result = simulate_mini_ntt_onchip(
+            ntt_len, num_butterflies,
+            modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width
+        )
+        
+        input_mini_ntt_cycles = mini_ntt_result["total_cycles"] + input_cycles
+        if fetch_cycles <= input_mini_ntt_cycles / 2:  # prefetch and WB are overlapped by compute
+            total_cycles = fetch_cycles + input_mini_ntt_cycles * num_unique_mles
+        elif fetch_cycles < input_mini_ntt_cycles:
+            total_cycles = fetch_cycles * 2 * (num_unique_mles - 1) + input_mini_ntt_cycles + (input_mini_ntt_cycles - fetch_cycles)
+        else:
+            total_cycles = fetch_cycles * 2 * (num_unique_mles - 1) + fetch_cycles
+
+        total_modmuls = mini_ntt_result["total_modmuls"]
+        total_modadds = mini_ntt_result["total_modadds"]
+        total_num_words = mini_ntt_result["total_num_words"] * 2 + ntt_len / 2  # pingpong+1double bf+1result, +local_twiddle_words
+
+        # 3. q iNTT
+        output_cycles = mini_ntt_result["total_cycles"]
+
+        total_cycles += output_cycles
 
         results[num_butterflies] = {
             "ntt_len": ntt_len,

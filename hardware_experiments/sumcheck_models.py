@@ -1055,6 +1055,10 @@ def create_zerocheck_schedule(num_vars, sumcheck_polynomial, sumcheck_hardware_p
 
 def create_sumcheck_schedule(num_vars, sumcheck_polynomial, sumcheck_hardware_params, num_build_mle, supplemental_data, debug=False, debug_just_start=False, use_max_extensions=True):
     num_pes, num_eval_engines, num_product_lanes, mle_update_latency, extensions_latency, modmul_latency, mle_buffer_size = sumcheck_hardware_params
+    # Ensure mle_buffer_size is the largest power of 2 less than or equal to its value
+    mle_buffer_size = int(mle_buffer_size)
+    if mle_buffer_size > 0 and (mle_buffer_size & (mle_buffer_size - 1)) != 0:
+        mle_buffer_size = 2 ** (mle_buffer_size.bit_length() - 1)
     bits_per_element, available_bw, freq = supplemental_data
 
     schedule_no_mle_update = create_schedule(sumcheck_polynomial, num_eval_engines, num_product_lanes, extensions_latency, modmul_latency, use_max_extensions=use_max_extensions)
@@ -1134,6 +1138,8 @@ def create_sumcheck_schedule(num_vars, sumcheck_polynomial, sumcheck_hardware_pa
         if debug:
             print(f"round {round_num + 1}: Input Size: 2^{int(math.log2(input_size))}")
 
+        # no_offchip_read = False
+        # no_offchip_write = True
         words_per_mle = mle_buffer_size
         if input_size < mle_buffer_size:
             words_per_mle = input_size
