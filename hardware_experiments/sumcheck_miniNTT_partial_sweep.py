@@ -123,9 +123,9 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
     ]
 
     max_num_vars = max(num_var_list)
-    sweep_sumcheck_pes_range = [128] #[2 ** i for i in range(1, max_num_vars)]
-    sweep_eval_engines_range = range(4, 5, 2) #range(2, 7, 2)
-    sweep_product_lanes_range = range(5, 6, 2) #range(3, 6, 2)
+    sweep_sumcheck_pes_range = [2 ** i for i in range(1, max_num_vars)]
+    sweep_eval_engines_range = range(4, 7, 2) # range(2, 7, 2)
+    sweep_product_lanes_range = range(3, 6, 2)
     # sweep_onchip_mle_sizes_range = [128, 1024, 16384]  # in number of field elements
 
     # testing all combinations
@@ -143,13 +143,22 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
         # 1. #num_mle*2(double bf) buffers: for buffering input MLEs.
         #     a. Each size: onchip_mle_size (words)
         # 2. One buffer for Tmp MLE
-        #     a. its size: (highest_degree_of_f + 1)*onchip_mle_size/2 (words)
+        #     a. its size: onchip_mle_size #(highest_degree_of_f + 1)*onchip_mle_size/2 (words)
         ##################################################################
         gate_degree = max(len(term) for term in sumcheck_gate)
         num_accumulate_regs = gate_degree + 1
+
+        # make the same onchip mem size for sumcheck and NTT
+        assert gate_degree >= 2, "Gate degree must be at least 2"
+        ntt_length = (gate_degree - 2) * (2**num_vars)
+        num_word_in_ntt = ntt_length * 4 + ntt_length / 2
+
         num_unique_mle_in_gate = len(set(sum(sumcheck_gate, [])))
-        num_sumcheck_sram_buffers = num_unique_mle_in_gate * 2  # double buffering
-        tmp_mle_sram_scale_factor = (gate_degree + 1) / 2
+        tmp_mle_sram_scale_factor = 0  # (gate_degree + 1) / 2
+        if num_word_in_ntt // (num_unique_mle_in_gate + tmp_mle_sram_scale_factor) >= 2**num_vars:
+            num_sumcheck_sram_buffers = num_unique_mle_in_gate  # fit on-chip
+        else:
+            num_sumcheck_sram_buffers = num_unique_mle_in_gate * 2  # double buffering
         constants = (
             bits_per_element,
             freq,
@@ -163,10 +172,6 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
             tmp_mle_sram_scale_factor
         )
 
-        # make the same onchip mem size for sumcheck and NTT
-        assert gate_degree >= 2, "Gate degree must be at least 2"
-        ntt_length = (gate_degree - 2) * (2**num_vars)
-        num_word_in_ntt = ntt_length * 4 + ntt_length / 2
         onchip_mle_size = num_word_in_ntt // (num_sumcheck_sram_buffers + tmp_mle_sram_scale_factor)
 
         sweep_params = (
@@ -513,13 +518,14 @@ def load_results(filename):
 
 if __name__ == "__main__":
     n_values = 20
-    bw_values = [128]  # in GB/s  , 256, 1024, 2048
+    bw_values = [128, 256, 1024, 2048]  # in GB/s
 
     ################################################
     poly_style_name = "deg_inc_mle_inc_term_fixed"
     polynomial_list = [
         [["q1", "q2"]],
         [["q1", "q2"], ["q1", "q3"]],
+        [["q1", "q2"], ["q1", "q3"], ["q1", "q4"]],
         [["q1", "q2"], ["q1", "q3"], ["q1", "q4"], ["q1", "q5"]],
         # [["q1", "q2", "q3"]],  # a gate of degree 3
         # [["q1", "q2", "q3", "q4"]],
@@ -554,7 +560,7 @@ if __name__ == "__main__":
     # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
     xlim_area = [(0e3, 5000e3), (0e3, 2500e3), (0e3, 800e3), (0e3, 400e3)]
-    ylim_area = [(0, 20000), (0, 200), (0, 0.6e4)]
+    ylim_area = [(0, 500), (0, 200), (0, 600)]
     plot_gate_acrx_bw(sc_df=sc_results_df, 
                       ntt_df=ntt_result_df,
                       filename=output_dir.joinpath(f"{poly_style_name}"),

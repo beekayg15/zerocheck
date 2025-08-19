@@ -74,8 +74,8 @@ def sweep_miniNTT_all_onchip_configs(n_size_values: list, polynomial_list: list)
                 value["total_mem_area_22"] = value["total_onchip_memory_MB"] * params.MB_CONVERSION_FACTOR
                 value["total_area_22"] = value["total_comp_area_22"] + value["total_mem_area_22"]
                 value["total_area"] = value["total_area_22"] / params.scale_factor_22_to_7nm
-                value["total_latency"] = value["total_cycles"] + num_gate_adds * (ntt_len // (2*num_butterflies*num_gate_unique_mles)) \
-                    + 1 * ntt_len // (num_butterflies*num_gate_unique_mles)  # term-add term-mul element-wise
+                value["total_latency"] = value["total_cycles"] + num_gate_adds * (ntt_len // (2*num_butterflies)) \
+                    + 1 * ntt_len // (num_butterflies)  # term-add term-mul element-wise
                 row.update(value)
                 all_rows.append(row)
     miniNTT_df = pd.DataFrame(all_rows)
@@ -144,7 +144,7 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
         num_accumulate_regs = gate_degree + 1
         num_unique_mle_in_gate = len(set(sum(sumcheck_gate, [])))
         num_sumcheck_sram_buffers = num_unique_mle_in_gate * 1.5  # no double buffering, but MLE update storage
-        tmp_mle_sram_scale_factor = (gate_degree + 1) / 2
+        tmp_mle_sram_scale_factor = 0  # (gate_degree + 1) / 2
         constants = (
             bits_per_element,
             freq,
@@ -163,6 +163,7 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
         ntt_length = (gate_degree - 2) * (2**num_vars)
         num_word_in_ntt = (num_unique_mle_in_gate - 1) * ntt_length * 2 + ntt_length / 2
         onchip_mle_size = num_word_in_ntt // (num_sumcheck_sram_buffers + tmp_mle_sram_scale_factor)
+        onchip_mle_size = max(onchip_mle_size, 2**num_vars)
 
         sweep_params = (
             num_vars,
@@ -514,7 +515,7 @@ if __name__ == "__main__":
     polynomial_list = [
         [["q1", "q2"]],
         [["q1", "q2"], ["q1", "q3"]],
-        [["q1", "q2"], ["q1", "q3"], ["q1", "q4"], ["q1", "q5"]],
+        [["q1", "q2"], ["q1", "q3"], ["q1", "q4"], ["q1", "q5"], ["q1", "q6"]],
         # [["q1", "q2", "q3"]],  # a gate of degree 3
         # [["q1", "q2", "q3", "q4"]],
         # [["q1", "q2", "q3", "q4", "q5"]],  # a gate of degree 5
@@ -547,7 +548,7 @@ if __name__ == "__main__":
     # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
     xlim_area = [(0e3, 30e3)]
-    ylim_area = [(0, 400), (8, 14), (0, 2500)]
+    ylim_area = [(0, 400), (8, 29), (0, 2500)]
     plot_gate_acrx_bw(sc_df=sc_results_df, 
                       ntt_df=ntt_result_df,
                       filename=output_dir.joinpath(f"{poly_style_name}"),

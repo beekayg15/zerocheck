@@ -534,7 +534,7 @@ def annotate_ii_and_latency(schedule, num_product_lanes, extensions_latency, mod
     return updated_schedule
 
 # this function is specifically for rounds 3-mu for zerocheck and all rounds for permcheck and opencheck
-def add_stepwise_latency(schedule, num_pes, words_per_mle, supplemental_data, no_offchip_read=False, no_offchip_write=False, round_1=False):
+def add_stepwise_latency(schedule, num_pes, words_per_mle, supplemental_data, no_offchip_read=False, no_offchip_write=False, round_1=False, no_offchip_write_rd1_fz=False):
     
     bits_per_element, available_bw, freq = supplemental_data
     total_step_latency = 0
@@ -544,6 +544,7 @@ def add_stepwise_latency(schedule, num_pes, words_per_mle, supplemental_data, no
     updated_schedule = []
  
     num_words_stored = 0
+    num_words_stored_step2 = 0
     num_steps = len(schedule)
  
     pattern = re.compile(r'^fz\d*$')
@@ -576,7 +577,7 @@ def add_stepwise_latency(schedule, num_pes, words_per_mle, supplemental_data, no
             needed_read_bw = calc_bw(bits_per_element, actual_read_rate, freq)
 
             # in rounds when everything is on chip
-            if no_offchip_read:
+            if no_offchip_read and (not round_1):
                 num_words_read = 0
                 needed_read_bw = 0
 
@@ -664,7 +665,10 @@ def add_stepwise_latency(schedule, num_pes, words_per_mle, supplemental_data, no
                 writeable_rate = calc_rate(bits_per_element, available_write_bw, freq)
 
                 num_words_written = int(min(writeable_rate*step_latency, num_words_generated))
-                num_words_stored += num_words_generated - num_words_written
+                if step_id == num_steps - 1:
+                    num_words_stored_step2 += num_words_generated - num_words_written
+                else:
+                    num_words_stored += num_words_generated - num_words_written
 
             performance_numbers = step_latency, needed_read_bw, num_words_read, available_write_bw, num_words_generated, num_words_written, num_words_stored
 
@@ -688,8 +692,12 @@ def add_stepwise_latency(schedule, num_pes, words_per_mle, supplemental_data, no
     # if we still have words pending writes to HBM, assume max read rate (here "read" is a literal read from the FIFOs implemented as RF) 
     if no_offchip_write:
         additional_write_cycles = 0
+        additional_write_cycles_step2 = 0
+        if round_1 and fz_present and (not no_offchip_write_rd1_fz):
+            last_step_latency += math.ceil(num_words_stored/max_read_rate)
     else:
         additional_write_cycles = math.ceil(num_words_stored/max_read_rate)
+        additional_write_cycles_step2 = math.ceil(num_words_stored_step2/max_read_rate)
     
     if additional_write_cycles == 0:
         additional_write_data = additional_write_cycles, 0, 0, 0, total_words_written
@@ -697,6 +705,7 @@ def add_stepwise_latency(schedule, num_pes, words_per_mle, supplemental_data, no
         additional_write_data = additional_write_cycles, available_bw, max_read_rate, num_words_stored, total_words_written
 
     total_step_latency += additional_write_cycles
+    last_step_latency += additional_write_cycles_step2
     # initial_prefetch_latency = 0
     latency_data = initial_prefetch_latency, total_step_latency, last_step_latency, latency_to_subtract
     return updated_schedule, latency_data, additional_write_data
@@ -1076,8 +1085,10 @@ def create_sumcheck_schedule(num_vars, sumcheck_polynomial, sumcheck_hardware_pa
 
     if input_size < mle_buffer_size:
         words_per_mle = input_size
+    no_offchip_write_rd1_fz = True if input_size <= mle_buffer_size else False
+    no_offchip_read = True if input_size <= mle_buffer_size else False  # we still get initial prefetch latency, but no max(prefetch_latency, pipeline_latency)
 
-    schedule_round_1, latency_data, additional_write_data = add_stepwise_latency(schedule_no_mle_update, num_pes, words_per_mle, supplemental_data, no_offchip_read=False, no_offchip_write=True, round_1=True)
+    schedule_round_1, latency_data, additional_write_data = add_stepwise_latency(schedule_no_mle_update, num_pes, words_per_mle, supplemental_data, no_offchip_read=no_offchip_read, no_offchip_write=True, round_1=True, no_offchip_write_rd1_fz=no_offchip_write_rd1_fz)
 
     initial_prefetch_latency_round_1, total_step_latency_round_1, last_step_latency_round_1, latency_to_subtract_round_1 = latency_data
 
@@ -1115,7 +1126,14 @@ def create_sumcheck_schedule(num_vars, sumcheck_polynomial, sumcheck_hardware_pa
     if debug or debug_just_start:
         print(f"round 2: Input Size: 2^{int(math.log2(input_size))}")
 
-    schedule_round_2, latency_data, additional_write_data = add_stepwise_latency(schedule_mle_update, num_pes, words_per_mle, supplemental_data, no_offchip_read=False, no_offchip_write=False)
+    if input_size <= mle_buffer_size:
+        no_offchip_read = True
+        no_offchip_write = True
+    else:
+        no_offchip_read = False
+        no_offchip_write = False
+
+    schedule_round_2, latency_data, additional_write_data = add_stepwise_latency(schedule_mle_update, num_pes, words_per_mle, supplemental_data, no_offchip_read=no_offchip_read, no_offchip_write=no_offchip_write)
     initial_prefetch_latency_round_2, total_step_latency_round_2, last_step_latency_round_2, latency_to_subtract_round_2 = latency_data
     if debug or debug_just_start:
         print_schedule_with_perf(schedule_round_2, total_step_latency_round_2, additional_write_data)

@@ -158,7 +158,7 @@ def sumcheck_only_sweep(sweep_params, sumcheck_polynomials, latencies, constants
     sumcheck_core_stats = dict()
     for idx, sumcheck_polynomial in enumerate(sumcheck_polynomials):
         
-        modmul_ops, per_round_ops = num_modmul_ops_in_polynomial(num_vars, sumcheck_polynomial, debug=True)
+        modmul_ops, per_round_ops = num_modmul_ops_in_polynomial(num_vars, sumcheck_polynomial, debug=False)
         
         sumcheck_core_stats[idx] = dict()
         for num_pes in sumcheck_pes_range:
