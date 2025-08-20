@@ -37,6 +37,103 @@ def analyze_polynomial_gate(gate):
     }
 
 
+def run_step_radix_ntt(gate_degree, n, bw, polynomial=None, **kwargs):
+    """
+    Simulate NTT runtime for non-2's power size using step-radix decomposition.
+    The NTT size is (gate_degree-1) * 2^n, which may not be a power of 2.
+    This function breaks (gate_degree-1) into its binary chunks, and for each chunk,
+    runs run_fit_onchip for the corresponding 2's power NTT, then sums the results.
+
+    Args:
+        gate_degree: Degree of the gate (int)
+        n: log2(N), where N is the base NTT size (int)
+        bw: Bandwidth in GB/s (int)
+        polynomial: The polynomial to analyze (optional, passed to run_fit_onchip)
+        **kwargs: Additional arguments for run_fit_onchip
+
+    Returns:
+        total_result: dict with summed total_cycles, total_modmuls, total_modadds, total_num_words, etc.
+        chunk_results: list of (chunk_size, n_chunk, result_dict) for each chunk
+    """
+    lengthN = 2 ** n
+    assert gate_degree >= 1, "Gate degree must be at least 1"
+    total_size = (gate_degree - 1) * lengthN
+    degree_minus1 = gate_degree - 1
+
+    if gate_degree == 1:
+        n_chunk = n  # int(math.log2(lengthN))
+        res = run_fit_onchip(target_n=n_chunk, target_bw=bw, polynomial=polynomial, save_pkl=False, **kwargs)
+        # NTT run time = 0
+        for v in res.values():
+            for k in ["total_cycles", "single_ntt_cycles", "all_ntt_cycles", "elementwise_cycles"]:
+                if k in v:
+                    v[k] = 0
+        return res
+    elif degree_minus1 & (degree_minus1 - 1) == 0:
+        # degree_minus1 is a power of 2
+        n_chunk = int(math.log2(degree_minus1)) + n  # int(math.log2(degree_minus1 * lengthN))
+        res = run_fit_onchip(target_n=n_chunk, target_bw=bw, polynomial=polynomial, save_pkl=False, **kwargs)
+        return res
+    elif degree_minus1 != 3 and (degree_minus1 + 1) & degree_minus1 == 0:
+        # degree_minus1 == 2^k - 1, so use 2^k * lengthN
+        msb = degree_minus1.bit_length()
+        n_chunk = msb + n  # int(math.log2((2 ** msb) * lengthN))
+        res = run_fit_onchip(target_n=n_chunk, target_bw=bw, polynomial=polynomial, save_pkl=False, **kwargs)
+        return res
+    else:
+        # Not a power of 2 or 2^k-1: break into at most two 2's powers (a+b >= degree_minus1)
+        msb = degree_minus1.bit_length() - 1
+        a = 2 ** msb
+        # Find next set bit below MSB
+        b = 0
+        for i in range(msb - 1, -1, -1):
+            if (degree_minus1 >> i) & 1:
+                b = 2 ** i
+                break
+        if b == 0:
+            # Only one set bit, should not happen here
+            b = 0
+        # If a+b < degree_minus1, bump b to next lower power of 2 (covering the case where degree_minus1 is not sum of two 2's powers)
+        if a + b < degree_minus1:
+            # Use the next lower power of 2
+            b = 2 ** (msb - 1)
+
+        a, b = int(math.log2(a) + n), int(math.log2(b) + n)
+
+        # Run NTT for a and b (target_n = a, b)
+        res_a = run_fit_onchip(target_n=a, target_bw=bw, polynomial=polynomial, save_pkl=False, **kwargs)
+        res_b = run_fit_onchip(target_n=b, target_bw=bw, polynomial=polynomial, save_pkl=False, **kwargs)
+
+        # Build combined result dict: keys from res_a, sum total_cycles with matching key in res_b
+        res = {}
+        for key_a, val_a in res_a.items():
+            # key_a: (a, available_bw, unroll_factor, pe_amt)
+            # Find corresponding key in res_b: replace a with b
+            key_b = (b, key_a[1], key_a[2], key_a[3])
+            val_b = res_b.get(key_b)
+            if val_b is not None:
+                combined = val_a.copy()
+                # Sum total_cycles and other relevant fields if needed
+                if "total_cycles" in combined and "total_cycles" in val_b:
+                    combined["total_cycles"] += val_b["total_cycles"]
+                # if "all_ntt_cycles" in combined and "all_ntt_cycles" in val_b:
+                #     combined["all_ntt_cycles"] += val_b["all_ntt_cycles"]
+                # if "single_ntt_cycles" in combined and "single_ntt_cycles" in val_b:
+                #     combined["single_ntt_cycles"] += val_b["single_ntt_cycles"]
+                # if "elementwise_cycles" in combined and "elementwise_cycles" in val_b:
+                #     combined["elementwise_cycles"] += val_b["elementwise_cycles"]
+                # if "total_modmuls" in combined and "total_modmuls" in val_b:
+                #     combined["total_modmuls"] += val_b["total_modmuls"]
+                # if "total_modadds" in combined and "total_modadds" in val_b:
+                #     combined["total_modadds"] += val_b["total_modadds"]
+                # if "total_num_words" in combined and "total_num_words" in val_b:
+                #     combined["total_num_words"] += val_b["total_num_words"]
+                res[(math.log2(degree_minus1) + n, key_a[1], key_a[2], key_a[3])] = combined
+            else:
+                raise ValueError(f"Key {key_b} not found in res_b. This should not happen for valid NTT sizes.")
+        return res
+
+
 def sweep_NTT_configs(n_size_values: list, bw_values: list, polynomial_list: list):
     """
     Sweep all combinations of n and bw, calling run_fit_onchip for each.
