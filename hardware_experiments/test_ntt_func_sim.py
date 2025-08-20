@@ -231,6 +231,68 @@ def get_latencies_and_rates(col_words, row_words, num_bfs, num_pes, bit_width, a
     return r_or_w_mem_latency_cols, r_or_w_mem_latency_rows, r_and_w_mem_latency_cols, r_and_w_mem_latency_rows, \
         compute_latency_cols, compute_latency_rows, first_step_prefetch_latency, fourth_step_prefetch_latency
 
+
+# col words = num words in a column (M), row words = num words in a row (N)
+def get_latencies_and_rates_with_sparsity(col_words, row_words, num_bfs, num_pes, bit_width, available_bw, freq, modadd_latency=1, modmul_latency=20, bf_latency=21, debug=False, sparse_fraction=0):
+    max_read_rate = calc_rate(bit_width, available_bw, freq)  # Example: 1 GHz frequency, 1 TB/s
+    
+    num_read_ports_per_pe = num_bfs * 2
+    dense_fraction = 1 - sparse_fraction
+    # this gets latency accounting for desired rate as well
+    read_mem_latency_cols = get_read_latency(dense_fraction*col_words*num_pes, num_read_ports_per_pe*num_pes, max_read_rate)
+    write_mem_latency_cols = get_read_latency(col_words*num_pes, num_read_ports_per_pe*num_pes, max_read_rate)
+    r_and_w_mem_latency_cols = get_read_latency((1 + dense_fraction)*col_words*num_pes, 2*num_read_ports_per_pe*num_pes, max_read_rate)
+
+    # no longer sparse after the columnwise ntts
+    read_mem_latency_rows = get_read_latency(row_words*num_pes, num_read_ports_per_pe*num_pes, max_read_rate)
+    write_mem_latency_rows = get_read_latency(row_words*num_pes, num_read_ports_per_pe*num_pes, max_read_rate)
+    r_and_w_mem_latency_rows = get_read_latency(2*row_words*num_pes, 2*num_read_ports_per_pe*num_pes, max_read_rate)
+
+    # all PEs are synchronized, therefore it suffices to calculate the latency for 1 PE
+    compute_latency_cols = get_compute_latency(col_words, num_bfs, bf_latency, modadd_latency, output_scaled=True)
+    compute_latency_rows = get_compute_latency(row_words, num_bfs, bf_latency, modadd_latency, output_scaled=False)
+
+    cols_local_twiddle_prefetch_words = col_words / 2
+    # fetch (num_pes - 1) columns of global twiddles, and 1 column of global scale twiddles
+    global_twiddle_prefetch_words = col_words * num_pes
+
+    # U ports for local twiddle memory
+    cols_local_twiddle_prefetch_latency = get_read_latency(cols_local_twiddle_prefetch_words, num_bfs, max_read_rate)
+    
+    # assume dual ported memory for global twiddles, so 2U ports
+    global_twiddle_prefetch_latency = get_read_latency(global_twiddle_prefetch_words, num_read_ports_per_pe*num_pes, max_read_rate)
+
+    # debug=True
+    if debug:
+        print("Sparse NTT read latencies")
+        print(f"max read rate: {round(max_read_rate, 3)} elements/cycle")
+        print(f"Local twiddle prefetch latency: {cols_local_twiddle_prefetch_latency} cycles")
+        print(f"Global twiddle prefetch latency: {global_twiddle_prefetch_latency} cycles")
+
+        print(f"Single-Transfer read latency for columns: {read_mem_latency_cols} cycles")
+        print(f"Single-Transfer write latency for columns: {write_mem_latency_cols} cycles")
+        print(f"Single-Transfer read latency for rows: {read_mem_latency_rows} cycles")
+        print(f"Single-Transfer write latency for rows: {write_mem_latency_rows} cycles")
+        print(f"Dual-Transfer latency for columns: {r_and_w_mem_latency_cols} cycles")
+        print(f"Dual-Transfer latency for rows: {r_and_w_mem_latency_rows} cycles")
+        print(f"Compute latency for columns: {compute_latency_cols} cycles")
+        print(f"Compute latency for rows: {compute_latency_rows} cycles")
+        print()
+
+    first_step_prefetch_latency = cols_local_twiddle_prefetch_latency + global_twiddle_prefetch_latency
+
+    rows_local_twiddle_prefetch_words = row_words / 2
+    rows_local_twiddle_prefetch_latency = get_read_latency(rows_local_twiddle_prefetch_words, num_bfs, max_read_rate)
+    fourth_step_prefetch_latency = rows_local_twiddle_prefetch_latency
+
+    rw_latencies = read_mem_latency_cols, write_mem_latency_cols, r_and_w_mem_latency_cols, \
+        read_mem_latency_rows, write_mem_latency_rows, r_and_w_mem_latency_rows
+
+    compute_latencies = compute_latency_cols, compute_latency_rows
+    prefetch_latencies = first_step_prefetch_latency, fourth_step_prefetch_latency
+
+    return rw_latencies, compute_latencies, prefetch_latencies
+
 # we should get this value from the simulator. this is the latency for a single NTT
 def expected_latency(M, N, num_pes, prefetch_latencies, mem_latencies, compute_latencies):
     
@@ -509,6 +571,100 @@ def run_miniNTT_partial_onchip(target_n: int, polynomial, target_bw: int, modadd
         }
     return results
 
+
+def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, unroll_factors_pow=None):
+
+    skip_compute = True
+
+    if polynomial is None:
+        # polynomial = [["f"]]
+        exit("must provide polynomial")
+
+    poly_features = characterize_poly(polynomial)
+    num_unique_mles = poly_features[0]
+
+    bit_width = 256
+    freq = 1e9
+
+    modadd_latency = 1
+    modmul_latency = 20
+    bf_latency = modmul_latency + modadd_latency
+
+    if unroll_factors_pow is None:
+        unroll_factors_pow = range(0, math.ceil(target_n / 2)) if target_n is not None else range(0, 13)
+    else:
+        unroll_factors_pow = range(0, unroll_factors_pow)
+    unroll_factors = [2**i for i in unroll_factors_pow]
+
+    pe_counts = [1, 2, 4, 8, 16, 32, 64]
+
+    # fixed for a given n
+    M, N, omegas_L, omega_L, omegas_N, omega_N, omegas_M, omega_M, modulus = get_twiddle_factors(target_n, bit_width)
+
+    # Generate random data and reshape it.
+    data = [random.randint(0, modulus - 2) for _ in range(1<<target_n)]
+
+    # Reshape data into M x N matrix (list of lists)
+    matrix = [data[i*N:(i+1)*N] for i in range(M)]
+
+    for U in unroll_factors:
+        for pe_amt in pe_counts:
+
+            # num_col_words = M*pe_amt
+            # num_row_words = N*pe_amt
+            # total_bfs = U*pe_amt
+
+            rw_latencies, compute_latencies, prefetch_latencies = \
+                get_latencies_and_rates_with_sparsity(M, N, U, pe_amt, bit_width, target_bw, freq, modadd_latency, modmul_latency, bf_latency, sparse_fraction)
+            # dont have to fetch global twiddles for row-wise NTTs, only omegas_N
+
+            read_mem_latency_cols, write_mem_latency_cols, r_and_w_mem_latency_cols, read_mem_latency_rows, write_mem_latency_rows, r_and_w_mem_latency_rows = rw_latencies
+            compute_latency_cols, compute_latency_rows = compute_latencies
+            first_step_prefetch_latency, fourth_step_prefetch_latency = prefetch_latencies
+
+            cols_sparse_latencies = read_mem_latency_cols, write_mem_latency_cols, r_and_w_mem_latency_cols
+            rows_sparse_latencies = read_mem_latency_rows, write_mem_latency_rows, r_and_w_mem_latency_rows
+
+            if progress_print:
+                print("Simulating four-step NTT when mini NTT fits on-chip...")
+
+            arch_1 = ArchitectureSimulator(omegas_M, modulus, None, None, compute_latency_cols, prefetch_latency=first_step_prefetch_latency, skip_compute=skip_compute, sparsity=True, sparse_latencies=cols_sparse_latencies)
+            temp_matrix, cycle_time_1 = simulate_4step_all_onchip(arch_1, pe_amt, matrix, omega_L, modulus, output_scale=True, skip_compute=skip_compute)
+
+            temp_matrix_T = transpose(temp_matrix) if not skip_compute else transpose(matrix)
+            arch_2 = ArchitectureSimulator(omegas_N, modulus, None, None, compute_latency_rows, prefetch_latency=fourth_step_prefetch_latency, skip_compute=skip_compute, sparsity=True, sparse_latencies=rows_sparse_latencies)
+            final_matrix, cycle_time_2 = simulate_4step_all_onchip(arch_2, pe_amt, temp_matrix_T, omega_L, modulus, output_scale=False, skip_compute=skip_compute)
+
+            single_ntt_cycles = cycle_time_1 + cycle_time_2
+
+            transposed_mat_dims = (N, M)
+
+            all_ntt_cycles = single_ntt_cycles*num_unique_mles
+            elementwise_cycles = estimate_elementwise_latency(poly_features, transposed_mat_dims, U, pe_amt, bit_width, available_bw, freq, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bmax=5)
+
+            total_cycles = all_ntt_cycles + elementwise_cycles
+
+            # 5 buffers in each PE, each of length M
+            ping_pong_double_buffer_words = M*3*pe_amt
+
+            local_twiddle_words = M / 2     # shared among all PEs
+            global_scale_twiddle_words = M  # shared among all PEs
+            global_twiddle_words = M * pe_amt  # each PE computes its own global twiddle column
+
+            total_num_words = ping_pong_double_buffer_words + local_twiddle_words + global_scale_twiddle_words + global_twiddle_words
+
+            total_modmuls = U*pe_amt
+            total_modadds = U*2*pe_amt
+
+            results[(target_n, available_bw, U, pe_amt)] = {
+                "total_cycles": total_cycles,
+                "single_ntt_cycles": single_ntt_cycles,
+                "all_ntt_cycles": all_ntt_cycles,
+                "elementwise_cycles": elementwise_cycles,
+                "total_modmuls": total_modmuls,
+                "total_modadds": total_modadds,
+                "total_num_words": total_num_words
+            }
 
 def run_fit_onchip(target_n=None, target_bw=None, progress_print=False, polynomial=None, save_pkl=True, unroll_factors_pow=None):
 
