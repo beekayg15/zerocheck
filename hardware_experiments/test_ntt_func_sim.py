@@ -238,6 +238,8 @@ def get_latencies_and_rates_with_sparsity(col_words, row_words, num_bfs, num_pes
     
     num_read_ports_per_pe = num_bfs * 2
     dense_fraction = 1 - sparse_fraction
+    assert dense_fraction > 0
+
     # this gets latency accounting for desired rate as well
     read_mem_latency_cols = get_read_latency(dense_fraction*col_words*num_pes, num_read_ports_per_pe*num_pes, max_read_rate)
     write_mem_latency_cols = get_read_latency(col_words*num_pes, num_read_ports_per_pe*num_pes, max_read_rate)
@@ -249,10 +251,7 @@ def get_latencies_and_rates_with_sparsity(col_words, row_words, num_bfs, num_pes
     r_and_w_mem_latency_rows = get_read_latency(2*row_words*num_pes, 2*num_read_ports_per_pe*num_pes, max_read_rate)
 
     # all PEs are synchronized, therefore it suffices to calculate the latency for 1 PE
-    if sparse_fraction == 0:
-        sparse_amplification = 0
-    else:
-        sparse_amplification = int(1/dense_fraction)
+    sparse_amplification = int(1/dense_fraction)
 
     compute_latency_cols = get_compute_latency_with_sparsity(col_words, num_bfs, bf_latency, modadd_latency, sparse_amplification, output_scaled=True, debug=debug)
     compute_latency_rows = get_compute_latency(row_words, num_bfs, bf_latency, modadd_latency, output_scaled=False)
