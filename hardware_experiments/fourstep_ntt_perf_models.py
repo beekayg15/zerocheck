@@ -35,11 +35,11 @@ def single_fourstep_ntt(M, N, num_pes, mem_latency_for_rows, compute_latency_for
 def get_compute_latency(ntt_len, num_butterflies, bf_latency, modadd_latency, output_scaled=False, debug=False):
     
     num_stages = math.log2(ntt_len)
-    first_stage = modadd_latency + ntt_len/(num_butterflies*2) - 1 # only modadd
-    most_stages = bf_latency + ntt_len/(num_butterflies*2) - 1     # modmul
+    first_stage = modadd_latency + max(ntt_len/(num_butterflies*2), 1) - 1 # only modadd
+    most_stages = bf_latency + max(ntt_len/(num_butterflies*2), 1) - 1     # modmul
     if output_scaled:
-        last_stage = bf_latency + ntt_len/(num_butterflies*2) - 1    # 3 modmuls, 1 for butterfly, 2 for elementwise multiply
-        scaling_stage = ntt_len/num_butterflies + (bf_latency - modadd_latency) - 1
+        last_stage = bf_latency + max(ntt_len/(num_butterflies*2), 1) - 1    # 3 modmuls, 1 for butterfly, 2 for elementwise multiply
+        scaling_stage = max(ntt_len/num_butterflies, 1) + (bf_latency - modadd_latency) - 1
         if debug:
             print(f"Scaling stage: {scaling_stage}")
             print(f"Last stage: {last_stage}")

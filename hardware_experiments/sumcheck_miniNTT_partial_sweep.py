@@ -158,7 +158,7 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
         if num_word_in_ntt // (num_unique_mle_in_gate + tmp_mle_sram_scale_factor) >= 2**num_vars:
             num_sumcheck_sram_buffers = num_unique_mle_in_gate  # fit on-chip
         else:
-            num_sumcheck_sram_buffers = num_unique_mle_in_gate * 2  # double buffering
+            num_sumcheck_sram_buffers = num_unique_mle_in_gate * 2 * 1.5  # double buffering, Update write back buffer
         constants = (
             bits_per_element,
             freq,

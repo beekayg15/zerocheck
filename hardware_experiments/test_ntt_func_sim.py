@@ -538,7 +538,7 @@ def run_fit_onchip(target_n=None, target_bw=None, progress_print=False, polynomi
     
     if unroll_factors_pow is None:
         unroll_factors_pow = range(0, math.ceil(target_n / 2)) if target_n is not None else range(0, 13)
-    else:
+    else:  # need this to match result keys
         unroll_factors_pow = range(0, unroll_factors_pow)
     unroll_factors = [2**i for i in unroll_factors_pow]
     

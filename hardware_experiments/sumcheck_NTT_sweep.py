@@ -37,49 +37,23 @@ def analyze_polynomial_gate(gate):
     }
 
 
-def run_step_radix_ntt(gate_degree, n, bw, polynomial=None, **kwargs):
+def get_step_radix_gate_degree(gate_degree):
     """
-    Simulate NTT runtime for non-2's power size using step-radix decomposition.
-    The NTT size is (gate_degree-1) * 2^n, which may not be a power of 2.
-    This function breaks (gate_degree-1) into its binary chunks, and for each chunk,
-    runs run_fit_onchip for the corresponding 2's power NTT, then sums the results.
-
-    Args:
-        gate_degree: Degree of the gate (int)
-        n: log2(N), where N is the base NTT size (int)
-        bw: Bandwidth in GB/s (int)
-        polynomial: The polynomial to analyze (optional, passed to run_fit_onchip)
-        **kwargs: Additional arguments for run_fit_onchip
-
-    Returns:
-        total_result: dict with summed total_cycles, total_modmuls, total_modadds, total_num_words, etc.
-        chunk_results: list of (chunk_size, n_chunk, result_dict) for each chunk
+    Get the step radix of breaking a larger (deg-1) to two 2's power sum.
+    Then we can run NTT on each size.
     """
-    lengthN = 2 ** n
     assert gate_degree >= 1, "Gate degree must be at least 1"
-    total_size = (gate_degree - 1) * lengthN
     degree_minus1 = gate_degree - 1
 
     if gate_degree == 1:
-        n_chunk = n  # int(math.log2(lengthN))
-        res = run_fit_onchip(target_n=n_chunk, target_bw=bw, polynomial=polynomial, save_pkl=False, **kwargs)
-        # NTT run time = 0
-        for v in res.values():
-            for k in ["total_cycles", "single_ntt_cycles", "all_ntt_cycles", "elementwise_cycles"]:
-                if k in v:
-                    v[k] = 0
-        return res
+        return [0]
     elif degree_minus1 & (degree_minus1 - 1) == 0:
-        # degree_minus1 is a power of 2
-        n_chunk = int(math.log2(degree_minus1)) + n  # int(math.log2(degree_minus1 * lengthN))
-        res = run_fit_onchip(target_n=n_chunk, target_bw=bw, polynomial=polynomial, save_pkl=False, **kwargs)
-        return res
+        # degree_minus1 is a power of 2: do degree_minus1*2^n size NTT
+        return [degree_minus1]
     elif degree_minus1 != 3 and (degree_minus1 + 1) & degree_minus1 == 0:
         # degree_minus1 == 2^k - 1, so use 2^k * lengthN
         msb = degree_minus1.bit_length()
-        n_chunk = msb + n  # int(math.log2((2 ** msb) * lengthN))
-        res = run_fit_onchip(target_n=n_chunk, target_bw=bw, polynomial=polynomial, save_pkl=False, **kwargs)
-        return res
+        return [2 ** msb]
     else:
         # Not a power of 2 or 2^k-1: break into at most two 2's powers (a+b >= degree_minus1)
         msb = degree_minus1.bit_length() - 1
@@ -98,18 +72,56 @@ def run_step_radix_ntt(gate_degree, n, bw, polynomial=None, **kwargs):
             # Use the next lower power of 2
             b = 2 ** (msb - 1)
 
-        a, b = int(math.log2(a) + n), int(math.log2(b) + n)
+        return [a, b]
 
-        # Run NTT for a and b (target_n = a, b)
-        res_a = run_fit_onchip(target_n=a, target_bw=bw, polynomial=polynomial, save_pkl=False, **kwargs)
-        res_b = run_fit_onchip(target_n=b, target_bw=bw, polynomial=polynomial, save_pkl=False, **kwargs)
 
+def run_step_radix_ntt(gate_degree, n, bw, polynomial=None, **kwargs):
+    """
+    Simulate NTT runtime for non-2's power size using step-radix decomposition.
+    The NTT size is (gate_degree-1) * 2^n, which may not be a power of 2.
+    This function uses get_step_radix_gate_degree to break (gate_degree-1) into its 2's power chunks,
+    runs run_fit_onchip for the corresponding 2's power NTTs, then sums the results.
+
+    Args:
+        gate_degree: Degree of the gate (int)
+        n: log2(N), where N is the base NTT size (int)
+        bw: Bandwidth in GB/s (int)
+        polynomial: The polynomial to analyze (optional, passed to run_fit_onchip)
+        **kwargs: Additional arguments for run_fit_onchip
+
+    Returns:
+        res: dict with summed total_cycles, total_modmuls, total_modadds, total_num_words, etc.
+    """
+    lengthN = 2 ** n
+    assert gate_degree >= 1, "Gate degree must be at least 1"
+    degree_minus1 = gate_degree - 1
+
+    # Use get_step_radix_gate_degree to get the list of 2's power chunks
+    chunk_sizes = get_step_radix_gate_degree(gate_degree)
+    if chunk_sizes == [0]:
+        # degree 1: no NTT needed, set all cycles to 0
+        res = run_fit_onchip(target_n=n, target_bw=bw, polynomial=polynomial, **kwargs)
+        for v in res.values():
+            for k in ["total_cycles", "single_ntt_cycles", "all_ntt_cycles", "elementwise_cycles"]:
+                if k in v:
+                    v[k] = 0
+        return res
+
+    # For each chunk, run NTT of size chunk_size * lengthN
+    if len(chunk_sizes) == 1:
+        n_chunk = int(math.log2(chunk_sizes[0]) + n)  # n_chunk = 2+20
+        return run_fit_onchip(target_n=n_chunk, target_bw=bw, polynomial=polynomial, **kwargs)
+    else:
+        # Combine results: use the first chunk's res_chunk as the base, and only add 'total_cycles' from the second chunk
+        a, b = math.log2(chunk_sizes[0]), math.log2(chunk_sizes[1])
+        res_a = run_fit_onchip(target_n=int(a + n), target_bw=bw, polynomial=polynomial, **kwargs)
+        res_b = run_fit_onchip(target_n=int(b + n), target_bw=bw, polynomial=polynomial, unroll_factors_pow=math.ceil((a + n)/2), **kwargs)
         # Build combined result dict: keys from res_a, sum total_cycles with matching key in res_b
         res = {}
         for key_a, val_a in res_a.items():
             # key_a: (a, available_bw, unroll_factor, pe_amt)
             # Find corresponding key in res_b: replace a with b
-            key_b = (b, key_a[1], key_a[2], key_a[3])
+            key_b = (b, key_a[1], key_a[2], key_a[3])  # key=(n_pow, available_bw, unroll_factor, pe_amt)
             val_b = res_b.get(key_b)
             if val_b is not None:
                 combined = val_a.copy()
@@ -122,12 +134,6 @@ def run_step_radix_ntt(gate_degree, n, bw, polynomial=None, **kwargs):
                 #     combined["single_ntt_cycles"] += val_b["single_ntt_cycles"]
                 # if "elementwise_cycles" in combined and "elementwise_cycles" in val_b:
                 #     combined["elementwise_cycles"] += val_b["elementwise_cycles"]
-                # if "total_modmuls" in combined and "total_modmuls" in val_b:
-                #     combined["total_modmuls"] += val_b["total_modmuls"]
-                # if "total_modadds" in combined and "total_modadds" in val_b:
-                #     combined["total_modadds"] += val_b["total_modadds"]
-                # if "total_num_words" in combined and "total_num_words" in val_b:
-                #     combined["total_num_words"] += val_b["total_num_words"]
                 res[(math.log2(degree_minus1) + n, key_a[1], key_a[2], key_a[3])] = combined
             else:
                 raise ValueError(f"Key {key_b} not found in res_b. This should not happen for valid NTT sizes.")
@@ -152,13 +158,15 @@ def sweep_NTT_configs(n_size_values: list, bw_values: list, polynomial_list: lis
         gate_num_terms = gate_stats["num_terms"]
         gate_num_unique_mle = gate_stats["num_unique_mle"]
         gate_degree = gate_stats["degree"]
-        gate_degree_n = int(math.log2(gate_degree - 1))  # TODO: degree is not always a power of 2
+        gate_degree_n = int(math.log2(gate_degree - 1))
 
         for n in tqdm(n_size_values, desc=f"NTT Sweep for n"):
             for bw in tqdm(bw_values, desc=f"NTT sweep bw"):
                 print(f"Running NTT sweep for n={gate_degree - 1}x2^{n}, bw={bw}...")
-                res = run_fit_onchip(target_n=n+gate_degree_n, target_bw=bw, save_pkl=False)
-                res_input_iNTT = run_fit_onchip(target_n=n, target_bw=bw, save_pkl=False, unroll_factors_pow=math.ceil((n+gate_degree_n)/2))
+                step_sizes = get_step_radix_gate_degree(gate_degree)
+                res_input_iNTT = run_fit_onchip(target_n=n, target_bw=bw, save_pkl=False, unroll_factors_pow=math.ceil((n+math.log2(step_sizes[0]))/2))
+                # res = run_fit_onchip(target_n=n+gate_degree_n, target_bw=bw, save_pkl=False)
+                res = run_step_radix_ntt(gate_degree=gate_degree, n=n, bw=bw, polynomial=None, save_pkl=False)
                 # res is a dict: key=(n_pow, available_bw, unroll_factor, pe_amt), value=dict
                 for key, value in res.items():
                     n_pow, available_bw, unroll_factor, pe_amt = key
@@ -168,7 +176,7 @@ def sweep_NTT_configs(n_size_values: list, bw_values: list, polynomial_list: lis
                         "gate_num_unique_mle": gate_num_unique_mle,
                         "gate_degree": gate_degree,
                         "n": n,
-                        "target_n": n + gate_degree_n,
+                        # "target_n": n + gate_degree_n,
                         "n_pow": n_pow,  # target_n
                         "available_bw": available_bw,
                         "unroll_factor": unroll_factor,
@@ -629,12 +637,12 @@ if __name__ == "__main__":
     bw_values = [128, 256, 1024, 2048]  # in GB/s
 
     ################################################
-    poly_style_name = "2deg_inc_mle_inc_term_fixed"
+    poly_style_name = "deg_inc_mle_inc_term_fixed"
     polynomial_list = [
         [["q1", "q2"]],
-        # [["q1", "q2", "q3"]],  # a gate of degree 3
-        # [["q1", "q2", "q3", "q4"]],
-        # [["q1", "q2", "q3", "q4", "q5"]],  # a gate of degree 5
+        [["q1", "q2", "q3"]],  # a gate of degree 3
+        [["q1", "q2", "q3", "q4"]],
+        [["q1", "q2", "q3", "q4", "q5"]],  # a gate of degree 5
         # [["q1", "q2", "q3", "q4", "q5", "q6"]],
         # [["q1", "q2", "q3", "q4", "q5", "q6", "q7"]],
         # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"]],

@@ -163,7 +163,8 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
         ntt_length = (gate_degree - 2) * (2**num_vars)
         num_word_in_ntt = (num_unique_mle_in_gate - 1) * ntt_length * 2 + ntt_length / 2
         onchip_mle_size = num_word_in_ntt // (num_sumcheck_sram_buffers + tmp_mle_sram_scale_factor)
-        onchip_mle_size = max(onchip_mle_size, 2**num_vars)
+        # onchip_mle_size = max(onchip_mle_size, 2**num_vars)  # try to match NTT and SumCheck SRAM size
+        onchip_mle_size = 2**num_vars  # always fit
 
         sweep_params = (
             num_vars,
@@ -516,8 +517,8 @@ if __name__ == "__main__":
         [["q1", "q2"]],
         [["q1", "q2"], ["q1", "q3"]],
         [["q1", "q2"], ["q1", "q3"], ["q1", "q4"], ["q1", "q5"], ["q1", "q6"]],
-        # [["q1", "q2", "q3"]],  # a gate of degree 3
-        # [["q1", "q2", "q3", "q4"]],
+        [["q1", "q2", "q3"]],  # a gate of degree 3
+        [["q1", "q2", "q3", "q4"]],
         # [["q1", "q2", "q3", "q4", "q5"]],  # a gate of degree 5
         # [["q1", "q2", "q3", "q4", "q5", "q6"]],
         # [["q1", "q2", "q3", "q4", "q5", "q6", "q7"]],
@@ -547,8 +548,8 @@ if __name__ == "__main__":
     )
     # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-    xlim_area = [(0e3, 30e3)]
-    ylim_area = [(0, 400), (8, 29), (0, 2500)]
+    xlim_area = [(0e3, 40e3)]
+    ylim_area = [(0, 400), (8, 60), (0, 2500)]
     plot_gate_acrx_bw(sc_df=sc_results_df, 
                       ntt_df=ntt_result_df,
                       filename=output_dir.joinpath(f"{poly_style_name}"),
