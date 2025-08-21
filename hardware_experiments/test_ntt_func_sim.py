@@ -8,7 +8,7 @@ from ntt_func_sim import ArchitectureSimulator
 from ntt import ntt, ntt_dit_rn, ntt_dif_nr, bit_rev_shuffle
 from ntt_utility import *
 from util import calc_rate
-from fourstep_ntt_perf_models import get_compute_latency
+from fourstep_ntt_perf_models import get_compute_latency, get_compute_latency_with_sparsity
 from params_ntt_v_sum import *
 from plot_funcs import plot_pareto_frontier_from_pickle, plot_pareto_all_configs_from_pickle, plot_pareto_multi_bw_fixed_n
 from poly_analyzer import analyze_polynomial, count_operations
@@ -249,7 +249,12 @@ def get_latencies_and_rates_with_sparsity(col_words, row_words, num_bfs, num_pes
     r_and_w_mem_latency_rows = get_read_latency(2*row_words*num_pes, 2*num_read_ports_per_pe*num_pes, max_read_rate)
 
     # all PEs are synchronized, therefore it suffices to calculate the latency for 1 PE
-    compute_latency_cols = get_compute_latency(col_words, num_bfs, bf_latency, modadd_latency, output_scaled=True)
+    if sparse_fraction == 0:
+        sparse_amplification = 0
+    else:
+        sparse_amplification = int(1/dense_fraction)
+
+    compute_latency_cols = get_compute_latency_with_sparsity(col_words, num_bfs, bf_latency, modadd_latency, sparse_amplification, output_scaled=True, debug=debug)
     compute_latency_rows = get_compute_latency(row_words, num_bfs, bf_latency, modadd_latency, output_scaled=False)
 
     cols_local_twiddle_prefetch_words = col_words / 2
@@ -922,6 +927,8 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
             data_to_store = {
                 "total_cycles": total_cycles,
                 "single_ntt_cycles": single_ntt_cycles,
+                "col_ntt_cycles": cycle_time_1,
+                "row_ntt_cycles": cycle_time_2,
                 "all_ntt_cycles": all_ntt_cycles,
                 "elementwise_cycles": elementwise_cycles,
                 "total_modmuls": total_modmuls,
@@ -957,7 +964,7 @@ def run_one_config_fourstep_fit_onchip(target_n=20, target_bw=64, polynomial=[["
     print(f"Polynomial features: unique_mles={num_unique_mles}, reused_mles={num_reused_mles}, adds={num_adds}, products={num_products}")
     
     # Test parameters
-    sparsity_list = [0, 0.25, 0.5]  # Test sparsity values: 0%, 25%, 50%
+    sparsity_list = [0, 1/2, 3/4, 7/8]  # Test sparsity values: 0%, 50%, 75%, 87.5%
     unroll_factors_pow = 6  # Test unroll factors up to 2^6 = 64
 
     single_config = True
@@ -1247,9 +1254,9 @@ if __name__ == "__main__":
     
     polynomial = [["g", "h", "s"], ["o"]]
     target_n = 23
-    target_bw = 64
+    target_bw = 1e99
     U_in=16
-    pe_amt_in=8
+    pe_amt_in=1
 
     if args.mode == 'test':
         print("Running simple test...")
