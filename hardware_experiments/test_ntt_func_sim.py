@@ -8,7 +8,7 @@ from ntt_func_sim import ArchitectureSimulator
 from ntt import ntt, ntt_dit_rn, ntt_dif_nr, bit_rev_shuffle
 from ntt_utility import *
 from util import calc_rate
-from fourstep_ntt_perf_models import get_compute_latency
+from fourstep_ntt_perf_models import get_compute_latency, get_compute_latency_with_sparsity
 from params_ntt_v_sum import *
 from plot_funcs import plot_pareto_frontier_from_pickle, plot_pareto_all_configs_from_pickle, plot_pareto_multi_bw_fixed_n
 from poly_analyzer import analyze_polynomial, count_operations
@@ -230,6 +230,73 @@ def get_latencies_and_rates(col_words, row_words, num_bfs, num_pes, bit_width, a
     # print(f)
     return r_or_w_mem_latency_cols, r_or_w_mem_latency_rows, r_and_w_mem_latency_cols, r_and_w_mem_latency_rows, \
         compute_latency_cols, compute_latency_rows, first_step_prefetch_latency, fourth_step_prefetch_latency
+
+
+# col words = num words in a column (M), row words = num words in a row (N)
+def get_latencies_and_rates_with_sparsity(col_words, row_words, num_bfs, num_pes, bit_width, available_bw, freq, modadd_latency=1, modmul_latency=20, bf_latency=21, debug=False, sparse_fraction=0):
+    max_read_rate = calc_rate(bit_width, available_bw, freq)  # Example: 1 GHz frequency, 1 TB/s
+    
+    num_read_ports_per_pe = num_bfs * 2
+    dense_fraction = 1 - sparse_fraction
+    # this gets latency accounting for desired rate as well
+    read_mem_latency_cols = get_read_latency(dense_fraction*col_words*num_pes, num_read_ports_per_pe*num_pes, max_read_rate)
+    write_mem_latency_cols = get_read_latency(col_words*num_pes, num_read_ports_per_pe*num_pes, max_read_rate)
+    r_and_w_mem_latency_cols = get_read_latency((1 + dense_fraction)*col_words*num_pes, 2*num_read_ports_per_pe*num_pes, max_read_rate)
+
+    # no longer sparse after the columnwise ntts
+    read_mem_latency_rows = get_read_latency(row_words*num_pes, num_read_ports_per_pe*num_pes, max_read_rate)
+    write_mem_latency_rows = get_read_latency(row_words*num_pes, num_read_ports_per_pe*num_pes, max_read_rate)
+    r_and_w_mem_latency_rows = get_read_latency(2*row_words*num_pes, 2*num_read_ports_per_pe*num_pes, max_read_rate)
+
+    # all PEs are synchronized, therefore it suffices to calculate the latency for 1 PE
+    if sparse_fraction == 0:
+        sparse_amplification = 0
+    else:
+        sparse_amplification = int(1/dense_fraction)
+
+    compute_latency_cols = get_compute_latency_with_sparsity(col_words, num_bfs, bf_latency, modadd_latency, sparse_amplification, output_scaled=True, debug=debug)
+    compute_latency_rows = get_compute_latency(row_words, num_bfs, bf_latency, modadd_latency, output_scaled=False)
+
+    cols_local_twiddle_prefetch_words = col_words / 2
+    # fetch (num_pes - 1) columns of global twiddles, and 1 column of global scale twiddles
+    global_twiddle_prefetch_words = col_words * num_pes
+
+    # U ports for local twiddle memory
+    cols_local_twiddle_prefetch_latency = get_read_latency(cols_local_twiddle_prefetch_words, num_bfs, max_read_rate)
+    
+    # assume dual ported memory for global twiddles, so 2U ports
+    global_twiddle_prefetch_latency = get_read_latency(global_twiddle_prefetch_words, num_read_ports_per_pe*num_pes, max_read_rate)
+
+    # debug=True
+    if debug:
+        print("Sparse NTT read latencies")
+        print(f"max read rate: {round(max_read_rate, 3)} elements/cycle")
+        print(f"Local twiddle prefetch latency: {cols_local_twiddle_prefetch_latency} cycles")
+        print(f"Global twiddle prefetch latency: {global_twiddle_prefetch_latency} cycles")
+
+        print(f"Single-Transfer read latency for columns: {read_mem_latency_cols} cycles")
+        print(f"Single-Transfer write latency for columns: {write_mem_latency_cols} cycles")
+        print(f"Single-Transfer read latency for rows: {read_mem_latency_rows} cycles")
+        print(f"Single-Transfer write latency for rows: {write_mem_latency_rows} cycles")
+        print(f"Dual-Transfer latency for columns: {r_and_w_mem_latency_cols} cycles")
+        print(f"Dual-Transfer latency for rows: {r_and_w_mem_latency_rows} cycles")
+        print(f"Compute latency for columns: {compute_latency_cols} cycles")
+        print(f"Compute latency for rows: {compute_latency_rows} cycles")
+        print()
+
+    first_step_prefetch_latency = cols_local_twiddle_prefetch_latency + global_twiddle_prefetch_latency
+
+    rows_local_twiddle_prefetch_words = row_words / 2
+    rows_local_twiddle_prefetch_latency = get_read_latency(rows_local_twiddle_prefetch_words, num_bfs, max_read_rate)
+    fourth_step_prefetch_latency = rows_local_twiddle_prefetch_latency
+
+    rw_latencies = read_mem_latency_cols, write_mem_latency_cols, r_and_w_mem_latency_cols, \
+        read_mem_latency_rows, write_mem_latency_rows, r_and_w_mem_latency_rows
+
+    compute_latencies = compute_latency_cols, compute_latency_rows
+    prefetch_latencies = first_step_prefetch_latency, fourth_step_prefetch_latency
+
+    return rw_latencies, compute_latencies, prefetch_latencies
 
 # we should get this value from the simulator. this is the latency for a single NTT
 def expected_latency(M, N, num_pes, prefetch_latencies, mem_latencies, compute_latencies):
@@ -760,7 +827,188 @@ def run_notfit_onchip():
     print("Simulating four-step NTT when mini NTT does not fit on-chip...")
 
 
-def run_one_config_fit_onchip():
+def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, unroll_factors_pow=None, progress_print=False, single_config=False, single_config_params=None):
+
+    skip_compute = True
+
+    if polynomial is None:
+        # polynomial = [["f"]]
+        exit("must provide polynomial")
+
+    poly_features = characterize_poly(polynomial)
+    num_unique_mles = poly_features[0]
+
+    bit_width = 256
+    freq = 1e9
+
+    modadd_latency = 1
+    modmul_latency = 20
+    bf_latency = modmul_latency + modadd_latency
+
+    if unroll_factors_pow is None:
+        unroll_factors_pow = range(0, math.ceil(target_n / 2)) if target_n is not None else range(0, 13)
+    else:
+        unroll_factors_pow = range(0, unroll_factors_pow)
+    unroll_factors = [2**i for i in unroll_factors_pow]
+
+    pe_counts = [1, 2, 4, 8, 16, 32, 64]
+
+    # fixed for a given n
+    M, N, omegas_L, omega_L, omegas_N, omega_N, omegas_M, omega_M, modulus = get_twiddle_factors(target_n, bit_width)
+
+    # Generate random data and reshape it.
+    data = [random.randint(0, modulus - 2) for _ in range(1<<target_n)]
+
+    # Reshape data into M x N matrix (list of lists)
+    matrix = [data[i*N:(i+1)*N] for i in range(M)]
+
+    # Initialize results dictionary
+    results = {}
+
+    if single_config:
+        target_U, target_pe_amt = single_config_params
+    
+
+    for U in unroll_factors:
+        if single_config and U != target_U:
+            continue
+        
+        for pe_amt in pe_counts:
+            if single_config and pe_amt != target_pe_amt:
+                continue
+            # num_col_words = M*pe_amt
+            # num_row_words = N*pe_amt
+            # total_bfs = U*pe_amt
+
+            rw_latencies, compute_latencies, prefetch_latencies = \
+                get_latencies_and_rates_with_sparsity(M, N, U, pe_amt, bit_width, target_bw, freq, modadd_latency, modmul_latency, bf_latency, debug=True, sparse_fraction=sparse_fraction)
+            # dont have to fetch global twiddles for row-wise NTTs, only omegas_N
+
+            read_mem_latency_cols, write_mem_latency_cols, r_and_w_mem_latency_cols, read_mem_latency_rows, write_mem_latency_rows, r_and_w_mem_latency_rows = rw_latencies
+            compute_latency_cols, compute_latency_rows = compute_latencies
+            first_step_prefetch_latency, fourth_step_prefetch_latency = prefetch_latencies
+
+            cols_sparse_latencies = read_mem_latency_cols, write_mem_latency_cols, r_and_w_mem_latency_cols
+            rows_sparse_latencies = read_mem_latency_rows, write_mem_latency_rows, r_and_w_mem_latency_rows
+
+            if progress_print:  # Removed progress_print parameter
+                print("Simulating four-step NTT when mini NTT fits on-chip...")
+
+            arch_1 = ArchitectureSimulator(omegas_M, modulus, None, None, compute_latency_cols, prefetch_latency=first_step_prefetch_latency, skip_compute=skip_compute, sparsity=True, sparse_latencies=cols_sparse_latencies)
+            arch_1.set_debug(progress_print)
+            temp_matrix, cycle_time_1 = simulate_4step_all_onchip(arch_1, pe_amt, matrix, omega_L, modulus, output_scale=True, skip_compute=skip_compute)
+
+            temp_matrix_T = transpose(temp_matrix) if not skip_compute else transpose(matrix)
+            arch_2 = ArchitectureSimulator(omegas_N, modulus, None, None, compute_latency_rows, prefetch_latency=fourth_step_prefetch_latency, skip_compute=skip_compute, sparsity=True, sparse_latencies=rows_sparse_latencies)
+            arch_2.set_debug(progress_print)
+            final_matrix, cycle_time_2 = simulate_4step_all_onchip(arch_2, pe_amt, temp_matrix_T, omega_L, modulus, output_scale=False, skip_compute=skip_compute)
+
+            single_ntt_cycles = cycle_time_1 + cycle_time_2
+
+            transposed_mat_dims = (N, M)
+
+            all_ntt_cycles = single_ntt_cycles*num_unique_mles
+            elementwise_cycles = estimate_elementwise_latency(poly_features, transposed_mat_dims, U, pe_amt, bit_width, target_bw, freq, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bmax=5)
+
+            total_cycles = all_ntt_cycles + elementwise_cycles
+
+            # 5 buffers in each PE, each of length M
+            ping_pong_double_buffer_words = M*3*pe_amt
+
+            local_twiddle_words = M / 2     # shared among all PEs
+            global_scale_twiddle_words = M  # shared among all PEs
+            global_twiddle_words = M * pe_amt  # each PE computes its own global twiddle column
+
+            total_num_words = ping_pong_double_buffer_words + local_twiddle_words + global_scale_twiddle_words + global_twiddle_words
+
+            total_modmuls = U*pe_amt
+            total_modadds = U*2*pe_amt
+
+            data_to_store = {
+                "total_cycles": total_cycles,
+                "single_ntt_cycles": single_ntt_cycles,
+                "col_ntt_cycles": cycle_time_1,
+                "row_ntt_cycles": cycle_time_2,
+                "all_ntt_cycles": all_ntt_cycles,
+                "elementwise_cycles": elementwise_cycles,
+                "total_modmuls": total_modmuls,
+                "total_modadds": total_modadds,
+                "total_num_words": total_num_words
+            }
+            if single_config:
+                print(f"Config: n={target_n}, bw={target_bw}, U={U}, pe_amt={pe_amt}")
+                print("Single configuration results:")
+                for key, value in data_to_store.items():
+                    print(f"  {key}: {value}")
+
+            results[(target_n, target_bw, U, pe_amt)] = data_to_store
+
+
+    return results
+
+
+def run_one_config_fourstep_fit_onchip(target_n=20, target_bw=64, polynomial=[["f"]], U_in=4, pe_amt_in=8):
+    """
+    Test the run_fourstep_fit_on_chip function with a single configuration
+    to verify its functionality and output.
+    """
+    
+    random.seed(0)
+    
+    polynomial = [["g", "h", "s"], ["o"]]
+    poly_features = characterize_poly(polynomial)
+    num_unique_mles, num_reused_mles, num_adds, num_products = poly_features
+    
+    print("Testing fourstep fit on chip function...")
+    print(f"Polynomial: {polynomial}")
+    print(f"Polynomial features: unique_mles={num_unique_mles}, reused_mles={num_reused_mles}, adds={num_adds}, products={num_products}")
+    
+    # Test parameters
+    sparsity_list = [0, 1/2, 3/4, 7/8]  # Test sparsity values: 0%, 50%, 75%, 87.5%
+    unroll_factors_pow = 6  # Test unroll factors up to 2^6 = 64
+
+    single_config = True
+    single_config_params = (U_in, pe_amt_in)  # Test with U=8 and pe_amt=4
+
+    print(f"Test configuration: n={target_n}, bandwidth={target_bw} GB/s")
+    print(f"Testing unroll factors up to 2^{unroll_factors_pow-1} = {2**(unroll_factors_pow-1)}")
+    print()
+
+    for sparsity in sparsity_list:
+        print(f"Testing with sparsity fraction: {sparsity*100:.0f}%")
+        results = run_fourstep_fit_on_chip(
+            target_n=target_n,
+            sparse_fraction=sparsity,
+            target_bw=target_bw,
+            polynomial=polynomial,
+            unroll_factors_pow=unroll_factors_pow,
+            single_config=single_config,
+            single_config_params=single_config_params
+        )
+        
+        if results is None:
+            print("Function completed successfully (no return value)")
+        else:
+            print(f"Function returned results with {len(results)} configurations")
+            
+            # Display a sample of results if available
+            sample_configs = list(results.keys())[:3]  # Show first 3 configurations
+            for config in sample_configs:
+                n, bw, U, pe_amt = config
+                result = results[config]
+                print(f"Config (n={n}, bw={bw}, U={U}, pe_amt={pe_amt}):")
+                print(f"  Total cycles: {result['total_cycles']}")
+                print(f"  Single NTT cycles: {result['single_ntt_cycles']}")
+                print(f"  Memory words: {result['total_num_words']}")
+                print()
+        
+        print("✓ Fourstep fit on chip test completed successfully!\n")
+        
+    # except Exception as e:
+    #     print(f"✗ Error during fourstep fit on chip test: {e}")
+    #     raise
+
+def run_one_config_fit_onchip(target_n=20, target_bw=64, polynomial=[["f"]], U_in=4, pe_amt_in=8):
 
     random.seed(0)
 
@@ -771,7 +1019,7 @@ def run_one_config_fit_onchip():
     # sweep parameters: n, bandwidth, U, PEs
 
     bit_width = 256
-    available_bw = 64
+    available_bw = target_bw
     freq = 1e9
 
     modadd_latency = 1
@@ -784,9 +1032,9 @@ def run_one_config_fit_onchip():
     # Dictionary to store results indexed by (n, bandwidth, U, pe_amt)
     results = {}
 
-    n = 21
-    U = 8
-    pe_amt = 4
+    n = target_n
+    U = U_in
+    pe_amt = pe_amt_in
 
     # fixed for a given n
     M, N, omegas_L, omega_L, omegas_N, omega_N, omegas_M, omega_M, modulus = get_twiddle_factors(n, bit_width)
@@ -837,8 +1085,7 @@ def run_one_config_fit_onchip():
     if single_ntt_cycles != expected_cycles:
         print("Mismatch between expected and actual latency!")
         exit()
-
-    
+   
     
     transposed_mat_dims = (N, M)
 
@@ -998,21 +1245,28 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='NTT Function Simulator')
     parser.add_argument('--n', type=int, help='Problem size exponent (e.g., 16 for 2^16)')
     parser.add_argument('--bw', '--bandwidth', type=int, help='Bandwidth in GB/s (e.g., 1024)')
-    parser.add_argument('--mode', choices=['sweep', 'test', 'one_config', 'plot', 'print'], default='sweep',
-                        help='Mode to run: sweep (parameter sweep), test (simple test), one_config (single configuration), plot (Pareto analysis), print (print results table)')
+    parser.add_argument('--mode', choices=['sweep', 'test', 'one_config', 'fourstep_test', 'plot', 'print'], default='sweep',
+                        help='Mode to run: sweep (parameter sweep), test (simple test), one_config (single configuration), fourstep_test (test fourstep fit on chip), plot (Pareto analysis), print (print results table)')
     parser.add_argument('--multi-bw', action='store_true', 
                         help='When in plot mode with --n specified, plot multiple bandwidths on the same chart')
     
     args = parser.parse_args()
     
     polynomial = [["g", "h", "s"], ["o"]]
+    target_n = 23
+    target_bw = 1e99
+    U_in=16
+    pe_amt_in=1
 
     if args.mode == 'test':
         print("Running simple test...")
         run_simple_test()
     elif args.mode == 'one_config':
         print("Running single configuration test...")
-        run_one_config_fit_onchip()
+        run_one_config_fit_onchip(target_n=target_n, target_bw=target_bw, polynomial=polynomial, U_in=U_in, pe_amt_in=pe_amt_in)
+    elif args.mode == 'fourstep_test':
+        print("Running fourstep fit on chip test...")
+        run_one_config_fourstep_fit_onchip(target_n=target_n, target_bw=target_bw, polynomial=polynomial, U_in=U_in, pe_amt_in=pe_amt_in)
     elif args.mode == 'plot':
         print("Running Pareto frontier analysis...")
         run_pareto_analysis(args.n, args.bw, getattr(args, 'multi_bw', False))

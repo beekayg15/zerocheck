@@ -1,7 +1,7 @@
 from ntt import ntt, ntt_dit_rn, ntt_dif_nr, bit_rev_shuffle
 
 class ArchitectureSimulator:
-    def __init__(self, omegas, modulus, r_or_w_mem_latency, r_and_w_mem_latency, compute_latency, prefetch_latency=None, skip_compute=False):
+    def __init__(self, omegas, modulus, r_or_w_mem_latency, r_and_w_mem_latency, compute_latency, prefetch_latency=None, skip_compute=False, sparsity=False, sparse_latencies=None):
         """
         Initialize the simulator with a provided NTT function.
         """
@@ -23,6 +23,15 @@ class ArchitectureSimulator:
         self.t_prefetch = prefetch_latency if prefetch_latency is not None else r_or_w_mem_latency
         self.debug = False
         self.skip_compute = skip_compute
+        
+        self.sparsity = sparsity
+        if self.sparsity:
+            sparse_read_latency, sparse_write_latency, sparse_read_and_write_latency = sparse_latencies
+            self.sparse_read_latency = sparse_read_latency
+            self.sparse_write_latency = sparse_write_latency
+            self.sparse_read_and_write_latency = sparse_read_and_write_latency
+        else:
+            self.sparse_read_latency = self.sparse_write_latency = self.sparse_read_and_write_latency = None
 
         # initial cycle time of fetching the twiddle factors (omegas)
         # self.cycle_time = r_or_w_mem_latency
@@ -120,12 +129,26 @@ class ArchitectureSimulator:
         read_present = self.pipeline["READ"][1] is not None
         write_present = self.pipeline["WRITE"][1] is not None
 
-        if read_present and write_present:
-            mem_time = self.r_and_w_mem_latency
-        elif read_present or write_present:
-            mem_time = self.r_or_w_mem_latency
+        # get latencies
+
+        if self.sparsity:
+            if read_present and write_present:
+                mem_time = self.sparse_read_and_write_latency
+            elif read_present:
+                mem_time = self.sparse_read_latency
+            elif write_present:
+                mem_time = self.sparse_write_latency
+            else:
+                mem_time = 0
+
         else:
-            mem_time = 0
+            if read_present and write_present:
+                mem_time = self.r_and_w_mem_latency
+            elif read_present or write_present:
+                mem_time = self.r_or_w_mem_latency
+            else:
+                mem_time = 0
+
 
         if self.pipeline["COMPUTE"][1] is not None:
             compute_time = self.t_compute
