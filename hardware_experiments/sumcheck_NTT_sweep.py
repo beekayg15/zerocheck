@@ -121,7 +121,7 @@ def run_step_radix_ntt(gate_degree, n, bw, polynomial=None, **kwargs):
         for key_a, val_a in res_a.items():
             # key_a: (a, available_bw, unroll_factor, pe_amt)
             # Find corresponding key in res_b: replace a with b
-            key_b = (b, key_a[1], key_a[2], key_a[3])  # key=(n_pow, available_bw, unroll_factor, pe_amt)
+            key_b = (n + b, key_a[1], key_a[2], key_a[3])  # key=(n_pow, available_bw, unroll_factor, pe_amt)
             val_b = res_b.get(key_b)
             if val_b is not None:
                 combined = val_a.copy()
