@@ -37,7 +37,7 @@ def analyze_polynomial_gate(gate):
     }
 
 
-def sweep_miniNTT_all_onchip_configs(n_size_values: list, polynomial_list: list):
+def sweep_miniNTT_all_onchip_configs(n_size_values: list, polynomial_list: list, consider_sparsity=True):
     """
     Sweep all combinations of n and polynomial, calling run_miniNTT_fit_onchip for each.
     Returns a DataFrame with the results.
@@ -58,7 +58,8 @@ def sweep_miniNTT_all_onchip_configs(n_size_values: list, polynomial_list: list)
             ntt_len = (max_degree - 1) * N
 
             # iNTT, NTT, iNTT:
-            res_dict = run_miniNTT_fit_onchip(target_n=n, polynomial=gate, modadd_latency=params.modadd_latency, modmul_latency=params.modmul_latency)
+            res_dict = run_miniNTT_fit_onchip(target_n=n, polynomial=gate, modadd_latency=params.modadd_latency,
+                                              modmul_latency=params.modmul_latency, consider_sparsity=consider_sparsity)
             # res_dict: key=(num_butterflies), value=dict of cost for that config
             for num_butterflies, value in res_dict.items():
                 row = {
@@ -512,10 +513,10 @@ if __name__ == "__main__":
     # bw_values = [128, 256, 1024, 2048]  # in GB/s
 
     ################################################
-    poly_style_name = "deg_inc_mle_inc_term_fixed"
+    poly_style_name = "no_spar_deg_inc_mle_inc_term_fixed"
     polynomial_list = [
         [["q1", "q2"]],
-        [["q1", "q2"], ["q1", "q3"]],
+        # [["q1", "q2"], ["q1", "q3"]],
         [["q1", "q2"], ["q1", "q3"], ["q1", "q4"], ["q1", "q5"], ["q1", "q6"]],
         [["q1", "q2", "q3"]],  # a gate of degree 3
         [["q1", "q2", "q3", "q4"]],
@@ -533,6 +534,7 @@ if __name__ == "__main__":
     ntt_result_df = sweep_miniNTT_all_onchip_configs(
         n_size_values=[n_values],
         polynomial_list=polynomial_list,
+        consider_sparsity=False
     )
     sc_results_df = sweep_onchip_sumcheck_configs(
         num_var_list=[n_values],
@@ -547,8 +549,8 @@ if __name__ == "__main__":
     )
     # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-    xlim_area = [(0e3, 40e3)]
-    ylim_area = [(0, 400), (8, 60), (0, 2500)]
+    xlim_area = None # [(0e3, 40e3)]
+    ylim_area = None # [(0, 400), (8, 60), (0, 2500)]
     plot_gate_acrx_bw(sc_df=sc_results_df, 
                       ntt_df=ntt_result_df,
                       filename=output_dir.joinpath(f"{poly_style_name}"),

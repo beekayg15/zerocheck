@@ -363,7 +363,7 @@ def estimate_elementwise_latency(poly_features, mat_dims, butterflies_per_pe, nu
     return elementwise_time
 
 
-def simulate_mini_ntt_onchip(ntt_len, num_butterflies, modadd_latency=1, modmul_latency=20, bit_width=256):
+def simulate_mini_ntt_onchip(ntt_len, num_butterflies, modadd_latency=1, modmul_latency=20, bit_width=256, sparse_fraction=0):
     """
     Simulate a mini NTT that fits on-chip. This is one core fitting one polynomial.
     Args:
@@ -377,6 +377,9 @@ def simulate_mini_ntt_onchip(ntt_len, num_butterflies, modadd_latency=1, modmul_
     """
     num_stages = int(math.log2(ntt_len))
     max_butterflies_per_stage = ntt_len // 2
+    dense_fraction = 1 - sparse_fraction
+    assert dense_fraction > 0, "dense_fraction must be > 0"
+    sparse_amplified_factor = int(1/dense_fraction)
 
     # The maximum allowed butterflies is (ntt_len//2) * num_stages
     max_total_butterflies = max_butterflies_per_stage * num_stages
@@ -386,8 +389,11 @@ def simulate_mini_ntt_onchip(ntt_len, num_butterflies, modadd_latency=1, modmul_
     # Case 1: one stage per round
     if num_butterflies <= max_butterflies_per_stage:
         output_scaled = False
-        total_cycles = get_compute_latency(
-            ntt_len, num_butterflies, modmul_latency + modadd_latency, modadd_latency, output_scaled=output_scaled
+        # total_cycles = get_compute_latency(
+        #     ntt_len, num_butterflies, modmul_latency + modadd_latency, modadd_latency, output_scaled=output_scaled
+        # )
+        total_cycles = get_compute_latency_with_sparsity(
+            ntt_len, num_butterflies, modmul_latency + modadd_latency, modadd_latency, sparse_amplified_factor, output_scaled
         )
     # # Case 2: k stages per round, k is integer, num_butterflies = k * (ntt_len//2)
     else:
@@ -451,7 +457,7 @@ def get_step_radix_gate_degree(gate_degree):
         return [a, b]
 
 
-def run_miniNTT_fit_onchip(target_n:int, polynomial, modadd_latency=1, modmul_latency=20, bit_width=256):
+def run_miniNTT_fit_onchip(target_n:int, polynomial, modadd_latency=1, modmul_latency=20, bit_width=256, consider_sparsity=True):
     """
     iNTT, NTT, iNTT.
     For a given polynomial, run num_unique_mles miniNTT cores in parallel for NTT of length (d-1)*N,
@@ -494,18 +500,21 @@ def run_miniNTT_fit_onchip(target_n:int, polynomial, modadd_latency=1, modmul_la
     for num_butterflies in sweep_butterflies:
         # 1. Input iNTTs
         input_ntt_result = simulate_mini_ntt_onchip(
-            input_ntt_len, min(num_butterflies, input_ntt_len // 2), modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width
+            input_ntt_len, min(num_butterflies, input_ntt_len // 2), modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
+            sparse_fraction=0
         )
         total_cycles = input_ntt_result["total_cycles"]
 
         # 2. Bigger NTTs
         step_size = get_step_radix_gate_degree(max_degree)
         mini_ntt_result = simulate_mini_ntt_onchip(
-            step_size[0] * ntt_len, num_butterflies, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width
+            step_size[0] * ntt_len, num_butterflies, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
+            sparse_fraction=1 - 1/step_size[0] if consider_sparsity else 0,
         )
         if len(step_size) > 1:
             mini_ntt_result_b = simulate_mini_ntt_onchip(
-                step_size[1] * ntt_len, num_butterflies, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width
+                step_size[1] * ntt_len, num_butterflies, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
+                sparse_fraction=1 - 1/step_size[1] if consider_sparsity else 0,
             )
             mini_ntt_result["total_cycles"] += mini_ntt_result_b["total_cycles"]
 
@@ -516,7 +525,17 @@ def run_miniNTT_fit_onchip(target_n:int, polynomial, modadd_latency=1, modmul_la
         total_num_words = mini_ntt_result["total_num_words"] * num_unique_mles + ntt_len / 2  # pingpong, +local_twiddle_words
 
         # 3. q iNTT
-        total_cycles += mini_ntt_result["total_cycles"]
+        q_intt_result = simulate_mini_ntt_onchip(
+            step_size[0] * ntt_len, num_butterflies, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
+            sparse_fraction=0,
+        )
+        if len(step_size) > 1:
+            q_intt_result_b = simulate_mini_ntt_onchip(
+                step_size[1] * ntt_len, num_butterflies, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
+                sparse_fraction=0,
+            )
+            q_intt_result["total_cycles"] += q_intt_result_b["total_cycles"]
+        total_cycles += q_intt_result["total_cycles"]
 
         results[num_butterflies] = {
             "ntt_len": ntt_len,
