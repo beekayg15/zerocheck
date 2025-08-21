@@ -534,7 +534,7 @@ if __name__ == "__main__":
     ntt_result_df = sweep_miniNTT_all_onchip_configs(
         n_size_values=[n_values],
         polynomial_list=polynomial_list,
-        consider_sparsity=False
+        consider_sparsity=True
     )
     sc_results_df = sweep_onchip_sumcheck_configs(
         num_var_list=[n_values],

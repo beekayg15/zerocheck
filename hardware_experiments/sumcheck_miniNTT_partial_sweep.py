@@ -37,7 +37,7 @@ def analyze_polynomial_gate(gate):
     }
 
 
-def sweep_miniNTT_part_onchip_configs(n_size_values: list, bw_values: list, polynomial_list: list):
+def sweep_miniNTT_part_onchip_configs(n_size_values: list, bw_values: list, polynomial_list: list, consider_sparsity=True):
     """
     Sweep all combinations of n, bandwidth, and polynomial, calling run_miniNTT_partial_onchip for each.
     Returns a DataFrame with the results.
@@ -57,14 +57,15 @@ def sweep_miniNTT_part_onchip_configs(n_size_values: list, bw_values: list, poly
             N = 2 ** n
             ntt_len = (max_degree - 1) * N
             for bw in tqdm(bw_values, desc=f"miniNTT Sweep for bw"):
-                res_dict = run_miniNTT_partial_onchip(
+                res_dict = run_miniNTT_partial_onchip(  # iNTT, NTT, iNTT.
                     target_n=n,
                     polynomial=gate,
                     target_bw=bw,
                     modadd_latency=params.modadd_latency,
                     modmul_latency=params.modmul_latency,
                     bit_width=params.bits_per_scalar,
-                    freq=params.freq
+                    freq=params.freq,
+                    consider_sparsity=consider_sparsity,
                 )
                 for num_butterflies, value in res_dict.items():
                     row = {
@@ -545,6 +546,7 @@ if __name__ == "__main__":
         n_size_values=[n_values],
         bw_values=bw_values,
         polynomial_list=polynomial_list,
+        consider_sparsity=True,
     )
     sc_results_df = sweep_onchip_sumcheck_configs(
         num_var_list=[n_values],
@@ -559,8 +561,8 @@ if __name__ == "__main__":
     )
     # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-    xlim_area = [(0e3, 5000e3), (0e3, 2500e3), (0e3, 800e3), (0e3, 400e3)]
-    ylim_area = [(0, 500), (0, 200), (0, 600)]
+    xlim_area = None # [(0e3, 5000e3), (0e3, 2500e3), (0e3, 800e3), (0e3, 400e3)]
+    ylim_area = None # [(0, 500), (0, 200), (0, 600)]
     plot_gate_acrx_bw(sc_df=sc_results_df, 
                       ntt_df=ntt_result_df,
                       filename=output_dir.joinpath(f"{poly_style_name}"),
