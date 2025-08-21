@@ -58,7 +58,7 @@ def get_compute_latency(ntt_len, num_butterflies, bf_latency, modadd_latency, ou
 def get_effective_num_inputs(sparse_amplified_factor, num_stages):
     assert num_stages > 2
 
-    if sparse_amplified_factor == 0:
+    if sparse_amplified_factor == 1:
         return [1] * num_stages
 
     elif sparse_amplified_factor == 2:
