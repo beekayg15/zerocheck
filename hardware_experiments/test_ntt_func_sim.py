@@ -390,25 +390,6 @@ def simulate_mini_ntt_onchip(ntt_len, num_butterflies, modadd_latency=1, modmul_
             ntt_len, num_butterflies, modmul_latency + modadd_latency, modadd_latency, output_scaled=output_scaled
         )
     # # Case 2: k stages per round, k is integer, num_butterflies = k * (ntt_len//2)
-    # elif num_butterflies % max_butterflies_per_stage == 0:
-    #     k = num_butterflies // max_butterflies_per_stage
-    #     if k > num_stages:
-    #         raise ValueError(f"k ({k}) cannot be greater than num_stages ({num_stages})")
-    #     rounds = math.ceil(num_stages / k)
-    #     stage_latencies = []
-    #     for r in range(rounds):
-    #         stages_left = num_stages - r * k
-    #         stages_this_round = min(k, stages_left)
-    #         round_latency = 0
-    #         for s in range(stages_this_round):
-    #             stage_idx = r * k + s
-    #             is_last = (stage_idx == num_stages - 1)
-    #             stage_latency = get_compute_latency(
-    #                 ntt_len, max_butterflies_per_stage, modmul_latency + modadd_latency, modadd_latency, output_scaled=is_last
-    #             )
-    #             round_latency += stage_latency
-    #         stage_latencies.append(round_latency)
-    #     total_cycles = sum(stage_latencies)
     else:
         # Not a valid case: skip or raise error
         raise ValueError(
@@ -432,8 +413,47 @@ def simulate_mini_ntt_onchip(ntt_len, num_butterflies, modadd_latency=1, modmul_
     }
 
 
+def get_step_radix_gate_degree(gate_degree):
+    """
+    Get the step radix of breaking a larger (deg-1) to two 2's power sum.
+    Then we can run NTT on each size.
+    """
+    assert gate_degree >= 1, "Gate degree must be at least 1"
+    degree_minus1 = gate_degree - 1
+
+    if gate_degree == 1:
+        return [0]
+    elif degree_minus1 & (degree_minus1 - 1) == 0:
+        # degree_minus1 is a power of 2: do degree_minus1*2^n size NTT
+        return [degree_minus1]
+    elif degree_minus1 != 3 and (degree_minus1 + 1) & degree_minus1 == 0:
+        # degree_minus1 == 2^k - 1, so use 2^k * lengthN
+        msb = degree_minus1.bit_length()
+        return [2 ** msb]
+    else:
+        # Not a power of 2 or 2^k-1: break into at most two 2's powers (a+b >= degree_minus1)
+        msb = degree_minus1.bit_length() - 1
+        a = 2 ** msb
+        # Find next set bit below MSB
+        b = 0
+        for i in range(msb - 1, -1, -1):
+            if (degree_minus1 >> i) & 1:
+                b = 2 ** i
+                break
+        if b == 0:
+            # Only one set bit, should not happen here
+            b = 0
+        # If a+b < degree_minus1, bump b to next lower power of 2 (covering the case where degree_minus1 is not sum of two 2's powers)
+        if a + b < degree_minus1:
+            # Use the next lower power of 2
+            b = 2 ** (msb - 1)
+
+        return [a, b]
+
+
 def run_miniNTT_fit_onchip(target_n:int, polynomial, modadd_latency=1, modmul_latency=20, bit_width=256):
     """
+    iNTT, NTT, iNTT.
     For a given polynomial, run num_unique_mles miniNTT cores in parallel for NTT of length (d-1)*N,
     sweeping number of butterflies from 1 to the largest possible.
     Args:
@@ -479,9 +499,16 @@ def run_miniNTT_fit_onchip(target_n:int, polynomial, modadd_latency=1, modmul_la
         total_cycles = input_ntt_result["total_cycles"]
 
         # 2. Bigger NTTs
+        step_size = get_step_radix_gate_degree(max_degree)
         mini_ntt_result = simulate_mini_ntt_onchip(
-            ntt_len, num_butterflies, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width
+            step_size[0] * ntt_len, num_butterflies, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width
         )
+        if len(step_size) > 1:
+            mini_ntt_result_b = simulate_mini_ntt_onchip(
+                step_size[1] * ntt_len, num_butterflies, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width
+            )
+            mini_ntt_result["total_cycles"] += mini_ntt_result_b["total_cycles"]
+
         # Parallel execution: latency is that of one core, resources scale with num_unique_mles
         total_cycles += mini_ntt_result["total_cycles"]
         total_modmuls = mini_ntt_result["total_modmuls"] * num_unique_mles
@@ -881,7 +908,7 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
             # total_bfs = U*pe_amt
 
             rw_latencies, compute_latencies, prefetch_latencies = \
-                get_latencies_and_rates_with_sparsity(M, N, U, pe_amt, bit_width, target_bw, freq, modadd_latency, modmul_latency, bf_latency, debug=True, sparse_fraction=sparse_fraction)
+                get_latencies_and_rates_with_sparsity(M, N, U, pe_amt, bit_width, target_bw, freq, modadd_latency, modmul_latency, bf_latency, debug=progress_print, sparse_fraction=sparse_fraction)
             # dont have to fetch global twiddles for row-wise NTTs, only omegas_N
 
             read_mem_latency_cols, write_mem_latency_cols, r_and_w_mem_latency_cols, read_mem_latency_rows, write_mem_latency_rows, r_and_w_mem_latency_rows = rw_latencies

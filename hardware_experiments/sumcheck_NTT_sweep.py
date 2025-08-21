@@ -8,7 +8,7 @@ import seaborn as sns
 from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 from util import is_pareto_efficient
-from test_ntt_func_sim import run_fit_onchip
+from test_ntt_func_sim import run_fit_onchip, run_fourstep_fit_on_chip, get_step_radix_gate_degree
 from tqdm import tqdm
 import math
 import os
@@ -37,45 +37,7 @@ def analyze_polynomial_gate(gate):
     }
 
 
-def get_step_radix_gate_degree(gate_degree):
-    """
-    Get the step radix of breaking a larger (deg-1) to two 2's power sum.
-    Then we can run NTT on each size.
-    """
-    assert gate_degree >= 1, "Gate degree must be at least 1"
-    degree_minus1 = gate_degree - 1
-
-    if gate_degree == 1:
-        return [0]
-    elif degree_minus1 & (degree_minus1 - 1) == 0:
-        # degree_minus1 is a power of 2: do degree_minus1*2^n size NTT
-        return [degree_minus1]
-    elif degree_minus1 != 3 and (degree_minus1 + 1) & degree_minus1 == 0:
-        # degree_minus1 == 2^k - 1, so use 2^k * lengthN
-        msb = degree_minus1.bit_length()
-        return [2 ** msb]
-    else:
-        # Not a power of 2 or 2^k-1: break into at most two 2's powers (a+b >= degree_minus1)
-        msb = degree_minus1.bit_length() - 1
-        a = 2 ** msb
-        # Find next set bit below MSB
-        b = 0
-        for i in range(msb - 1, -1, -1):
-            if (degree_minus1 >> i) & 1:
-                b = 2 ** i
-                break
-        if b == 0:
-            # Only one set bit, should not happen here
-            b = 0
-        # If a+b < degree_minus1, bump b to next lower power of 2 (covering the case where degree_minus1 is not sum of two 2's powers)
-        if a + b < degree_minus1:
-            # Use the next lower power of 2
-            b = 2 ** (msb - 1)
-
-        return [a, b]
-
-
-def run_step_radix_ntt(gate_degree, n, bw, polynomial=None, **kwargs):
+def run_step_radix_ntt(gate_degree, n, bw, polynomial=[["f"]], consider_sparsity=True, **kwargs):
     """
     Simulate NTT runtime for non-2's power size using step-radix decomposition.
     The NTT size is (gate_degree-1) * 2^n, which may not be a power of 2.
@@ -100,7 +62,7 @@ def run_step_radix_ntt(gate_degree, n, bw, polynomial=None, **kwargs):
     chunk_sizes = get_step_radix_gate_degree(gate_degree)
     if chunk_sizes == [0]:
         # degree 1: no NTT needed, set all cycles to 0
-        res = run_fit_onchip(target_n=n, target_bw=bw, polynomial=polynomial, **kwargs)
+        res = run_fit_onchip(target_n=n, target_bw=bw, polynomial=polynomial, save_pkl=False, **kwargs)
         for v in res.values():
             for k in ["total_cycles", "single_ntt_cycles", "all_ntt_cycles", "elementwise_cycles"]:
                 if k in v:
@@ -109,13 +71,32 @@ def run_step_radix_ntt(gate_degree, n, bw, polynomial=None, **kwargs):
 
     # For each chunk, run NTT of size chunk_size * lengthN
     if len(chunk_sizes) == 1:
-        n_chunk = int(math.log2(chunk_sizes[0]) + n)  # n_chunk = 2+20
-        return run_fit_onchip(target_n=n_chunk, target_bw=bw, polynomial=polynomial, **kwargs)
+        n_chunk = int(math.log2(chunk_sizes[0]) + n)  # degree_minus1=4, chunk_sizes[0]=4, n_chunk = 2+20
+        sparsity_ratio = 1 - (1 / chunk_sizes[0]) if consider_sparsity else 0
+        # return run_fit_onchip(target_n=n_chunk, target_bw=bw, polynomial=polynomial, **kwargs)
+        return run_fourstep_fit_on_chip(target_n=n_chunk, 
+                                        sparse_fraction=sparsity_ratio, 
+                                        target_bw=bw, 
+                                        polynomial=polynomial, 
+                                        **kwargs)
     else:
         # Combine results: use the first chunk's res_chunk as the base, and only add 'total_cycles' from the second chunk
         a, b = math.log2(chunk_sizes[0]), math.log2(chunk_sizes[1])
-        res_a = run_fit_onchip(target_n=int(a + n), target_bw=bw, polynomial=polynomial, **kwargs)
-        res_b = run_fit_onchip(target_n=int(b + n), target_bw=bw, polynomial=polynomial, unroll_factors_pow=math.ceil((a + n)/2), **kwargs)
+        # res_a = run_fit_onchip(target_n=int(a + n), target_bw=bw, polynomial=polynomial, **kwargs)
+        # res_b = run_fit_onchip(target_n=int(b + n), target_bw=bw, polynomial=polynomial, unroll_factors_pow=math.ceil((a + n)/2), **kwargs)
+        sparsity_ratio_a = 1 - (1 / chunk_sizes[0]) if consider_sparsity else 0
+        sparsity_ratio_b = 1 - (1 / chunk_sizes[1]) if consider_sparsity else 0
+        res_a = run_fourstep_fit_on_chip(target_n=int(a + n), 
+                                        sparse_fraction=sparsity_ratio_a,
+                                        target_bw=bw, 
+                                        polynomial=polynomial, 
+                                        **kwargs)
+        res_b = run_fourstep_fit_on_chip(target_n=int(b + n), 
+                                        sparse_fraction=sparsity_ratio_b,
+                                        target_bw=bw, 
+                                        polynomial=polynomial, 
+                                        unroll_factors_pow=math.ceil((a + n)/2),
+                                        **kwargs)
         # Build combined result dict: keys from res_a, sum total_cycles with matching key in res_b
         res = {}
         for key_a, val_a in res_a.items():
@@ -166,7 +147,8 @@ def sweep_NTT_configs(n_size_values: list, bw_values: list, polynomial_list: lis
                 step_sizes = get_step_radix_gate_degree(gate_degree)
                 res_input_iNTT = run_fit_onchip(target_n=n, target_bw=bw, save_pkl=False, unroll_factors_pow=math.ceil((n+math.log2(step_sizes[0]))/2))
                 # res = run_fit_onchip(target_n=n+gate_degree_n, target_bw=bw, save_pkl=False)
-                res = run_step_radix_ntt(gate_degree=gate_degree, n=n, bw=bw, polynomial=None, save_pkl=False)
+                res = run_step_radix_ntt(gate_degree=gate_degree, n=n, bw=bw, polynomial=[["f"]], consider_sparsity=True)
+                res_q_iNTT = run_step_radix_ntt(gate_degree=gate_degree, n=n, bw=bw, polynomial=[["f"]], consider_sparsity=False)
                 # res is a dict: key=(n_pow, available_bw, unroll_factor, pe_amt), value=dict
                 for key, value in res.items():
                     n_pow, available_bw, unroll_factor, pe_amt = key
@@ -185,9 +167,10 @@ def sweep_NTT_configs(n_size_values: list, bw_values: list, polynomial_list: lis
                     
                     value = value.copy()
                     value_input_iNTT = res_input_iNTT.get((n, available_bw, unroll_factor, pe_amt), {})
+                    value_q_iNTT = res_q_iNTT.get(key, {})
                     if "total_cycles" in value:
                         # Repeat NTT for each MLE in series
-                        value["total_latency"] = value_input_iNTT["total_cycles"] * gate_num_unique_mle + value["total_cycles"] * (gate_num_unique_mle + 1)  # +q
+                        value["total_latency"] = value_input_iNTT["total_cycles"] * gate_num_unique_mle + value["total_cycles"] * gate_num_unique_mle + value_q_iNTT["total_cycles"]
 
                         # area cost
                         value["design_modmul_area"] = value["total_modmuls"] * params.modmul_area  # 22nm, mm^2
@@ -639,15 +622,14 @@ if __name__ == "__main__":
     ################################################
     poly_style_name = "deg_inc_mle_inc_term_fixed"
     polynomial_list = [
-        [["q1", "q2"]],
+        # [["q1", "q2"]],
         [["q1", "q2", "q3"]],  # a gate of degree 3
         [["q1", "q2", "q3", "q4"]],
         [["q1", "q2", "q3", "q4", "q5"]],  # a gate of degree 5
         # [["q1", "q2", "q3", "q4", "q5", "q6"]],
         # [["q1", "q2", "q3", "q4", "q5", "q6", "q7"]],
         # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"]],
-        # a gate of degree 9
-        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9"]],
+        [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9"]],  # a gate of degree 9
         # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10"]],
     ]
 
