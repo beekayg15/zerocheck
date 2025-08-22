@@ -48,7 +48,7 @@ def sweep_miniNTT_part_onchip_configs(n_size_values: list, bw_values: list, poly
     :return: DataFrame of results
     """
     all_rows = []
-    for gate in tqdm(polynomial_list, desc="miniNTT Sweep for gate"):
+    for gate_idx, gate in enumerate(tqdm(polynomial_list, desc="miniNTT Sweep for gate")):
         gate_name = gate_to_string(gate)
         poly_features = characterize_poly(gate)
         num_gate_unique_mles, num_gate_reused_mles, num_gate_adds, num_gate_products = poly_features
@@ -574,7 +574,7 @@ if __name__ == "__main__":
         [["q1", "q2", "q2", "q2", "q2"]],
     ]
 
-    output_dir = Path(f"outplot_mo/n_{n_values}")
+    output_dir = Path(f"outplot_mo_part_onchip/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
     ntt_result_df = sweep_miniNTT_part_onchip_configs(
@@ -612,7 +612,7 @@ if __name__ == "__main__":
         [["q1", "q2"], ["q1", "q3"], ["q2", "q3"], ["q1"]],
     ]
 
-    output_dir = Path(f"outplot_mo/n_{n_values}")
+    output_dir = Path(f"outplot_mo_part_onchip/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
     ntt_result_df = sweep_miniNTT_part_onchip_configs(
@@ -651,7 +651,7 @@ if __name__ == "__main__":
         [["q1", "q2"], ["q1", "q3"], ["q1", "q4"], ["q1", "q5"]],
     ]
 
-    output_dir = Path(f"outplot_mo/n_{n_values}")
+    output_dir = Path(f"outplot_mo_part_onchip/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
     ntt_result_df = sweep_miniNTT_part_onchip_configs(

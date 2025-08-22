@@ -564,7 +564,7 @@ if __name__ == "__main__":
         [["q1", "q2", "q2", "q2", "q2"]],
     ]
 
-    output_dir = Path(f"outplot_mo/n_{n_values}")
+    output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
     ntt_result_df = sweep_miniNTT_all_onchip_configs(
@@ -601,7 +601,7 @@ if __name__ == "__main__":
         [["q1", "q2"], ["q1", "q3"], ["q2", "q3"], ["q1"]],
     ]
 
-    output_dir = Path(f"outplot_mo/n_{n_values}")
+    output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
     ntt_result_df = sweep_miniNTT_all_onchip_configs(
@@ -639,7 +639,7 @@ if __name__ == "__main__":
         [["q1", "q2"], ["q1", "q3"], ["q1", "q4"], ["q1", "q5"]],
     ]
 
-    output_dir = Path(f"outplot_mo/n_{n_values}")
+    output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
     ntt_result_df = sweep_miniNTT_all_onchip_configs(
