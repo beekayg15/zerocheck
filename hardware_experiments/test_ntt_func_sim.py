@@ -426,6 +426,13 @@ def get_step_radix_gate_degree(gate_degree):
     """
     Get the step radix of breaking a larger (deg-1) to two 2's power sum.
     Then we can run NTT on each size.
+
+    - Example:
+        - gate_degree = 1: returns [0]
+        - gate_degree = 2: returns [1] (1*N NTT)
+        - gate_degree = 3: returns [2] (2*N NTT)
+        - gate_degree = 4: returns [2, 1] (2*N+1*N NTT)
+        - gate_degree = 5: returns [4] (4*N NTT)
     """
     assert gate_degree >= 1, "Gate degree must be at least 1"
     degree_minus1 = gate_degree - 1

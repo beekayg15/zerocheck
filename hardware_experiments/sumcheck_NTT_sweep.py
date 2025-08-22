@@ -202,7 +202,7 @@ def sweep_sumcheck_configs(num_var_list: list, available_bw_list: list, polynomi
     Args:
         num_var_list: list of num_vars to sweep (e.g., [20])
         available_bw_list: list of available bandwidths to sweep (e.g., [128, 256, 512, 1024])
-        polynomial_list: list of sumcheck polynomials to sweep (e.g., [ [["q1", "q2"], ["q3", "q4"]], gate2, ...])
+        polynomial_list: list of sumcheck polynomials to sweep (e.g., [ [["g1", "g2"], ["g3", "g4"]], gate2, ...])
     Returns:
         results_dict: dict keyed by (available_bw, num_pes, num_eval_engines, num_product_lanes, onchip_mle_size)
     """
@@ -628,15 +628,15 @@ if __name__ == "__main__":
     ################################################
     poly_style_name = "deg_inc_mle_inc_term_fixed"
     polynomial_list = [
-        [["q1", "q2"]],
-        [["q1", "q2", "q3"]],  # a gate of degree 3
-        [["q1", "q2", "q3", "q4"]],
-        [["q1", "q2", "q3", "q4", "q5"]],  # a gate of degree 5
-        # [["q1", "q2", "q3", "q4", "q5", "q6"]],
-        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7"]],
-        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"]],
-        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9"]],  # a gate of degree 9
-        # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10"]],
+        [["g1", "g2"]],
+        [["g1", "g2", "g3"]],  # a gate of degree 3
+        [["g1", "g2", "g3", "g4"]],
+        [["g1", "g2", "g3", "g4", "g5"]],  # a gate of degree 5
+        # [["g1", "g2", "g3", "g4", "g5", "g6"]],
+        # [["g1", "g2", "g3", "g4", "g5", "g6", "g7"]],
+        # [["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8"]],
+        # [["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9"]],  # a gate of degree 9
+        # [["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9", "g10"]],
     ]
 
     output_dir = Path(f"outplot_mo/n_{n_values}")
@@ -672,10 +672,10 @@ if __name__ == "__main__":
     ################################################
     poly_style_name = "deg_inc_mle_fixed_term_fixed"
     polynomial_list = [
-        [["q1", "q2"]],
-        [["q1", "q2", "q2"]],
-        [["q1", "q2", "q2", "q2"]],
-        [["q1", "q2", "q2", "q2", "q2"]],
+        [["g1", "g2"]],
+        [["g1", "g2", "g2"]],
+        [["g1", "g2", "g2", "g2"]],
+        [["g1", "g2", "g2", "g2", "g2"]],
     ]
 
     output_dir = Path(f"outplot_mo/n_{n_values}")
@@ -711,9 +711,9 @@ if __name__ == "__main__":
     ################################################
     poly_style_name = "deg_fixed_mle_fixed_term_inc"
     polynomial_list = [
-        [["q1", "q2"], ["q1", "q3"]],
-        [["q1", "q2"], ["q1", "q3"], ["q2", "q3"]],
-        [["q1", "q2"], ["q1", "q3"], ["q2", "q3"], ["q1"]],
+        [["g1", "g2"], ["g1", "g3"]],
+        [["g1", "g2"], ["g1", "g3"], ["g2", "g3"]],
+        [["g1", "g2"], ["g1", "g3"], ["g2", "g3"], ["g1"]],
     ]
 
     output_dir = Path(f"outplot_mo/n_{n_values}")
@@ -749,10 +749,10 @@ if __name__ == "__main__":
     ################################################
     poly_style_name = "deg_fixed_mle_inc_term_inc"
     polynomial_list = [
-        [["q1", "q2"]],
-        [["q1", "q2"], ["q1", "q3"]],
-        [["q1", "q2"], ["q1", "q3"], ["q1", "q4"]],
-        [["q1", "q2"], ["q1", "q3"], ["q1", "q4"], ["q1", "q5"]],
+        [["g1", "g2"]],
+        [["g1", "g2"], ["g1", "g3"]],
+        [["g1", "g2"], ["g1", "g3"], ["g1", "g4"]],
+        [["g1", "g2"], ["g1", "g3"], ["g1", "g4"], ["g1", "g5"]],
     ]
 
     output_dir = Path(f"outplot_mo/n_{n_values}")
