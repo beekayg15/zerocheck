@@ -513,14 +513,12 @@ if __name__ == "__main__":
     # bw_values = [128, 256, 1024, 2048]  # in GB/s
 
     ################################################
-    poly_style_name = "no_spar_deg_inc_mle_inc_term_fixed"
+    poly_style_name = "deg_inc_mle_inc_term_fixed"
     polynomial_list = [
         [["q1", "q2"]],
-        # [["q1", "q2"], ["q1", "q3"]],
-        [["q1", "q2"], ["q1", "q3"], ["q1", "q4"], ["q1", "q5"], ["q1", "q6"]],
         [["q1", "q2", "q3"]],  # a gate of degree 3
         [["q1", "q2", "q3", "q4"]],
-        # [["q1", "q2", "q3", "q4", "q5"]],  # a gate of degree 5
+        [["q1", "q2", "q3", "q4", "q5"]],  # a gate of degree 5
         # [["q1", "q2", "q3", "q4", "q5", "q6"]],
         # [["q1", "q2", "q3", "q4", "q5", "q6", "q7"]],
         # [["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8"]],
@@ -557,121 +555,119 @@ if __name__ == "__main__":
                       xranges=xlim_area,
                       yranges=ylim_area)
 
-    # ################################################
-    # poly_style_name = "deg_inc_mle_fixed_term_fixed"
-    # polynomial_list = [
-    #     [["q1", "q2", "q3"]],
-    #     [["q1", "q2", "q3", "q3", "q3"]],
-    #     [["q1", "q2", "q3", "q3", "q3", "q3", "q3", "q3", "q3"]],
-    # ]
+    ################################################
+    poly_style_name = "deg_inc_mle_fixed_term_fixed"
+    polynomial_list = [
+        [["q1", "q2"]],
+        [["q1", "q2", "q2"]],
+        [["q1", "q2", "q2", "q2"]],
+        [["q1", "q2", "q2", "q2", "q2"]],
+    ]
 
-    # output_dir = Path(f"outplot_mo/n_{n_values}")
-    # if not os.path.exists(output_dir):
-    #     os.makedirs(output_dir, exist_ok=True)
-    # # ntt_result_df = sweep_miniNTT_all_onchip_configs(
-    # #     n_size_values=[n_values],
-    # #     bw_values=bw_values,
-    # #     polynomial_list=polynomial_list,
-    # # )
-    # # sc_results_df = sweep_onchip_sumcheck_configs(
-    # #     num_var_list=[n_values],
-    # #     available_bw_list=bw_values,
-    # #     polynomial_list=polynomial_list,
-    # # )        
-    # # save_results(
-    # #     sc_results_df,
-    # #     ntt_result_df,
-    # #     output_dir.joinpath(f"{poly_style_name}"),
-    # #     save_excel=True
-    # # )
+    output_dir = Path(f"outplot_mo/n_{n_values}")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    ntt_result_df = sweep_miniNTT_all_onchip_configs(
+        n_size_values=[n_values],
+        polynomial_list=polynomial_list,
+        consider_sparsity=True
+    )
+    sc_results_df = sweep_onchip_sumcheck_configs(
+        num_var_list=[n_values],
+        available_bw_list=[1e9],
+        polynomial_list=polynomial_list,
+    )
+    save_results(
+        sc_results_df,
+        ntt_result_df,
+        output_dir.joinpath(f"{poly_style_name}"),
+        save_excel=True
+    )
     # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-    # xlim_area = [(1.5e6, 9.5e6), (1.5e6, 9e6), (0, 3e6), (0, 1.5e6)]
-    # ylim_area = [(0, 350), (0, 7), (0, 4500)]
-    # plot_gate_acrx_bw(sc_df=sc_results_df, 
-    #                   ntt_df=ntt_result_df,
-    #                   filename=output_dir.joinpath(f"{poly_style_name}"),
-    #                   xranges=xlim_area,
-    #                   yranges=ylim_area)
+    xlim_area = None # [(1.5e6, 9.5e6), (1.5e6, 9e6), (0, 3e6), (0, 1.5e6)]
+    ylim_area = None # [(0, 350), (0, 7), (0, 4500)]
+    plot_gate_acrx_bw(sc_df=sc_results_df, 
+                      ntt_df=ntt_result_df,
+                      filename=output_dir.joinpath(f"{poly_style_name}"),
+                      xranges=xlim_area,
+                      yranges=ylim_area)
     
-    # ################################################
-    # poly_style_name = "deg_fixed_mle_fixed_term_inc"
-    # polynomial_list = [
-    #     [["q1", "q2", "q3"], ["q1", "q2", "q4"]],
-    #     [["q1", "q2", "q3"], ["q1", "q2", "q4"], ["q1", "q3", "q4"]],
-    #     [["q1", "q2", "q3"], ["q1", "q2", "q4"], [
-    #         "q1", "q3", "q4"], ["q2", "q3", "q4"]],
-    # ]
+    ################################################
+    poly_style_name = "deg_fixed_mle_fixed_term_inc"
+    polynomial_list = [
+        [["q1", "q2"], ["q1", "q3"]],
+        [["q1", "q2"], ["q1", "q3"], ["q2", "q3"]],
+        [["q1", "q2"], ["q1", "q3"], ["q2", "q3"], ["q1"]],
+    ]
 
-    # output_dir = Path(f"outplot_mo/n_{n_values}")
-    # if not os.path.exists(output_dir):
-    #     os.makedirs(output_dir, exist_ok=True)
-    # # ntt_result_df = sweep_miniNTT_all_onchip_configs(
-    # #     n_size_values=[n_values],
-    # #     bw_values=bw_values,
-    # #     polynomial_list=polynomial_list,
-    # # )
-    # # sc_results_df = sweep_onchip_sumcheck_configs(
-    # #     num_var_list=[n_values],
-    # #     available_bw_list=bw_values,
-    # #     polynomial_list=polynomial_list,
-    # # )    
-    # # save_results(
-    # #     sc_results_df,
-    # #     ntt_result_df,
-    # #     output_dir.joinpath(f"{poly_style_name}"),
-    # #     save_excel=True
-    # # )
+    output_dir = Path(f"outplot_mo/n_{n_values}")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    ntt_result_df = sweep_miniNTT_all_onchip_configs(
+        n_size_values=[n_values],
+        polynomial_list=polynomial_list,
+        consider_sparsity=True
+    )
+    sc_results_df = sweep_onchip_sumcheck_configs(
+        num_var_list=[n_values],
+        available_bw_list=[1e9],
+        polynomial_list=polynomial_list,
+    )
+    save_results(
+        sc_results_df,
+        ntt_result_df,
+        output_dir.joinpath(f"{poly_style_name}"),
+        save_excel=True
+    )
     # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-    # xlim_area = [(2e6, 7e6), (1e6, 6e6), (0, 2e6), (0, 2e6)]
-    # ylim_area = [(0, 180), (0, 6.4), (0, 2200)]
-    # plot_gate_acrx_bw(sc_df=sc_results_df, 
-    #                   ntt_df=ntt_result_df,
-    #                   filename=output_dir.joinpath(f"{poly_style_name}"),
-    #                   xranges=xlim_area,
-    #                   yranges=ylim_area)
+    xlim_area = None # [(2e6, 7e6), (1e6, 6e6), (0, 2e6), (0, 2e6)]
+    ylim_area = None # [(0, 180), (0, 6.4), (0, 2200)]
+    plot_gate_acrx_bw(sc_df=sc_results_df, 
+                      ntt_df=ntt_result_df,
+                      filename=output_dir.joinpath(f"{poly_style_name}"),
+                      xranges=xlim_area,
+                      yranges=ylim_area)
     
-    # ################################################
-    # poly_style_name = "deg_fixed_mle_inc_term_inc"
-    # polynomial_list = [
-    #     [["q1", "q2"], ["q1", "q2", "q3"]],
-    #     [["q1", "q2", "q3"], ["q1", "q2", "q4"], ["q1", "q3", "q4"]],
-    #     [["q1", "q2", "q3"], ["q1", "q3", "q4"], [
-    #         "q2", "q3", "q4"], ["q1", "q2", "q5"]],
-    #     [["q1", "q2", "q3"], ["q1", "q2", "q4"], ["q1", "q2", "q5"], ["q1", "q2", "q6"], [
-    #         "q1", "q2", "q7"], ["q1", "q2", "q8"], ["q1", "q2", "q9"]],
-    # ]
+    ################################################
+    poly_style_name = "deg_fixed_mle_inc_term_inc"
+    polynomial_list = [
+        [["q1", "q2"]],
+        [["q1", "q2"], ["q1", "q3"]],
+        [["q1", "q2"], ["q1", "q3"], ["q1", "q4"]],
+        [["q1", "q2"], ["q1", "q3"], ["q1", "q4"], ["q1", "q5"]],
+    ]
 
-    # output_dir = Path(f"outplot_mo/n_{n_values}")
-    # if not os.path.exists(output_dir):
-    #     os.makedirs(output_dir, exist_ok=True)
-    # # ntt_result_df = sweep_miniNTT_all_onchip_configs(
-    # #     n_size_values=[n_values],
-    # #     bw_values=bw_values,
-    # #     polynomial_list=polynomial_list,
-    # # )
-    # # sc_results_df = sweep_onchip_sumcheck_configs(
-    # #     num_var_list=[n_values],
-    # #     available_bw_list=bw_values,
-    # #     polynomial_list=polynomial_list,
-    # # )
-    # # save_results(
-    # #     sc_results_df,
-    # #     ntt_result_df,
-    # #     output_dir.joinpath(f"{poly_style_name}"),
-    # #     save_excel=True
-    # # )
+    output_dir = Path(f"outplot_mo/n_{n_values}")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+    ntt_result_df = sweep_miniNTT_all_onchip_configs(
+        n_size_values=[n_values],
+        polynomial_list=polynomial_list,
+        consider_sparsity=True
+    )
+    sc_results_df = sweep_onchip_sumcheck_configs(
+        num_var_list=[n_values],
+        available_bw_list=[1e9],
+        polynomial_list=polynomial_list,
+    )
+    save_results(
+        sc_results_df,
+        ntt_result_df,
+        output_dir.joinpath(f"{poly_style_name}"),
+        save_excel=True
+    )
     # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-    # xlim_area = [(1.5e6, 12e6), (0e6, 8e6), (0, 2.5e6), (0, 2e6)]
-    # ylim_area = [(0, 160), (0, 11.5), (0, 2200)]
-    # plot_gate_acrx_bw(sc_df=sc_results_df, 
-    #                   ntt_df=ntt_result_df,
-    #                   filename=output_dir.joinpath(f"{poly_style_name}"),
-    #                   xranges=xlim_area,
-    #                   yranges=ylim_area)
+    xlim_area = None # [(1.5e6, 12e6), (0e6, 8e6), (0, 2.5e6), (0, 2e6)]
+    ylim_area = None # [(0, 160), (0, 11.5), (0, 2200)]
+    plot_gate_acrx_bw(sc_df=sc_results_df, 
+                      ntt_df=ntt_result_df,
+                      filename=output_dir.joinpath(f"{poly_style_name}"),
+                      xranges=xlim_area,
+                      yranges=ylim_area)
     
-    # ################################################
+    ################################################
     print("End...")
 
