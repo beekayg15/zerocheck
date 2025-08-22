@@ -13,7 +13,9 @@ from tqdm import tqdm
 import math
 import os
 from pathlib import Path
-
+from multiprocessing import Pool, cpu_count
+import itertools
+from functools import partial
 
 def analyze_polynomial_gate(gate):
     """
@@ -122,6 +124,53 @@ def run_step_radix_ntt(gate_degree, n, bw, polynomial=[["f"]], consider_sparsity
         return res
 
 
+def process_gate_n_bw(args):
+    gate, n, bw, consider_sparsity = args
+    gate_name = gate_to_string(gate)
+    gate_stats = analyze_polynomial_gate(gate)
+    gate_num_terms = gate_stats["num_terms"]
+    gate_num_unique_mle = gate_stats["num_unique_mle"]
+    gate_degree = gate_stats["degree"]
+    gate_degree_n = int(math.log2(gate_degree - 1))
+
+    step_sizes = get_step_radix_gate_degree(gate_degree)
+    res_input_iNTT = run_fourstep_fit_on_chip(target_n=n, sparse_fraction=0, target_bw=bw, polynomial=[["f"]], unroll_factors_pow=math.ceil((n+math.log2(step_sizes[0]))/2))
+    res = run_step_radix_ntt(gate_degree=gate_degree, n=n, bw=bw, polynomial=[["f"]], consider_sparsity=consider_sparsity)
+    res_q_iNTT = run_step_radix_ntt(gate_degree=gate_degree, n=n, bw=bw, polynomial=[["f"]], consider_sparsity=False)
+    
+    rows = []
+    for key, value in res.items():
+        n_pow, available_bw, unroll_factor, pe_amt = key
+        row = {
+            "gate_name": gate_name,
+            "gate_num_terms": gate_num_terms,
+            "gate_num_unique_mle": gate_num_unique_mle,
+            "gate_degree": gate_degree,
+            "n": n,
+            # "target_n": n + gate_degree_n,
+            "n_pow": n_pow,  # target_n
+            "available_bw": available_bw,
+            "unroll_factor": unroll_factor,
+            "pe_amt": pe_amt,
+        }
+        value = value.copy()
+        value_input_iNTT = res_input_iNTT.get((n, available_bw, unroll_factor, pe_amt), {})
+        value_q_iNTT = res_q_iNTT.get(key, {})
+        if "total_cycles" in value:
+            # Repeat NTT for each MLE in series
+            value["total_latency"] = value_input_iNTT["total_cycles"] * gate_num_unique_mle + value["total_cycles"] * gate_num_unique_mle + value_q_iNTT["total_cycles"]
+
+            # area cost
+            value["design_modmul_area"] = value["total_modmuls"] * params.modmul_area  # 22nm, mm^2
+            value["total_comp_area_22"] = value["design_modmul_area"] + value["total_modadds"] * params.modadd_area
+            value["total_onchip_memory_MB"] = value["total_num_words"] * params.bits_per_scalar / 8 / (1 << 20)
+            value["total_mem_area_22"] = value["total_onchip_memory_MB"] * params.MB_CONVERSION_FACTOR
+            value["total_area_22"] = value["total_comp_area_22"] + value["total_mem_area_22"]
+            value["total_area"] = value["total_area_22"] / params.scale_factor_22_to_7nm
+        row.update(value)
+        rows.append(row)
+    return rows
+
 def sweep_NTT_configs(n_size_values: list, bw_values: list, polynomial_list: list, consider_sparsity=True):
     """
     Sweep all combinations of n and bw, calling run_fit_onchip for each.
@@ -132,61 +181,16 @@ def sweep_NTT_configs(n_size_values: list, bw_values: list, polynomial_list: lis
     :param polynomial_list: List of polynomials to sweep. Each polynomial is a list of terms, where each term is a list of strings.
     :return: Dictionary of results keyed by (n, bw)
     """
+    # Build all jobs (gate, n, bw, consider_sparsity)
+    jobs = list(itertools.product(polynomial_list, n_size_values, bw_values, [consider_sparsity]))
 
-    all_rows = []
-    for gate in tqdm(polynomial_list, desc="NTT Sweep for gate"):
-        gate_name = gate_to_string(gate)
-        gate_stats = analyze_polynomial_gate(gate)
-        gate_num_terms = gate_stats["num_terms"]
-        gate_num_unique_mle = gate_stats["num_unique_mle"]
-        gate_degree = gate_stats["degree"]
-        gate_degree_n = int(math.log2(gate_degree - 1))
+    # Use multiprocessing Pool to parallelize
+    with Pool(processes=min(cpu_count(), len(jobs))) as pool:
+        results = list(tqdm(pool.imap_unordered(process_gate_n_bw, jobs), total=len(jobs), desc="Parallel NTT sweep"))
 
-        for n in tqdm(n_size_values, desc=f"NTT Sweep for n"):
-            for bw in tqdm(bw_values, desc=f"NTT sweep bw"):
-                print(f"Running NTT sweep for n={gate_degree - 1}x2^{n}, bw={bw}...")
-                step_sizes = get_step_radix_gate_degree(gate_degree)
-                # res_input_iNTT = run_fit_onchip(target_n=n, target_bw=bw, save_pkl=False, unroll_factors_pow=math.ceil((n+math.log2(step_sizes[0]))/2))
-                res_input_iNTT = run_fourstep_fit_on_chip(target_n=n, sparse_fraction=0, target_bw=bw, polynomial=[["f"]], unroll_factors_pow=math.ceil((n+math.log2(step_sizes[0]))/2))
-                # res = run_fit_onchip(target_n=n+gate_degree_n, target_bw=bw, save_pkl=False)
-                res = run_step_radix_ntt(gate_degree=gate_degree, n=n, bw=bw, polynomial=[["f"]], consider_sparsity=consider_sparsity)
-                res_q_iNTT = run_step_radix_ntt(gate_degree=gate_degree, n=n, bw=bw, polynomial=[["f"]], consider_sparsity=False)
-                # res is a dict: key=(n_pow, available_bw, unroll_factor, pe_amt), value=dict
-                for key, value in res.items():
-                    n_pow, available_bw, unroll_factor, pe_amt = key
-                    row = {
-                        "gate_name": gate_name,
-                        "gate_num_terms": gate_num_terms,
-                        "gate_num_unique_mle": gate_num_unique_mle,
-                        "gate_degree": gate_degree,
-                        "n": n,
-                        # "target_n": n + gate_degree_n,
-                        "n_pow": n_pow,  # target_n
-                        "available_bw": available_bw,
-                        "unroll_factor": unroll_factor,
-                        "pe_amt": pe_amt,
-                    }
-                    
-                    value = value.copy()
-                    value_input_iNTT = res_input_iNTT.get((n, available_bw, unroll_factor, pe_amt), {})
-                    value_q_iNTT = res_q_iNTT.get(key, {})
-                    if "total_cycles" in value:
-                        # Repeat NTT for each MLE in series
-                        value["total_latency"] = value_input_iNTT["total_cycles"] * gate_num_unique_mle + value["total_cycles"] * gate_num_unique_mle + value_q_iNTT["total_cycles"]
-
-                        # area cost
-                        value["design_modmul_area"] = value["total_modmuls"] * params.modmul_area  # 22nm, mm^2
-                        value["total_comp_area_22"] = value["design_modmul_area"] + value["total_modadds"] * params.modadd_area
-                        value["total_onchip_memory_MB"] = value["total_num_words"] * params.bits_per_scalar / 8 / (1 << 20)
-                        value["total_mem_area_22"] = value["total_onchip_memory_MB"] * params.MB_CONVERSION_FACTOR
-                        value["total_area_22"] = value["total_comp_area_22"] + value["total_mem_area_22"]
-                        value["total_area"] = value["total_area_22"] / params.scale_factor_22_to_7nm
-                    
-                    row.update(value)
-                    all_rows.append(row)
-
+    # Flatten all rows
+    all_rows = list(itertools.chain.from_iterable(results))
     singleNTT = pd.DataFrame(all_rows)
-
     return singleNTT
 
 

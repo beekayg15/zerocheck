@@ -15,6 +15,7 @@ from poly_analyzer import analyze_polynomial, count_operations
 
 import time
 import numpy as np
+from tqdm import tqdm
 
 def get_area_stats(total_modmuls, total_modadds, total_num_words, bit_width=256):
     logic_area = total_modmuls*modmul_area + total_modadds*modadd_area
@@ -152,11 +153,11 @@ def get_compute_latency_single_stage(ntt_len, num_butterflies, bf_latency, modad
         else:
             return bf_latency + ntt_len/(num_butterflies*2) - 1
 
-def get_twiddle_factors(exponent, bit_width=256):
+def get_twiddle_factors(exponent, bit_width=256, debug=False):
     n = exponent
     L = 2**n
     M, N = closest_powers_of_two(n)
-    print(f"M = {M}, N = {N}")
+    print(f"M = {M}, N = {N}") if debug else None
 
     # Get the required modulus and omega
     modulus = find_a_modulus(L, bit_width)
@@ -923,10 +924,10 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
         unroll_factors_pow = range(0, unroll_factors_pow)
     unroll_factors = [2**i for i in unroll_factors_pow]
 
-    pe_counts = [1, 2, 4, 8, 16, 32, 64]
+    pe_counts = [1, 2, 4, 8, 16]  # [1, 2, 4, 8, 16, 32, 64]
 
     # fixed for a given n
-    M, N, omegas_L, omega_L, omegas_N, omega_N, omegas_M, omega_M, modulus = get_twiddle_factors(target_n, bit_width)
+    M, N, omegas_L, omega_L, omegas_N, omega_N, omegas_M, omega_M, modulus = get_twiddle_factors(target_n, bit_width, progress_print)
 
     # Generate random data and reshape it.
     start_time = time.time()
@@ -934,7 +935,7 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
     data = np.zeros(1 << target_n, dtype=np.int64)
     
     end_time = time.time()
-    print(f"Data generation time: {end_time - start_time:.2f} seconds")
+    print(f"Data generation time: {end_time - start_time:.2f} seconds") if progress_print else None
 
     # Reshape data into M x N matrix (list of lists)
     # matrix = [data[i*N:(i+1)*N] for i in range(M)]
@@ -947,7 +948,7 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
         target_U, target_pe_amt = single_config_params
     
 
-    for U in unroll_factors:
+    for U in tqdm(unroll_factors, desc="Unroll factors (U)"):
         if single_config and U != target_U:
             continue
         
@@ -964,7 +965,7 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
             # dont have to fetch global twiddles for row-wise NTTs, only omegas_N
 
             end_time = time.time()
-            print(f"get latency time for U={U}, pe_amt={pe_amt}: {end_time - start_time:.2f} seconds")
+            print(f"get latency time for U={U}, pe_amt={pe_amt}: {end_time - start_time:.2f} seconds") if progress_print else None
 
             read_mem_latency_cols, write_mem_latency_cols, r_and_w_mem_latency_cols, read_mem_latency_rows, write_mem_latency_rows, r_and_w_mem_latency_rows = rw_latencies
             compute_latency_cols, compute_latency_rows = compute_latencies
@@ -983,7 +984,7 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
             temp_matrix, cycle_time_1 = simulate_4step_all_onchip(arch_1, pe_amt, matrix, omega_L, modulus, output_scale=True, skip_compute=skip_compute)
 
             end_time = time.time()
-            print(f"Simulation time for arch_1: {end_time - start_time:.2f} seconds")
+            print(f"Simulation time for arch_1: {end_time - start_time:.2f} seconds") if progress_print else None
 
             start_time = time.time()
 
@@ -993,7 +994,7 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
             final_matrix, cycle_time_2 = simulate_4step_all_onchip(arch_2, pe_amt, temp_matrix_T, omega_L, modulus, output_scale=False, skip_compute=skip_compute)
 
             end_time = time.time()
-            print(f"Simulation time for arch_2: {end_time - start_time:.2f} seconds")
+            print(f"Simulation time for arch_2: {end_time - start_time:.2f} seconds") if progress_print else None
 
             single_ntt_cycles = cycle_time_1 + cycle_time_2
 

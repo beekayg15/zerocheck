@@ -78,7 +78,7 @@ def get_compute_latency_with_sparsity(ntt_len, num_butterflies, bf_latency, moda
     assert num_stages > 2
 
     effective_inputs_per_stage = get_effective_num_inputs(sparse_amplified_factor, num_stages)
-    print(effective_inputs_per_stage)
+    print(effective_inputs_per_stage) if debug else None
     total_latency = 0
     per_stage_latency = []
     for stage in range(num_stages):
