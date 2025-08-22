@@ -13,6 +13,9 @@ from params_ntt_v_sum import *
 from plot_funcs import plot_pareto_frontier_from_pickle, plot_pareto_all_configs_from_pickle, plot_pareto_multi_bw_fixed_n
 from poly_analyzer import analyze_polynomial, count_operations
 
+import time
+import numpy as np
+
 def get_area_stats(total_modmuls, total_modadds, total_num_words, bit_width=256):
     logic_area = total_modmuls*modmul_area + total_modadds*modadd_area
     memory_area = (total_num_words * bit_width / BITS_PER_MB) * MB_CONVERSION_FACTOR
@@ -926,10 +929,16 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
     M, N, omegas_L, omega_L, omegas_N, omega_N, omegas_M, omega_M, modulus = get_twiddle_factors(target_n, bit_width)
 
     # Generate random data and reshape it.
-    data = [random.randint(0, modulus - 2) for _ in range(1<<target_n)]
+    start_time = time.time()
+    # data = [random.randint(0, modulus - 2) for _ in range(1<<target_n)]
+    data = np.zeros(1 << target_n, dtype=np.int64)
+    
+    end_time = time.time()
+    print(f"Data generation time: {end_time - start_time:.2f} seconds")
 
     # Reshape data into M x N matrix (list of lists)
-    matrix = [data[i*N:(i+1)*N] for i in range(M)]
+    # matrix = [data[i*N:(i+1)*N] for i in range(M)]
+    matrix = np.reshape(data, (M, N))
 
     # Initialize results dictionary
     results = {}
@@ -949,9 +958,13 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
             # num_row_words = N*pe_amt
             # total_bfs = U*pe_amt
 
+            start_time = time.time()
             rw_latencies, compute_latencies, prefetch_latencies = \
                 get_latencies_and_rates_with_sparsity(M, N, U, pe_amt, bit_width, target_bw, freq, modadd_latency, modmul_latency, bf_latency, debug=progress_print, sparse_fraction=sparse_fraction)
             # dont have to fetch global twiddles for row-wise NTTs, only omegas_N
+
+            end_time = time.time()
+            print(f"get latency time for U={U}, pe_amt={pe_amt}: {end_time - start_time:.2f} seconds")
 
             read_mem_latency_cols, write_mem_latency_cols, r_and_w_mem_latency_cols, read_mem_latency_rows, write_mem_latency_rows, r_and_w_mem_latency_rows = rw_latencies
             compute_latency_cols, compute_latency_rows = compute_latencies
@@ -963,14 +976,24 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
             if progress_print:  # Removed progress_print parameter
                 print("Simulating four-step NTT when mini NTT fits on-chip...")
 
+            start_time = time.time()
+
             arch_1 = ArchitectureSimulator(omegas_M, modulus, None, None, compute_latency_cols, prefetch_latency=first_step_prefetch_latency, skip_compute=skip_compute, sparsity=True, sparse_latencies=cols_sparse_latencies)
             arch_1.set_debug(progress_print)
             temp_matrix, cycle_time_1 = simulate_4step_all_onchip(arch_1, pe_amt, matrix, omega_L, modulus, output_scale=True, skip_compute=skip_compute)
+
+            end_time = time.time()
+            print(f"Simulation time for arch_1: {end_time - start_time:.2f} seconds")
+
+            start_time = time.time()
 
             temp_matrix_T = transpose(temp_matrix) if not skip_compute else transpose(matrix)
             arch_2 = ArchitectureSimulator(omegas_N, modulus, None, None, compute_latency_rows, prefetch_latency=fourth_step_prefetch_latency, skip_compute=skip_compute, sparsity=True, sparse_latencies=rows_sparse_latencies)
             arch_2.set_debug(progress_print)
             final_matrix, cycle_time_2 = simulate_4step_all_onchip(arch_2, pe_amt, temp_matrix_T, omega_L, modulus, output_scale=False, skip_compute=skip_compute)
+
+            end_time = time.time()
+            print(f"Simulation time for arch_2: {end_time - start_time:.2f} seconds")
 
             single_ntt_cycles = cycle_time_1 + cycle_time_2
 
@@ -1073,9 +1096,6 @@ def run_one_config_fourstep_fit_onchip(target_n=20, target_bw=64, polynomial=[["
         
         print("✓ Fourstep fit on chip test completed successfully!\n")
         
-    # except Exception as e:
-    #     print(f"✗ Error during fourstep fit on chip test: {e}")
-    #     raise
 
 def run_one_config_fit_onchip(target_n=20, target_bw=64, polynomial=[["f"]], U_in=4, pe_amt_in=8):
 
@@ -1109,11 +1129,13 @@ def run_one_config_fit_onchip(target_n=20, target_bw=64, polynomial=[["f"]], U_i
     M, N, omegas_L, omega_L, omegas_N, omega_N, omegas_M, omega_M, modulus = get_twiddle_factors(n, bit_width)
 
     # Generate random data and reshape it.
-    data = [random.randint(0, modulus - 2) for _ in range(1<<n)]
-
+    # data = [random.randint(0, modulus - 2) for _ in range(1<<n)]
+    data = np.zeros(1 << target_n, dtype=np.int64)
+    
     # Reshape data into M x N matrix (list of lists)
-    matrix = [data[i*N:(i+1)*N] for i in range(M)]
-
+    # matrix = [data[i*N:(i+1)*N] for i in range(M)]
+    matrix = np.reshape(data, (M, N))
+    
     # num_col_words = M*pe_amt
     # num_row_words = N*pe_amt
     # total_bfs = U*pe_amt
