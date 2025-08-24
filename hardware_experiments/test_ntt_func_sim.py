@@ -496,9 +496,16 @@ def run_miniNTT_fit_onchip(target_n:int, polynomial, modadd_latency=1, modmul_la
     # Sweep number of butterflies from 1 to ntt_len//2 (radix-2)
     max_butterflies = max(1, ntt_len // 2)
     num_stages = int(math.log2(ntt_len))
+    # Sweep number of butterflies: dense for 64 to 2048 (step 64), otherwise powers of two
     sweep_butterflies = [2 ** i for i in range(int(math.log2(max_butterflies)) + 1) if 2 ** i <= max_butterflies]
     if 1 not in sweep_butterflies:
         sweep_butterflies = [1] + sweep_butterflies
+
+    # Add denser sweep between 64 and 2048 (inclusive), step 256
+    dense_min = 64
+    dense_max = 4096
+    dense_butterflies = [v for v in range(dense_min, min(dense_max, max_butterflies) + 1, 256)]
+    sweep_butterflies = sorted(set(sweep_butterflies + dense_butterflies))
     # # Add extra sweep points: k * max_butterflies, for k = 2..num_stages
     # for k in range(2, num_stages + 1):
     #     val = k * max_butterflies

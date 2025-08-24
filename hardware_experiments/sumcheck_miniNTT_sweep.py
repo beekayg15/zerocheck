@@ -119,9 +119,12 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
     ]
 
     max_num_vars = max(num_var_list)
-    sweep_sumcheck_pes_range = [2 ** i for i in range(1, max_num_vars)]
-    sweep_eval_engines_range = range(2, 7, 2)
-    sweep_product_lanes_range = range(3, 6, 2)
+    # Sweep PE count from 2 to 256 with stride 4, then powers of 2 up to 2**(max_num_vars-1)
+    sweep_sumcheck_pes_range = list(range(2, 513, 32))
+    # Add higher powers of 2 if needed (above 256)
+    sweep_sumcheck_pes_range += [2 ** i for i in range(9, max_num_vars) if 2 ** i > 256]
+    sweep_eval_engines_range = range(2, 9, 1)
+    sweep_product_lanes_range = range(3, 9, 1)
     # sweep_onchip_mle_sizes_range = [128, 1024, 16384]  # in number of field elements
 
     # testing all combinations
@@ -144,7 +147,7 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
         gate_degree = max(len(term) for term in sumcheck_gate)
         num_accumulate_regs = gate_degree + 1
         num_unique_mle_in_gate = len(set(sum(sumcheck_gate, [])))
-        num_sumcheck_sram_buffers = num_unique_mle_in_gate * 1.5  # no double buffering, but MLE update storage
+        num_sumcheck_sram_buffers = num_unique_mle_in_gate  # * 1.5  # no double buffering, but MLE update storage
         tmp_mle_sram_scale_factor = 0  # (gate_degree + 1) / 2
         constants = (
             bits_per_element,
@@ -508,137 +511,282 @@ def load_results(filename):
     return sumcheck_result_df, ntt_result_df
 
 
+def plot_gate_acrx_groups(sc_df, ntt_df, filename, poly_groups):
+    """
+    Draw a 1x3 grid of subplots: each column is a group of polynomials (gates).
+    Bandwidth is not considered.
+    Args:
+        sc_df: DataFrame for sumcheck results
+        ntt_df: DataFrame for NTT results
+        filename: output file prefix (no extension)
+        poly_groups: list of 3 lists, each is a group of gates (gate as list of lists)
+    """
+    assert len(poly_groups) == 3, "Need 3 poly groups"
+    marker_styles = ['o', 's', '^', 'X', 'D', 'P', '*', 'v', '<', '>']
+    # Flatten all groups to get unique gates
+    all_gates = [gate for group in poly_groups for gate in group]
+    unique_gate_names = sorted(set(gate_to_string(gate) for gate in all_gates))
+    marker_dict = {gate_name: marker_styles[i % len(marker_styles)] for i, gate_name in enumerate(unique_gate_names)}
+
+    fig = plt.figure(figsize=(24, 5))
+    gs = fig.add_gridspec(1, 4, width_ratios=[1, 1, 1, 1.2])
+    axes = [fig.add_subplot(gs[0, i]) for i in range(4)]
+
+    # 1-3: original scatter plots
+    for col, group in enumerate(poly_groups):
+        ax = axes[col]
+        group_gate_names = [gate_to_string(gate) for gate in group]
+        # For SumCheck, add another 'fz' to each term for indexing
+        group_sc_gate_names = [gate_to_string([[*term, "fz"] for term in gate]) for gate in group]
+        sub_sc_df = sc_df[sc_df["sumcheck_gate"].isin(group_sc_gate_names)]
+        sub_ntt_df = ntt_df[ntt_df["sumcheck_gate"].isin(group_gate_names)]
+        for gate in group:
+            gate_name = gate_to_string(gate)
+            sc_gate_name = gate_to_string([[*term, "fz"] for term in gate])
+            gate_sc_df = sub_sc_df[sub_sc_df["sumcheck_gate"] == sc_gate_name]
+            gate_ntt_df = sub_ntt_df[sub_ntt_df["sumcheck_gate"] == gate_name]
+            # Pareto filter for Sumcheck
+            if not gate_sc_df.empty:
+                costs = gate_sc_df[["area", "total_latency"]].values
+                pareto_mask = is_pareto_efficient(costs)
+                pareto_gate_sc_df = gate_sc_df[pareto_mask]
+                # Convert total_latency from ns to ms
+                ax.scatter(
+                    pareto_gate_sc_df["total_latency"] / 1e3,
+                    pareto_gate_sc_df["area"],
+                    marker=marker_dict[gate_name],
+                    color='C0',
+                    s=30,
+                    edgecolor="k",
+                    alpha=0.8,
+                    label=f"{gate_name} (Sumcheck)"
+                )
+            # Pareto filter for NTT
+            if not gate_ntt_df.empty:
+                area_col = "total_area" if "total_area" in gate_ntt_df.columns else "area"
+                costs_ntt = gate_ntt_df[[area_col, "total_latency"]].values
+                pareto_mask_ntt = is_pareto_efficient(costs_ntt)
+                pareto_gate_ntt_df = gate_ntt_df[pareto_mask_ntt]
+                # Convert total_latency from ns to ms
+                ax.scatter(
+                    pareto_gate_ntt_df["total_latency"] / 1e3,
+                    pareto_gate_ntt_df[area_col],
+                    marker=marker_dict[gate_name],
+                    color='C3',
+                    s=35,
+                    edgecolor="k",
+                    alpha=0.8,
+                    label=f"{gate_name} (NTT)"
+                )
+        # Change x-axis to ms units
+        xticks = ax.get_xticks()
+        ax.set_xlabel("Runtime (μs)", fontsize=14)
+        ax.set_ylim(0, 650)  # Limit y-axis between 0 and 650
+        ax.set_xlim(1, 30)  # Convert limits from ns to ms
+        ax.set_xticklabels([f"{x:.0f}" for x in ax.get_xticks()], fontsize=14)
+        ax.grid(True, which='major', color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.minorticks_on()
+        ax.tick_params(axis='y', labelsize=14)
+        if col == 0:
+            ax.set_ylabel("Area (mm²)", fontsize=14)
+        # Custom legend for each subplot (group)
+        handles = []
+        for gate in group:
+            gate_name = gate_to_string(gate)
+            handles.append(Line2D([0], [0], marker=marker_dict[gate_name], color='w', label=f"{gate_name} (SumCheck)",
+                      markerfacecolor='C0', markeredgecolor='k', markersize=10, linestyle='None'))
+            handles.append(Line2D([0], [0], marker=marker_dict[gate_name], color='w', label=f"{gate_name} (NTT)",
+                      markerfacecolor='C3', markeredgecolor='k', markersize=10, linestyle='None'))
+        ax.legend(handles=handles, loc='best', fontsize=12)
+
+
+    # 4th subplot: 3D surface from plot_n17_ntt_sumcheck_allonchip
+    from sram_budget_plot import plot_n17_ntt_sumcheck_allonchip
+    ax3d = fig.add_subplot(gs[0, 3], projection='3d', frame_on=False)
+    plot_n17_ntt_sumcheck_allonchip(max_MB=200, ax=ax3d)
+
+    plt.tight_layout()
+    plt.savefig(f"{filename}_gate_acrx_groups.pdf", bbox_inches='tight')
+    print(f"Saved plot to {filename}_gate_acrx_groups.pdf")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
-    n_values = 16
+    n_values = 17
     # bw_values = [128, 256, 1024, 2048]  # in GB/s
 
+    # ################################################
+    # poly_style_name = "deg_inc_mle_inc_term_fixed"
+    # polynomial_list = [
+    #     [["g1", "g2"]],
+    #     [["g1", "g2", "g3"]],  # a gate of degree 3
+    #     [["g1", "g2", "g3", "g4"]],
+    #     # [["g1", "g2", "g3", "g4", "g5"]],  # a gate of degree 5
+    #     # [["g1", "g2", "g3", "g4", "g5", "g6"]],
+    #     # [["g1", "g2", "g3", "g4", "g5", "g6", "g7"]],
+    #     # [["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8"]],
+    #     # [["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9"]],  # a gate of degree 9
+    #     # [["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9", "g10"]],
+    # ]
+
+    # output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
+    # if not os.path.exists(output_dir):
+    #     os.makedirs(output_dir, exist_ok=True)
+    # ntt_result_df = sweep_miniNTT_all_onchip_configs(
+    #     n_size_values=[n_values],
+    #     polynomial_list=polynomial_list,
+    #     consider_sparsity=True
+    # )
+    # sc_results_df = sweep_onchip_sumcheck_configs(
+    #     num_var_list=[n_values],
+    #     available_bw_list=[1e9],
+    #     polynomial_list=polynomial_list,
+    # )
+    # save_results(
+    #     sc_results_df,
+    #     ntt_result_df,
+    #     output_dir.joinpath(f"{poly_style_name}"),
+    #     save_excel=True
+    # )
+    # # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+
+    # xlim_area = None # [(0e3, 40e3)]
+    # ylim_area = None # [(0, 400), (8, 60), (0, 2500)]
+    # plot_gate_acrx_bw(sc_df=sc_results_df, 
+    #                   ntt_df=ntt_result_df,
+    #                   filename=output_dir.joinpath(f"{poly_style_name}"),
+    #                   xranges=xlim_area,
+    #                   yranges=ylim_area)
+
+    # # ################################################
+    # # poly_style_name = "deg_inc_mle_fixed_term_fixed"
+    # # polynomial_list = [
+    # #     [["g1", "g2"]],
+    # #     [["g1", "g2", "g2"]],
+    # #     [["g1", "g2", "g2", "g2"]],
+    # #     [["g1", "g2", "g2", "g2", "g2"]],
+    # # ]
+
+    # # output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
+    # # if not os.path.exists(output_dir):
+    # #     os.makedirs(output_dir, exist_ok=True)
+    # # ntt_result_df = sweep_miniNTT_all_onchip_configs(
+    # #     n_size_values=[n_values],
+    # #     polynomial_list=polynomial_list,
+    # #     consider_sparsity=True
+    # # )
+    # # sc_results_df = sweep_onchip_sumcheck_configs(
+    # #     num_var_list=[n_values],
+    # #     available_bw_list=[1e9],
+    # #     polynomial_list=polynomial_list,
+    # # )
+    # # save_results(
+    # #     sc_results_df,
+    # #     ntt_result_df,
+    # #     output_dir.joinpath(f"{poly_style_name}"),
+    # #     save_excel=True
+    # # )
+    # # # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+
+    # # xlim_area = None # [(1.5e6, 9.5e6), (1.5e6, 9e6), (0, 3e6), (0, 1.5e6)]
+    # # ylim_area = None # [(0, 350), (0, 7), (0, 4500)]
+    # # plot_gate_acrx_bw(sc_df=sc_results_df, 
+    # #                   ntt_df=ntt_result_df,
+    # #                   filename=output_dir.joinpath(f"{poly_style_name}"),
+    # #                   xranges=xlim_area,
+    # #                   yranges=ylim_area)
+    
+    # # ################################################
+    # poly_style_name = "deg_fixed_mle_fixed_term_inc"
+    # polynomial_list = [
+    #     [["g1", "g2"], ["g3"]],
+    #     [["g1", "g2"], ["g1"], ["g3"]],
+    #     [["g1", "g2"], ["g1"], ["g2"], ["g3"]],
+    # ]
+
+    # output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
+    # if not os.path.exists(output_dir):
+    #     os.makedirs(output_dir, exist_ok=True)
+    # ntt_result_df = sweep_miniNTT_all_onchip_configs(
+    #     n_size_values=[n_values],
+    #     polynomial_list=polynomial_list,
+    #     consider_sparsity=True
+    # )
+    # sc_results_df = sweep_onchip_sumcheck_configs(
+    #     num_var_list=[n_values],
+    #     available_bw_list=[1e9],
+    #     polynomial_list=polynomial_list,
+    # )
+    # save_results(
+    #     sc_results_df,
+    #     ntt_result_df,
+    #     output_dir.joinpath(f"{poly_style_name}"),
+    #     save_excel=True
+    # )
+    # # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+
+    # xlim_area = None # [(2e6, 7e6), (1e6, 6e6), (0, 2e6), (0, 2e6)]
+    # ylim_area = None # [(0, 180), (0, 6.4), (0, 2200)]
+    # plot_gate_acrx_bw(sc_df=sc_results_df, 
+    #                   ntt_df=ntt_result_df,
+    #                   filename=output_dir.joinpath(f"{poly_style_name}"),
+    #                   xranges=xlim_area,
+    #                   yranges=ylim_area)
+    
+    # ################################################
+    # poly_style_name = "deg_fixed_mle_inc_term_inc"
+    # polynomial_list = [
+    #     [["g1", "g2"]],
+    #     [["g1", "g2"], ["g3"]],
+    #     [["g1", "g2"], ["g3"], ["g4"]],
+    #     # [["g1", "g2"], ["g1", "g3"]],
+    #     # [["g1", "g2"], ["g1", "g3"], ["g1", "g4"]],
+    #     # [["g1", "g2"], ["g1", "g3"], ["g1", "g4"], ["g1", "g5"]],
+    # ]
+
+    # output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
+    # if not os.path.exists(output_dir):
+    #     os.makedirs(output_dir, exist_ok=True)
+    # ntt_result_df = sweep_miniNTT_all_onchip_configs(
+    #     n_size_values=[n_values],
+    #     polynomial_list=polynomial_list,
+    #     consider_sparsity=True
+    # )
+    # sc_results_df = sweep_onchip_sumcheck_configs(
+    #     num_var_list=[n_values],
+    #     available_bw_list=[1e9],
+    #     polynomial_list=polynomial_list,
+    # )
+    # save_results(
+    #     sc_results_df,
+    #     ntt_result_df,
+    #     output_dir.joinpath(f"{poly_style_name}"),
+    #     save_excel=True
+    # )
+    # # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+
+    # xlim_area = None # [(1.5e6, 12e6), (0e6, 8e6), (0, 2.5e6), (0, 2e6)]
+    # ylim_area = None # [(0, 160), (0, 11.5), (0, 2200)]
+    # plot_gate_acrx_bw(sc_df=sc_results_df, 
+    #                   ntt_df=ntt_result_df,
+    #                   filename=output_dir.joinpath(f"{poly_style_name}"),
+    #                   xranges=xlim_area,
+    #                   yranges=ylim_area)
+    
+    # ################################################
     ################################################
-    poly_style_name = "deg_inc_mle_inc_term_fixed"
+    poly_style_name = "general_runs"
     polynomial_list = [
         [["g1", "g2"]],
         [["g1", "g2", "g3"]],  # a gate of degree 3
         [["g1", "g2", "g3", "g4"]],
-        [["g1", "g2", "g3", "g4", "g5"]],  # a gate of degree 5
-        # [["g1", "g2", "g3", "g4", "g5", "g6"]],
-        # [["g1", "g2", "g3", "g4", "g5", "g6", "g7"]],
-        # [["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8"]],
-        # [["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9"]],  # a gate of degree 9
-        # [["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9", "g10"]],
-    ]
 
-    output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir, exist_ok=True)
-    ntt_result_df = sweep_miniNTT_all_onchip_configs(
-        n_size_values=[n_values],
-        polynomial_list=polynomial_list,
-        consider_sparsity=True
-    )
-    sc_results_df = sweep_onchip_sumcheck_configs(
-        num_var_list=[n_values],
-        available_bw_list=[1e9],
-        polynomial_list=polynomial_list,
-    )
-    save_results(
-        sc_results_df,
-        ntt_result_df,
-        output_dir.joinpath(f"{poly_style_name}"),
-        save_excel=True
-    )
-    # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
-
-    xlim_area = None # [(0e3, 40e3)]
-    ylim_area = None # [(0, 400), (8, 60), (0, 2500)]
-    plot_gate_acrx_bw(sc_df=sc_results_df, 
-                      ntt_df=ntt_result_df,
-                      filename=output_dir.joinpath(f"{poly_style_name}"),
-                      xranges=xlim_area,
-                      yranges=ylim_area)
-
-    ################################################
-    poly_style_name = "deg_inc_mle_fixed_term_fixed"
-    polynomial_list = [
-        [["g1", "g2"]],
-        [["g1", "g2", "g2"]],
-        [["g1", "g2", "g2", "g2"]],
-        [["g1", "g2", "g2", "g2", "g2"]],
-    ]
-
-    output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir, exist_ok=True)
-    ntt_result_df = sweep_miniNTT_all_onchip_configs(
-        n_size_values=[n_values],
-        polynomial_list=polynomial_list,
-        consider_sparsity=True
-    )
-    sc_results_df = sweep_onchip_sumcheck_configs(
-        num_var_list=[n_values],
-        available_bw_list=[1e9],
-        polynomial_list=polynomial_list,
-    )
-    save_results(
-        sc_results_df,
-        ntt_result_df,
-        output_dir.joinpath(f"{poly_style_name}"),
-        save_excel=True
-    )
-    # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
-
-    xlim_area = None # [(1.5e6, 9.5e6), (1.5e6, 9e6), (0, 3e6), (0, 1.5e6)]
-    ylim_area = None # [(0, 350), (0, 7), (0, 4500)]
-    plot_gate_acrx_bw(sc_df=sc_results_df, 
-                      ntt_df=ntt_result_df,
-                      filename=output_dir.joinpath(f"{poly_style_name}"),
-                      xranges=xlim_area,
-                      yranges=ylim_area)
-    
-    ################################################
-    poly_style_name = "deg_fixed_mle_fixed_term_inc"
-    polynomial_list = [
         [["g1", "g2"], ["g3"]],
-        [["g1", "g2"], ["g1", "g3"]],
-        [["g1", "g2"], ["g1", "g3"], ["g2", "g3"]],
-        [["g1", "g2"], ["g1", "g3"], ["g2", "g3"], ["g1"]],
-    ]
+        [["g1", "g2"], ["g1"], ["g3"]],
+        [["g1", "g2"], ["g1"], ["g2"], ["g3"]],
 
-    output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir, exist_ok=True)
-    ntt_result_df = sweep_miniNTT_all_onchip_configs(
-        n_size_values=[n_values],
-        polynomial_list=polynomial_list,
-        consider_sparsity=True
-    )
-    sc_results_df = sweep_onchip_sumcheck_configs(
-        num_var_list=[n_values],
-        available_bw_list=[1e9],
-        polynomial_list=polynomial_list,
-    )
-    save_results(
-        sc_results_df,
-        ntt_result_df,
-        output_dir.joinpath(f"{poly_style_name}"),
-        save_excel=True
-    )
-    # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
-
-    xlim_area = None # [(2e6, 7e6), (1e6, 6e6), (0, 2e6), (0, 2e6)]
-    ylim_area = None # [(0, 180), (0, 6.4), (0, 2200)]
-    plot_gate_acrx_bw(sc_df=sc_results_df, 
-                      ntt_df=ntt_result_df,
-                      filename=output_dir.joinpath(f"{poly_style_name}"),
-                      xranges=xlim_area,
-                      yranges=ylim_area)
-    
-    ################################################
-    poly_style_name = "deg_fixed_mle_inc_term_inc"
-    polynomial_list = [
-        [["g1", "g2"]],
         [["g1", "g2"], ["g3"]],
-        [["g1", "g2"], ["g1", "g3"]],
-        [["g1", "g2"], ["g1", "g3"], ["g1", "g4"]],
-        [["g1", "g2"], ["g1", "g3"], ["g1", "g4"], ["g1", "g5"]],
+        [["g1", "g2"], ["g3"], ["g4"]],
     ]
 
     output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
@@ -662,13 +810,30 @@ if __name__ == "__main__":
     )
     # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
-    xlim_area = None # [(1.5e6, 12e6), (0e6, 8e6), (0, 2.5e6), (0, 2e6)]
-    ylim_area = None # [(0, 160), (0, 11.5), (0, 2200)]
-    plot_gate_acrx_bw(sc_df=sc_results_df, 
-                      ntt_df=ntt_result_df,
-                      filename=output_dir.joinpath(f"{poly_style_name}"),
-                      xranges=xlim_area,
-                      yranges=ylim_area)
+    polynomial_list = [
+        [
+            [["g1", "g2"]],
+            [["g1", "g2"], ["g3"]],
+            [["g1", "g2"], ["g3"], ["g4"]],
+        ],
+        [
+            [["g1", "g2"], ["g3"]],
+            [["g1", "g2"], ["g1"], ["g3"]],
+            [["g1", "g2"], ["g1"], ["g2"], ["g3"]],
+        ],
+        [
+            [["g1", "g2"]],
+            [["g1", "g2", "g3"]],  # a gate of degree 3
+            [["g1", "g2", "g3", "g4"]],
+        ],
+    ]
+    plot_gate_acrx_groups(
+        sc_df=sc_results_df,
+        ntt_df=ntt_result_df,
+        filename=output_dir.joinpath(f"{poly_style_name}_n{n_values}"),
+        poly_groups=polynomial_list,
+    )
+    
     
     ################################################
     print("End...")
