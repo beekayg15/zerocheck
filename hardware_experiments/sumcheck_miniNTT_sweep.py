@@ -529,7 +529,8 @@ def plot_gate_acrx_groups(sc_df, ntt_df, filename, poly_groups):
     marker_dict = {gate_name: marker_styles[i % len(marker_styles)] for i, gate_name in enumerate(unique_gate_names)}
 
     fig = plt.figure(figsize=(24, 5))
-    gs = fig.add_gridspec(1, 4, width_ratios=[1, 1, 1, 1.2])
+    gs = fig.add_gridspec(1, 4, width_ratios=[1, 1, 1, 0.8], 
+                         )  # Reduced spacing between all subplots
     # Create first 3 subplots normally
     axes = [fig.add_subplot(gs[0, i]) for i in range(3)]
     # Add the 4th subplot separately since it will be 3D
@@ -605,11 +606,14 @@ def plot_gate_acrx_groups(sc_df, ntt_df, filename, poly_groups):
 
     # 4th subplot: 3D surface from plot_n17_ntt_sumcheck_allonchip
     from sram_budget_plot import plot_n17_ntt_sumcheck_allonchip
-    ax3d = fig.add_subplot(gs[0, 3], projection='3d', frame_on=False)
-    plot_n17_ntt_sumcheck_allonchip(max_MB=200, ax=ax3d)
-
+    plot_n17_ntt_sumcheck_allonchip(max_MB=200, ax=axes[3])
+    axes[3].spines['top'].set_visible(False)
+    axes[3].spines['right'].set_visible(False)
+    axes[3].spines['bottom'].set_visible(False)
+    axes[3].spines['left'].set_visible(False)
     plt.tight_layout()
     plt.savefig(f"{filename}_gate_acrx_groups.pdf", bbox_inches='tight')
+    plt.savefig(f"{filename}_gate_acrx_groups.png", bbox_inches='tight')
     print(f"Saved plot to {filename}_gate_acrx_groups.pdf")
     plt.close(fig)
 
