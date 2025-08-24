@@ -370,7 +370,6 @@ def sumcheck_plot_degree_vs_sram_n18(max_MB, filename: str = None):
     plt.show()
 
 
-
 def plot_n17_ntt_sumcheck_allonchip(ax, max_MB=None, filename=None):
     """
     For n=17, sweep degree from 2 to 9 and unique MLE from 1 to 6,
@@ -493,6 +492,132 @@ def plot_n17_ntt_sumcheck_allonchip(ax, max_MB=None, filename=None):
     ax.legend(handles=legend_patches, loc='center left', bbox_to_anchor=(0.06, 0.7), frameon=True)
 
 
+def plot_n17_n20_n28_ntt_sumcheck_1x3(max_MB=400, filename=None):
+    """
+    Draw a 1x3 grid:
+      - Left: n=17, All onchip NTT + All onchip SumCheck
+      - Middle: n=20, Streaming NTT + All onchip SumCheck
+      - Right: n=28, Four-step NTT + All onchip SumCheck
+    Each subplot: x=unique_mle, y=degree, z=SRAM (MB), two surfaces per subplot.
+    """
+    n_list = [17, 20, 28]
+    ntt_cases = ["All onchip", "Stream", "Four-step"]
+    ntt_cmaps = [cm.Blues, cm.Oranges, cm.Purples]
+    sumcheck_cmap = cm.Greens
+    degrees = range(2, 7)
+    unique_mles_list = range(1, 7)
+
+    fig = plt.figure(figsize=(18, 6))
+    for idx, (n, ntt_case, ntt_cmap) in enumerate(zip(n_list, ntt_cases, ntt_cmaps)):
+        # NTT data
+        ntt_data = []
+        for deg in degrees:
+            for num_mle in unique_mles_list:
+                try:
+                    sram_mb = ntt_sram_MB(ntt_case, n, num_mle, deg)
+                except Exception:
+                    sram_mb = float('nan')
+                ntt_data.append({
+                    "degree": deg,
+                    "unique_mle": num_mle,
+                    "sram_mb": sram_mb,
+                })
+        ntt_df = pd.DataFrame(ntt_data)
+
+        # SumCheck data (always all onchip)
+        sumcheck_data = []
+        for deg in degrees:
+            for num_mle in unique_mles_list:
+                try:
+                    sram_mb = sumcheck_sram_MB(n, num_mle, deg)
+                except Exception:
+                    sram_mb = float('nan')
+                sumcheck_data.append({
+                    "degree": deg,
+                    "unique_mle": num_mle,
+                    "sram_mb": sram_mb,
+                })
+        sumcheck_df = pd.DataFrame(sumcheck_data)
+
+        ax = fig.add_subplot(1, 3, idx + 1, projection='3d')
+        ax.view_init(10, -130)
+
+        # NTT surface
+        X_ntt, Y_ntt = np.meshgrid(
+            sorted(ntt_df["unique_mle"].unique()),
+            sorted(ntt_df["degree"].unique())
+        )
+        Z_ntt = np.empty_like(X_ntt, dtype=float)
+        for i in range(X_ntt.shape[0]):
+            for j in range(X_ntt.shape[1]):
+                val = ntt_df[
+                    (ntt_df["unique_mle"] == X_ntt[i, j]) &
+                    (ntt_df["degree"] == Y_ntt[i, j])
+                ]["sram_mb"]
+                Z_ntt[i, j] = val.values[0] if not val.empty else np.nan
+        if max_MB is not None:
+            Z_ntt = np.where(Z_ntt > max_MB, np.nan, Z_ntt)
+        norm_ntt = Normalize(Y_ntt.min(), Y_ntt.max())
+        facecolors_ntt = ntt_cmap(norm_ntt(Y_ntt))
+        ax.plot_surface(
+            X_ntt, Y_ntt, Z_ntt,
+            facecolors=facecolors_ntt,
+            alpha=0.8,
+            linewidth=0,
+            antialiased=True,
+            shade=False
+        )
+
+        # SumCheck surface
+        X_sc, Y_sc = np.meshgrid(
+            sorted(sumcheck_df["unique_mle"].unique()),
+            sorted(sumcheck_df["degree"].unique())
+        )
+        Z_sc = np.empty_like(X_sc, dtype=float)
+        for i in range(X_sc.shape[0]):
+            for j in range(X_sc.shape[1]):
+                val = sumcheck_df[
+                    (sumcheck_df["unique_mle"] == X_sc[i, j]) &
+                    (sumcheck_df["degree"] == Y_sc[i, j])
+                ]["sram_mb"]
+                Z_sc[i, j] = val.values[0] if not val.empty else np.nan
+        if max_MB is not None:
+            Z_sc = np.where(Z_sc > max_MB, np.nan, Z_sc)
+        norm_sc = Normalize(Y_sc.min(), Y_sc.max())
+        facecolors_sc = sumcheck_cmap(norm_sc(Y_sc))
+        ax.plot_surface(
+            X_sc, Y_sc, Z_sc,
+            facecolors=facecolors_sc,
+            alpha=0.6,
+            linewidth=0,
+            antialiased=True,
+            shade=False
+        )
+
+        ax.set_xlabel("Unique MLE", fontsize=13)
+        ax.set_ylabel("Polynomial Degree", fontsize=13)
+        ax.set_zlabel("SRAM (MB)", fontsize=13)
+        ax.set_xticks(list(unique_mles_list))
+        ax.set_yticks(list(degrees))
+        if max_MB is not None:
+            ax.set_zlim(0, max_MB)
+        ax.tick_params(axis='x', labelsize=12)
+        ax.tick_params(axis='y', labelsize=12)
+        ax.tick_params(axis='z', labelsize=12)
+        ax.set_title(f"n={n}, {ntt_case} NTT + All onchip SumCheck", fontsize=14)
+        legend_patches = [
+            Patch(color=ntt_cmap(0.7), label=f"{ntt_case} NTT"),
+            Patch(color=sumcheck_cmap(0.7), label="SumCheck All onchip")
+        ]
+        ax.legend(handles=legend_patches, loc='upper left', fontsize=11)
+
+    plt.tight_layout()
+    if filename:
+        plt.savefig(filename, bbox_inches='tight')
+        print(f"Plot saved to {filename}")
+    plt.show()
+
+
 if __name__ == "__main__":
     
     ################################################
@@ -516,11 +641,17 @@ if __name__ == "__main__":
     # sumcheck_plot_degree_vs_sram_n18(max_MB=400, filename=output_dir / f"sram_vs_degree_n{n_values}_sumcheck.png")
 
     ################################################
-    n_values = 17
+    # n_values = 17
+    # output_dir = Path(f"outplot_mem/n_{n_values}")
+    # if not os.path.exists(output_dir):
+    #     os.makedirs(output_dir, exist_ok=True)
+    # plot_n17_ntt_sumcheck_allonchip(max_MB=200, filename=output_dir / f"sram_vs_degree_n{n_values}_all_onchip.pdf")
+
+    n_values = 28
     output_dir = Path(f"outplot_mem/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    plot_n17_ntt_sumcheck_allonchip(max_MB=200, filename=output_dir / f"sram_vs_degree_n{n_values}_all_onchip.pdf")
+    plot_n17_n20_n28_ntt_sumcheck_1x3(max_MB=None, filename=output_dir / f"sram_vs_degree_n17_n20_n28_ntt_sumcheck_1x3.pdf")
 
     ################################################
 

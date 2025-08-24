@@ -598,8 +598,11 @@ def run_miniNTT_partial_onchip(target_n: int, polynomial, target_bw: int, modadd
     if 1 not in sweep_butterflies:
         sweep_butterflies = [1] + sweep_butterflies
 
-    # Add denser sweep between 64 and 8192 (inclusive), step 1024
-    dense_min = 64
+    dense_min = 32
+    dense_max = 1024
+    dense_butterflies = [v for v in range(dense_min, min(dense_max, max_butterflies) + 1, 128)]
+    sweep_butterflies = sorted(set(sweep_butterflies + dense_butterflies))
+    dense_min = 1024
     dense_max = 8192
     dense_butterflies = [v for v in range(dense_min, min(dense_max, max_butterflies) + 1, 1024)]
     sweep_butterflies = sorted(set(sweep_butterflies + dense_butterflies))
@@ -942,6 +945,11 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
     else:
         unroll_factors_pow = range(0, unroll_factors_pow)
     unroll_factors = [2**i for i in unroll_factors_pow]
+    # Make the sweep denser between 2 and 128 (inclusive), step 32
+    dense_min = 2
+    dense_max = 128
+    dense_factors = [v for v in range(dense_min, dense_max + 1, 32)]
+    unroll_factors = sorted(set(unroll_factors + dense_factors))
 
     pe_counts = [1, 2, 4, 8, 16]  # [1, 2, 4, 8, 16, 32, 64]
 

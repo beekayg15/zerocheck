@@ -601,7 +601,7 @@ def plot_gate_acrx_groups(sc_df, ntt_df, filename, poly_groups):
                       markerfacecolor='C0', markeredgecolor='k', markersize=10, linestyle='None'))
             handles.append(Line2D([0], [0], marker=marker_dict[gate_name], color='w', label=f"{gate_name} (NTT)",
                       markerfacecolor='C3', markeredgecolor='k', markersize=10, linestyle='None'))
-        ax.legend(handles=handles, loc='best', fontsize=12)
+        ax.legend(handles=handles, loc='best', fontsize=12, framealpha=0.7)
 
 
     # 4th subplot: 3D surface from plot_n17_ntt_sumcheck_allonchip
@@ -792,8 +792,9 @@ if __name__ == "__main__":
         [["g1", "g2"], ["g1"], ["g3"]],
         [["g1", "g2"], ["g1"], ["g2"], ["g3"]],
 
-        [["g1", "g2"], ["g3"]],
+        # [["g1", "g2"], ["g3"]],
         [["g1", "g2"], ["g3"], ["g4"]],
+        [["g1", "g2"], ["g3"], ["g4"], ["g5"], ["g6"]],
     ]
 
     output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
@@ -820,8 +821,9 @@ if __name__ == "__main__":
     polynomial_list = [
         [
             [["g1", "g2"]],
-            [["g1", "g2"], ["g3"]],
+            # [["g1", "g2"], ["g3"]],
             [["g1", "g2"], ["g3"], ["g4"]],
+            [["g1", "g2"], ["g3"], ["g4"], ["g5"], ["g6"]],
         ],
         [
             [["g1", "g2"], ["g3"]],
