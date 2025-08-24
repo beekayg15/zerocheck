@@ -56,7 +56,7 @@ def sumcheck_sram_MB(n: int, num_unique_mles: int, max_degree: int) -> float:
     """
     max_degree = max_degree + 1  # fz
     num_unique_mles = num_unique_mles + 1  # fz
-    if max_degree < 3:
+    if max_degree <= 3:
         return ((2 ** n) * num_unique_mles) * (32 / 1024 / 1024)
     else:
         return ((2 ** n) * num_unique_mles + (max_degree + 1) * (2 ** n) / 2) * (32 / 1024 / 1024)

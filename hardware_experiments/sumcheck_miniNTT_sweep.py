@@ -522,7 +522,7 @@ def plot_gate_acrx_groups(sc_df, ntt_df, filename, poly_groups):
         poly_groups: list of 3 lists, each is a group of gates (gate as list of lists)
     """
     assert len(poly_groups) == 3, "Need 3 poly groups"
-    marker_styles = ['o', 's', '^', 'X', 'D', 'P', '*', 'v', '<', '>']
+    marker_styles = ['o', '*', '^', 'X', '<', '>', 's', 'v', 'D', 'P']
     # Flatten all groups to get unique gates
     all_gates = [gate for group in poly_groups for gate in group]
     unique_gate_names = sorted(set(gate_to_string(gate) for gate in all_gates))
@@ -530,7 +530,10 @@ def plot_gate_acrx_groups(sc_df, ntt_df, filename, poly_groups):
 
     fig = plt.figure(figsize=(24, 5))
     gs = fig.add_gridspec(1, 4, width_ratios=[1, 1, 1, 1.2])
-    axes = [fig.add_subplot(gs[0, i]) for i in range(4)]
+    # Create first 3 subplots normally
+    axes = [fig.add_subplot(gs[0, i]) for i in range(3)]
+    # Add the 4th subplot separately since it will be 3D
+    axes.append(fig.add_subplot(gs[0, 3], projection='3d'))
 
     # 1-3: original scatter plots
     for col, group in enumerate(poly_groups):

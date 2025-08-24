@@ -597,7 +597,12 @@ def run_miniNTT_partial_onchip(target_n: int, polynomial, target_bw: int, modadd
     sweep_butterflies = [2 ** i for i in range(int(math.log2(max_butterflies)) + 1) if 2 ** i <= max_butterflies]
     if 1 not in sweep_butterflies:
         sweep_butterflies = [1] + sweep_butterflies
-    sweep_butterflies = sorted(sweep_butterflies)
+
+    # Add denser sweep between 64 and 8192 (inclusive), step 1024
+    dense_min = 64
+    dense_max = 8192
+    dense_butterflies = [v for v in range(dense_min, min(dense_max, max_butterflies) + 1, 1024)]
+    sweep_butterflies = sorted(set(sweep_butterflies + dense_butterflies))
 
     # Calculate cycles to fetch input_ntt_len elements, each of bit_width bits, over target_bw GB/s at freq Hz
     bw_words_per_sec = (target_bw * (1 << 30) * 8) // bit_width  # GB/s to word/s
