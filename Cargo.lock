@@ -1339,6 +1339,7 @@ dependencies = [
  "merlin",
  "num-traits",
  "rayon",
+ "regex",
  "sha2",
  "sha3",
 ]

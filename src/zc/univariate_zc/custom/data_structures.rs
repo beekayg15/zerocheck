@@ -1,11 +1,13 @@
 use crate::pcs::PolynomialCommitmentScheme;
-use ark_ff::PrimeField;
-use ark_poly::{univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain};
-use std::{cmp::max, collections::HashMap, marker::PhantomData, sync::Arc};
 use anyhow::{Error, Ok};
+use ark_ff::PrimeField;
 use ark_poly::Polynomial;
-use rayon::ThreadPool;
+use ark_poly::{
+    univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain,
+};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::ThreadPool;
+use std::{cmp::max, collections::HashMap, marker::PhantomData, sync::Arc};
 
 /// This is the data structure of the proof to be sent to the verifer,
 /// to prove that there exists a quotient polynomial q(X), for which,
@@ -89,7 +91,6 @@ impl<F: PrimeField> VirtualEvaluation<F> {
         self.evals_info.max_multiplicand = max(self.evals_info.max_multiplicand, product.len());
 
         for m in product {
-
             let m_ptr: *const Evaluations<F> = Arc::as_ptr(&m);
 
             if let Some(index) = self.raw_pointers_lookup_table.get(&m_ptr) {
@@ -113,7 +114,6 @@ impl<F: PrimeField> VirtualEvaluation<F> {
         evals: Arc<Evaluations<F>>,
         coefficient: F,
     ) -> Result<(), Error> {
-
         let evals_ptr: *const Evaluations<F> = Arc::as_ptr(&evals);
 
         let evals_index = match self.raw_pointers_lookup_table.get(&evals_ptr) {
@@ -142,14 +142,15 @@ impl<F: PrimeField> VirtualEvaluation<F> {
         for (coef, indices) in self.products.iter() {
             let mut product = coef.clone();
             for &index in indices {
-                product *= <Evaluations<F> as Clone>::clone(&self.univariate_evaluations[index]).interpolate().evaluate(&point);
+                product *= <Evaluations<F> as Clone>::clone(&self.univariate_evaluations[index])
+                    .interpolate()
+                    .evaluate(&point);
             }
             result += product;
         }
         result
     }
 }
-
 
 #[derive(Clone, Debug)]
 pub struct PolynomialInfo<F: PrimeField> {
@@ -162,7 +163,7 @@ pub struct PolynomialInfo<F: PrimeField> {
 
 /// Struct to store the sum of products of MLEs
 #[derive(Clone, Debug)]
-pub struct VirtualPolynomail<F: PrimeField> {
+pub struct VirtualPolynomial<F: PrimeField> {
     // information about the virtual polynomial
     pub poly_info: PolynomialInfo<F>,
     // list of (indexed) MLEs which are to be multiplied
@@ -173,7 +174,7 @@ pub struct VirtualPolynomail<F: PrimeField> {
     pub univariate_polynomials: Vec<Arc<DensePolynomial<F>>>,
 }
 
-impl<F: PrimeField> VirtualPolynomail<F> {
+impl<F: PrimeField> VirtualPolynomial<F> {
     /// Creates an empty virtual polynomial with `num_variables`
     pub fn new(virtual_evaluation: VirtualEvaluation<F>, pool_run: Option<&ThreadPool>) -> Self {
         let univariate_polynomials: Vec<Arc<DensePolynomial<F>>>;
@@ -193,7 +194,7 @@ impl<F: PrimeField> VirtualPolynomail<F> {
                 .collect();
         }
 
-        VirtualPolynomail {
+        VirtualPolynomial {
             poly_info: PolynomialInfo {
                 max_multiplicand: virtual_evaluation.evals_info.max_multiplicand,
                 phantom: PhantomData,
@@ -203,18 +204,18 @@ impl<F: PrimeField> VirtualPolynomail<F> {
         }
     }
 
-    /// Returns the degree of the virtual polynomial
+    /// Returns the size (number of coefficients) of the virtual polynomial
     pub fn degree(&self) -> usize {
         self.products
             .iter()
             .map(|(_, indices)| {
                 indices.iter().map(|&index| {
-                    self.univariate_polynomials[index].degree()
+                    self.univariate_polynomials[index].degree() + 1
                 }).sum::<usize>()
             })
             .max()
             .unwrap_or(0)
-    }   
+    }
 
     /// Evaluates the virtual polynomial at a given point
     pub fn evaluate(&self, point: F) -> F {
@@ -230,19 +231,33 @@ impl<F: PrimeField> VirtualPolynomail<F> {
     }
 
     /// Evaluates the virtual polynomial at a given domain
-    pub fn evaluate_over_domain(&self, domain: GeneralEvaluationDomain<F>, pool_run: Option<&ThreadPool>) -> Vec<F> {
+    pub fn evaluate_over_domain(
+        &self,
+        domain: GeneralEvaluationDomain<F>,
+        pool_run: Option<&ThreadPool>,
+    ) -> Vec<F> {
         let evals: Vec<Vec<F>>;
         if let Some(pool_run) = pool_run {
             evals = pool_run.install(|| {
                 self.univariate_polynomials
                     .iter()
-                    .map(|poly| (*poly.as_ref()).clone().evaluate_over_domain(domain.clone()).evals)
+                    .map(|poly| {
+                        (*poly.as_ref())
+                            .clone()
+                            .evaluate_over_domain(domain.clone())
+                            .evals
+                    })
                     .collect()
             });
         } else {
-            evals = self.univariate_polynomials
+            evals = self
+                .univariate_polynomials
                 .iter()
-                .map(|poly| <DensePolynomial<F> as Clone>::clone(&poly).evaluate_over_domain(domain).evals)
+                .map(|poly| {
+                    <DensePolynomial<F> as Clone>::clone(&poly)
+                        .evaluate_over_domain(domain)
+                        .evals
+                })
                 .collect();
         }
 
@@ -365,7 +380,10 @@ pub fn custom_zero_test_case_with_products<F: PrimeField>(
         let mut prod = vec![];
         let mut prod_evals = vec![F::one(); degree];
         for j in 0..*i {
-            prod.push(Arc::new(Evaluations::from_vec_and_domain(poly_evals[j].clone(), domain)));
+            prod.push(Arc::new(Evaluations::from_vec_and_domain(
+                poly_evals[j].clone(),
+                domain,
+            )));
             for k in 0..degree {
                 prod_evals[k] *= poly_evals[j][k];
             }
@@ -376,9 +394,7 @@ pub fn custom_zero_test_case_with_products<F: PrimeField>(
         }
     }
 
-    let zero_evals = pool_prepare.install(|| {
-        Evaluations::from_vec_and_domain(zero_evals, domain)
-    });
+    let zero_evals = pool_prepare.install(|| Evaluations::from_vec_and_domain(zero_evals, domain));
     inp_evals.add_product(vec![Arc::new(zero_evals)], F::from(-1));
 
     inp_evals

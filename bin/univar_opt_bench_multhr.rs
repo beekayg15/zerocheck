@@ -4,30 +4,38 @@ use ark_std::{end_timer, start_timer};
 use clap::Parser;
 use std::iter::zip;
 use std::time::Instant;
-use zerocheck::pcs::univariate_pcs::{
-    kzg::KZG,
-    ligero::{Ligero, LigeroPoseidon},
-};
 use zerocheck::transcripts::ZCTranscript;
-use zerocheck::zc::univariate_zc::custom::{CustomUnivariateZeroCheck, data_structures::{VirtualEvaluation, ZeroCheckParams}};
+use zerocheck::zc::univariate_zc::custom::{
+    data_structures::{VirtualEvaluation, ZeroCheckParams},
+    CustomUnivariateZeroCheck,
+};
 use zerocheck::ZeroCheck;
-use zerocheck::zc::univariate_zc::custom::data_structures::custom_zero_test_case_with_products;
+use zerocheck::{
+    pcs::univariate_pcs::{
+        kzg::KZG,
+        ligero::{Ligero, LigeroPoseidon},
+    },
+    zc::univariate_zc::custom::parser::prepare_zero_virtual_evaluation_from_string,
+};
 
 /// This function prepares the random input evaluations for the prover test.
 /// Reuse for the same worksize across multiple repeated tests.
 fn prepare_input_evals_domain<'a>(
     size: usize,
-    num_polys: usize,
-    prod_sizes: Vec<usize>,
     pool_prepare: &rayon::ThreadPool,
+    intput_poly: String,
 ) -> (VirtualEvaluation<Fr>, GeneralEvaluationDomain<Fr>, usize) {
     println!("Preparing input evaluations and domain for 2^{size} work");
     let instant = Instant::now();
-    let domain = GeneralEvaluationDomain::<Fr>::new(size).unwrap();
 
-    let inp_evals = custom_zero_test_case_with_products::<Fr>(size, num_polys, prod_sizes.clone(), pool_prepare);
+    let number_of_coeffs = 1 << size;
+    let inp_evals = prepare_zero_virtual_evaluation_from_string(&intput_poly, number_of_coeffs, &pool_prepare).unwrap();
+    let domain = GeneralEvaluationDomain::<Fr>::new(number_of_coeffs).unwrap();
 
-    let max_degree = size * num_polys * 2;
+    // The degree of the input polynomial
+    // -1 here because the max_degree is for setting up the global params, 
+    // and the set up takes in mathematical `degree`, which is `number_of_coeffs - 1`.
+    let max_degree = (inp_evals.evals_info.max_multiplicand - 1) * number_of_coeffs -1;
     let duration = instant.elapsed().as_secs_f64();
     println!("Preparing input evaluations and domain for 2^{size} work ....{duration}s");
     return (inp_evals, domain, max_degree);
@@ -197,14 +205,6 @@ struct Args {
     #[arg(long, default_value = "20")]
     max_size: usize,
 
-    /// Number of polynomials to use for the test
-    #[arg(long, default_value = "5")]
-    num_polys: usize,
-
-    /// Number of products to use for the test
-    #[arg(long, value_delimiter = ',', default_value = "5,4,3,2,1")]
-    prod_sizes: Vec<usize>,
-
     /// Number of threads to use for prepare input evaluations
     #[arg(long, default_value = "64")]
     prepare_threads: usize,
@@ -224,6 +224,9 @@ struct Args {
     /// Number of threads to run batch commit
     #[arg(long, default_value = "1")]
     batch_commit_threads: usize,
+
+    #[arg(long, default_value = "g*h*s + (1 - s)*(g + h)")]
+    f: String,
 }
 
 fn bench_opt_uni_zc() {
@@ -239,7 +242,7 @@ fn bench_opt_uni_zc() {
                 .unwrap();
 
             let (input_evals, domain, pp) =
-                prepare_input_evals_domain(size, args.num_polys, args.prod_sizes.clone(), &pool_prepare);
+                prepare_input_evals_domain(size, &pool_prepare, args.f.clone());
 
             let total_runtime: u128 = match args.poly_commit_scheme.as_str() {
                 "kzg" => {

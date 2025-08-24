@@ -14,6 +14,8 @@ use crate::pcs::PolynomialCommitmentScheme;
 use crate::transcripts::ZCTranscript;
 use crate::ZeroCheck;
 
+pub mod parser;
+
 /// Optimized Zero-Check protocol for if a polynomial
 /// f = g*h*s + (1 - s)(g + h) - o evaluates to 0
 /// over a specific domain using NTTs and INTTs
@@ -95,26 +97,27 @@ where
 
         // compute the vanishing polynomial of the zero domain
         // let z_poly = zero_domain.vanishing_polynomial();
-        let z_deg = zero_domain.size();
+        let z_size = zero_domain.size();
 
         let prove_time = start_timer!(|| format!(
-            "OptimizedUnivariateZeroCheck::prove, with {z_deg} zero_domain size."
+            "OptimizedUnivariateZeroCheck::prove, with {z_size} zero_domain size."
         ));
 
         let ifft_time = start_timer!(|| "IFFT for g,h,s,o from evaluations to coefficients");
 
         // compute the polynomials corresponding to g, h, and s using interpolation (IFFT)
-        let virtual_polynomial: VirtualPolynomail<F> = VirtualPolynomail::new(input_poly.clone(), Some(&pool_run));
+        let virtual_polynomial: VirtualPolynomial<F> =
+            VirtualPolynomial::new(input_poly.clone(), Some(&pool_run));
 
         end_timer!(ifft_time);
         let coset_time = start_timer!(|| "Compute coset domain");
 
         // compute degree of quotient polynomial to
-        let f_deg = virtual_polynomial.degree();
-        let q_deg = f_deg - z_deg;
+        let f_size = virtual_polynomial.degree();
+        let q_size = f_size - z_size;
 
         // Compute the coset domain to interpolate q(X)
-        let q_domain = GeneralEvaluationDomain::<F>::new(q_deg + 1).unwrap();
+        let q_domain = GeneralEvaluationDomain::<F>::new(q_size).unwrap();
         let offset = F::GENERATOR;
         let coset_domain: GeneralEvaluationDomain<F> = q_domain.get_coset(offset).unwrap();
 
@@ -162,13 +165,8 @@ where
             .collect();
 
         // Use the pool_commit thread pool to perform the batch_commit operation
-        let input_polynomial_comms = pool_commit.install(|| {
-            PCS::batch_commit(
-                &zero_params.ck,
-                &flatten_polynomials,
-            )
-            .unwrap()
-        });
+        let input_polynomial_comms = pool_commit
+            .install(|| PCS::batch_commit(&zero_params.ck, &flatten_polynomials).unwrap());
         end_timer!(commit_time);
         let commit_q_time = start_timer!(|| "Commit to (q) polynomial");
 
@@ -210,13 +208,7 @@ where
 
         // Generate the opening proof that g(r), h(r), s(r), and o(r) are the evaluations of the polynomials
         let mut opening_proofs = pool_open.install(|| {
-            PCS::batch_open(
-                &zero_params.ck,
-                &batch_comms,
-                &batch_polynomials,
-                r,
-            )
-            .unwrap()
+            PCS::batch_open(&zero_params.ck, &batch_comms, &batch_polynomials, r).unwrap()
         });
 
         let q_opening_proof = opening_proofs[opening_proofs.len() - 1].clone();
@@ -305,16 +297,65 @@ where
 mod tests {
     use crate::pcs::univariate_pcs::kzg::KZG;
     use crate::pcs::univariate_pcs::ligero::Ligero;
+    use crate::zc::univariate_zc::custom::parser::prepare_zero_virtual_evaluation_from_string;
 
     use super::*;
     use ark_bls12_381::Bls12_381;
     use ark_bls12_381::Fr;
-    use ark_poly::{
-        EvaluationDomain,
-        GeneralEvaluationDomain,
-    };
+    use ark_poly::{EvaluationDomain, GeneralEvaluationDomain};
     use ark_std::end_timer;
     use ark_std::start_timer;
+
+    #[test]
+    // This function tests the proof and verification combined with parser
+    fn test_proof_generation_verification_with_parser() {
+        let test_timer = start_timer!(|| "Proof Generation Test");
+        let pool_prepare = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
+
+        let degree = 1 << 6;
+        let input = "g*h*s + (1 - s)*(g + h)";
+        let inp_evals =
+            prepare_zero_virtual_evaluation_from_string(input, degree, &pool_prepare).unwrap();
+        let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
+
+        let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
+
+        let max_degree = inp_evals.evals_info.max_multiplicand * degree;
+
+        let zp = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&max_degree).unwrap();
+
+        let proof = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::prove(
+            &zp.clone(),
+            &inp_evals,
+            &domain,
+            &mut ZCTranscript::init_transcript(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        end_timer!(proof_gen_timer);
+
+        let verify_timer = start_timer!(|| "Verify fn called for g, h, zero_domain, proof");
+
+        let result = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::verify(
+            &zp,
+            &inp_evals,
+            &proof,
+            &domain,
+            &mut ZCTranscript::init_transcript(),
+        )
+        .unwrap();
+
+        end_timer!(verify_timer);
+        assert_eq!(result, true);
+
+        end_timer!(test_timer);
+    }
 
     #[test]
     fn test_proof_generation_verification_custom_uni() {
@@ -325,7 +366,8 @@ mod tests {
             .unwrap();
 
         let degree = 1 << 6;
-        let inp_evals = custom_zero_test_case_with_products::<Fr>(degree, 3, vec![3, 2, 2], &pool_prepare);
+        let inp_evals =
+            custom_zero_test_case_with_products::<Fr>(degree, 3, vec![3, 2, 2], &pool_prepare);
         let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
@@ -374,7 +416,8 @@ mod tests {
 
         let degree = 1 << 5;
         let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
-        let inp_evals = custom_zero_test_case_with_products::<Fr>(degree, 3, vec![3, 2, 2], &pool_prepare);
+        let inp_evals =
+            custom_zero_test_case_with_products::<Fr>(degree, 3, vec![3, 2, 2], &pool_prepare);
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
