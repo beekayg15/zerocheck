@@ -1,3 +1,5 @@
+import math
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -375,76 +377,27 @@ def parallel_stacked_bar_chart_univ_mulin_numvar_comm(save_fig=False):
     Draw a parallel stacked bar chart for univariate and multilinear ZC, 
     different num_var, different commit methods.
     """
-    # extract the averaged data from log files, return the dataframe
-    stack_multilin_zc_hyrax_df = plot_multi_lin_zc(
-        # file_path="output_log/mullin_opt_bench_24_24_run_1_hyrax_open_4.log",
-        file_path="output_log/mullin_opt_bench_24_24_run_12_hyrax_open_48.log",
-        start_line="Prover starts Opt multilinear for 2^",
-        save_fig=False,
-    )
-    stack_multilin_zc_kzg_df = plot_multi_lin_zc(
-        # file_path="output_log/mullin_opt_bench_24_24_run_1_kzg_open_4.log",
-        file_path="output_log/mullin_opt_bench_24_24_run_12_kzg_open_48.log",
-        start_line="Prover starts Opt multilinear for 2^",
-        save_fig=False,
-    )
-    stack_multilin_zc_ligeroPoseidon_df = plot_multi_lin_zc(
-        file_path="output_log/mullin_opt_bench_24_24_run_12_ligeroposeidon_open_48.log",
-        start_line="Prover starts Opt multilinear for 2^",
-        save_fig=False,
-    )
+    
     stack_multilin_zc_ligero_df = plot_multi_lin_zc(
         # file_path="output_log/mullin_opt_bench_24_24_run_1_ligero_open_4.log",
         file_path="output_log/mullin_opt_bench_24_24_run_12_ligero_open_48.log",
         start_line="Prover starts Opt multilinear for 2^",
         save_fig=False,
     )
-    stack_multilin_zc_hyrax_df.index = stack_multilin_zc_hyrax_df.index.str.replace(
-        "Average Runtime", "Mulin hyrax")
-    stack_multilin_zc_kzg_df.index = stack_multilin_zc_kzg_df.index.str.replace(
-        "Average Runtime", "Mulin kzg")
+    
     stack_multilin_zc_ligero_df.index = stack_multilin_zc_ligero_df.index.str.replace(
         "Average Runtime", "Mulin ligero")
-    stack_multilin_zc_ligeroPoseidon_df.index = stack_multilin_zc_ligeroPoseidon_df.index.str.replace(
-        "Average Runtime", "Mulin ligeroPoseidon")
     
-    # extract the averaged data from log files, return the dataframe
-    stack_univar_zc_kzg_df = plot_univar_zc(
-        # file_path="output_log/univar_opt_bench_24_24_run_1_kzg_open_5.log",
-        file_path="output_log/univar_opt_bench_24_24_run_12_kzg_open_60.log",
-        start_line="Opt Univariate Proof Generation Test ",
-        save_fig=False,
-    )
-    stack_univar_zc_ligeroPoseidon_df = plot_univar_zc(
-        file_path="output_log/univar_opt_bench_24_24_run_12_ligeroposeidon_open_60.log",
-        start_line="Opt Univariate Proof Generation Test ",
-        save_fig=False,
-    )
     stack_univar_zc_ligero_df = plot_univar_zc(
         # file_path="output_log/univar_opt_bench_24_24_run_1_ligero_open_5.log",
         file_path="output_log/univar_opt_bench_24_24_run_12_ligero_open_60.log",
         start_line="Opt Univariate Proof Generation Test ",
         save_fig=False,
     )
-    stack_univar_zc_kzg_df.index = stack_univar_zc_kzg_df.index.str.replace(
-        "Average Runtime", "Univar kzg")
+    
     stack_univar_zc_ligero_df.index = stack_univar_zc_ligero_df.index.str.replace(
         "Average Runtime", "Univar ligero")
-    stack_univar_zc_ligeroPoseidon_df.index = stack_univar_zc_ligeroPoseidon_df.index.str.replace(
-        "Average Runtime", "Univar ligeroPoseidon")
-
-    # merge the dataframe, match the same columns between dataframes to the correct column
-    merged_multilin_df = pd.concat(
-        [stack_multilin_zc_hyrax_df, 
-         stack_multilin_zc_kzg_df, 
-        #  stack_multilin_zc_ligeroPoseidon_df, 
-         stack_multilin_zc_ligero_df
-         ], axis=0)
-    merged_univar_df = pd.concat(
-        [stack_univar_zc_kzg_df, 
-        #  stack_univar_zc_ligeroPoseidon_df, 
-         stack_univar_zc_ligero_df
-         ], axis=0)
+    
     
     # sort the order by the index column
     merged_multilin_df = merged_multilin_df.sort_index()
@@ -484,29 +437,78 @@ def parallel_stacked_bar_chart_univ_mulin_numvar_comm(save_fig=False):
 
     return None
 
+def plot_testcases(root_dir, save_fig=False):
+    """
+    Iterate over testcase folders in `root_dir` and plot subplots for NTT vs SumCheck.
+    
+    Each folder should contain:
+        - One NTT log file
+        - One SumCheck log file
+    The helper functions handle parsing into DataFrames.
+    """
+    testcase_dirs = [d for d in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, d))]
+    print(testcase_dirs)
+    n = len(testcase_dirs)
+
+    # Auto subplot grid
+    cols = math.ceil(math.sqrt(n))
+    rows = math.ceil(n / cols)
+
+    fig, axes = plt.subplots(rows, cols, figsize=(6 * cols, 4 * rows), squeeze=False)
+    axes = axes.flatten()
+
+    for idx, testcase in enumerate(sorted(testcase_dirs)):
+        ax = axes[idx]
+        folder_path = os.path.join(root_dir, testcase)
+        files = os.listdir(folder_path)
+
+        # Identify logs by filename keywords
+        ntt_file = "univar_opt_bench_24_24_run_12_ligero_open_60.log"
+        sumcheck_file = "mullin_opt_bench_24_24_run_12_ligero_open_48.log"
+
+        if not ntt_file or not sumcheck_file:
+            print(f"Skipping {testcase}, missing logs.")
+            continue
+
+        # Reuse your helpers
+        df_ntt = plot_multi_lin_zc(
+            file_path=os.path.join(folder_path, ntt_file),
+            start_line="Prover starts Opt NTT",  # adjust if needed
+            save_fig=False,
+        )
+        df_ntt.index = df_ntt.index.str.replace("Average Runtime", "NTT")
+
+        df_sum = plot_univar_zc(
+            file_path=os.path.join(folder_path, sumcheck_file),
+            start_line="Prover starts Opt SumCheck",  # adjust if needed
+            save_fig=False,
+        )
+        df_sum.index = df_sum.index.str.replace("Average Runtime", "SumCheck")
+
+        # Merge for plotting
+        combined_df = pd.concat([df_ntt, df_sum], axis=1).fillna(0)
+
+        combined_df.T.plot(ax=ax, marker="o", logy=True)  # log scale
+        ax.set_title(testcase)
+        ax.set_xlabel("Steps")
+        ax.set_ylabel("Runtime (s, log scale)")
+        ax.legend()
+
+    # Hide unused axes if grid is larger than needed
+    for j in range(idx + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    plt.tight_layout()
+
+    if save_fig:
+        out_path = os.path.join(root_dir, "ntt_vs_sumcheck.png")
+        plt.savefig(out_path)
+        print(f"Saved figure to {out_path}")
+
+    plt.show()
+
 
 if __name__ == '__main__':
-
-    save_each_fig = False
-
-    # stack_univar_zc_df = plot_univar_zc(
-    #     file_path="output_log/univar_opt_bench_24_24_run_1_kzg_open_5.log",
-    #     start_line="Opt Univariate Proof Generation Test ",
-    #     save_fig=save_each_fig,
-    # )
-
-    # stack_multi_lin_zc_df = plot_multi_lin_zc(
-    #     file_path="output_log/mullin_opt_bench_24_24_run_1_kzg_open_4.log",
-    #     start_line="Prover starts Opt multilinear for 2^",
-    #     save_fig=save_each_fig,
-    # )
-
-    # # Parallel stacked bar chart for both univariate and multilinear ZC
-    # parallel_stacked_bar_chart(
-    #     [stack_univar_zc_df, stack_multi_lin_zc_df],
-    #     output_path="output_log/parallel_stacked_bar_chart_1_22_26.png"
-    # )
-
-    parallel_stacked_bar_chart_univ_mulin_numvar_comm(True)
-
+    root_dir = "output_log"  # change to your directory
+    plot_testcases(root_dir, save_fig=True)
     print("End...")
