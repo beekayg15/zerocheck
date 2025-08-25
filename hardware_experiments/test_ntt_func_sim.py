@@ -1103,19 +1103,7 @@ def run_fourstep_fit_on_chip_no_sparsity(target_n, target_bw, polynomial, unroll
     pe_counts = [1, 2, 4, 8, 16]  # [1, 2, 4, 8, 16, 32, 64]
 
     # fixed for a given n
-    M, N, omegas_L, omega_L, omegas_N, omega_N, omegas_M, omega_M, modulus = get_twiddle_factors(target_n, bit_width, progress_print)
-
-    # Generate random data and reshape it.
-    start_time = time.time()
-    # data = [random.randint(0, modulus - 2) for _ in range(1<<target_n)]
-    data = np.zeros(1 << target_n, dtype=np.int64)
-    
-    end_time = time.time()
-    print(f"Data generation time: {end_time - start_time:.2f} seconds") if progress_print else None
-
-    # Reshape data into M x N matrix (list of lists)
-    # matrix = [data[i*N:(i+1)*N] for i in range(M)]
-    matrix = np.reshape(data, (M, N))
+    M, N = closest_powers_of_two(target_n)
 
     # Initialize results dictionary
     results = {}
@@ -1205,7 +1193,7 @@ def run_one_config_fourstep_fit_onchip(target_n=20, target_bw=64, polynomial=[["
     print(f"Polynomial features: unique_mles={num_unique_mles}, reused_mles={num_reused_mles}, adds={num_adds}, products={num_products}")
     
     # Test parameters
-    sparsity_list = [0, 1/2, 3/4, 7/8]  # Test sparsity values: 0%, 50%, 75%, 87.5%
+    sparsity_list = [0] #, 1/2, 3/4, 7/8]  # Test sparsity values: 0%, 50%, 75%, 87.5%
     unroll_factors_pow = 6  # Test unroll factors up to 2^6 = 64
 
     single_config = True
