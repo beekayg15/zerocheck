@@ -719,7 +719,7 @@ def plot_gate_acrx_bw_grid_2x3(sc_df, ntt_df, filename, poly_groups, bw_list):
                 ax.set_xlim(0, 0.55)
             # Fix: set y range per row
             if row == 0:
-                ax.set_ylim(0, 650)
+                ax.set_ylim(50, 400)
             elif row == 1:
                 ax.set_ylim(100, 650)
             if row == 1:
