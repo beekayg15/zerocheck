@@ -714,6 +714,19 @@ def plot_gate_acrx_bw_grid(sc_df, ntt_df, filename, poly_groups, bw_list):
                     handles.append(Line2D([0], [0], marker=marker_dict[gate_name], color='w', label=f"{gate_name} (NTT)",
                                           markerfacecolor='C3', markeredgecolor='k', markersize=10, linestyle='None'))
                 ax.legend(handles=handles, loc='best', fontsize=11, frameon=True, framealpha=0.5)
+
+            if row == 0 and col == 2:
+                ax.text(0.28, 0.9, 'C', color='black', fontsize=16, fontweight='bold', ha='center', va='center', transform=ax.transAxes, zorder=10)
+                ax.annotate('', xy=(0.15, 0.82), xytext=(0.26, 0.87),
+                            xycoords='axes fraction', textcoords='axes fraction',
+                            arrowprops=dict(facecolor='red', edgecolor='red', arrowstyle='->', lw=2),
+                            zorder=11)
+                ax.text(0.15, 0.9, 'D', color='black', fontsize=16, fontweight='bold', ha='center', va='center', transform=ax.transAxes, zorder=10)
+                ax.annotate('', xy=(0.065, 0.87), xytext=(0.13, 0.88),
+                            xycoords='axes fraction', textcoords='axes fraction',
+                            arrowprops=dict(facecolor='blue', edgecolor='blue', arrowstyle='->', lw=2),
+                            zorder=11)   
+                
     plt.tight_layout()
     plt.savefig(f"{filename}_gate_acrx_bw_grid.pdf", bbox_inches='tight')
     print(f"Saved plot to {filename}_gate_acrx_bw_grid.pdf")
@@ -721,7 +734,7 @@ def plot_gate_acrx_bw_grid(sc_df, ntt_df, filename, poly_groups, bw_list):
 
 
 if __name__ == "__main__":
-    n_values = 26
+    n_values = 32
     bw_values = [64, 256, 1024]  # in GB/s
 
     # ################################################

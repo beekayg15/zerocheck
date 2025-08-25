@@ -713,6 +713,241 @@ def plot_gate_acrx_groups(sc_df, ntt_df, filename, poly_groups):
     plt.close(fig)
 
 
+def plot_gate_acrx_group_single(sc_df, ntt_df, filename, poly_group):
+    """
+    Draw a single plot for one group of polynomials (gates).
+    Shows Pareto points for both SumCheck and NTT for each gate in the group.
+    Args:
+        sc_df: DataFrame for sumcheck results
+        ntt_df: DataFrame for NTT results
+        filename: output file prefix (no extension)
+        poly_group: list of gates (each gate is a list of lists)
+    """
+    marker_styles = ['o', 's']  # 'o' for SumCheck, 's' for NTT
+    color_list = plt.cm.tab10.colors  # Up to 10 distinct colors
+    group_gate_names = [gate_to_string(gate) for gate in poly_group]
+    group_sc_gate_names = [gate_to_string([[*term, "fz"] for term in gate]) for gate in poly_group]
+    color_dict = {gate_name: color_list[i % len(color_list)] for i, gate_name in enumerate(group_gate_names)}
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+
+    for i, gate in enumerate(poly_group):
+        gate_name = gate_to_string(gate)
+        sc_gate_name = gate_to_string([[*term, "fz"] for term in gate])
+        gate_sc_df = sc_df[sc_df["sumcheck_gate"] == sc_gate_name]
+        gate_ntt_df = ntt_df[ntt_df["sumcheck_gate"] == gate_name]
+        color = color_dict[gate_name]
+        # Pareto filter for Sumcheck
+        if not gate_sc_df.empty:
+            costs = gate_sc_df[["area", "total_latency"]].values
+            pareto_mask = is_pareto_efficient(costs)
+            pareto_gate_sc_df = gate_sc_df[pareto_mask]
+            ax.scatter(
+                pareto_gate_sc_df["total_latency"] / 1e3,
+                pareto_gate_sc_df["area"],
+                marker=marker_styles[0],
+                color=color,
+                s=30,
+                edgecolor="k",
+                alpha=0.8,
+                label=f"{gate_name} (SumCheck)"
+            )
+        # Pareto filter for NTT
+        if not gate_ntt_df.empty:
+            area_col = "total_area" if "total_area" in gate_ntt_df.columns else "area"
+            costs_ntt = gate_ntt_df[[area_col, "total_latency"]].values
+            pareto_mask_ntt = is_pareto_efficient(costs_ntt)
+            pareto_gate_ntt_df = gate_ntt_df[pareto_mask_ntt]
+            ax.scatter(
+                pareto_gate_ntt_df["total_latency"] / 1e3,
+                pareto_gate_ntt_df[area_col],
+                marker=marker_styles[1],
+                color=color,
+                s=35,
+                edgecolor="k",
+                alpha=0.8,
+                label=f"{gate_name} (NTT)"
+            )
+
+    ax.set_xlabel("Runtime (μs)", fontsize=14)
+    ax.set_ylabel("Area (mm²)", fontsize=14)
+    ax.set_ylim(0, 650)  # Limit y-axis between 0 and 650
+    ax.set_xlim(1, 30)  # Convert limits from ns to ms
+    ax.grid(True, which='major', color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.minorticks_on()
+    ax.tick_params(axis='both', labelsize=14)
+    # Custom legend (avoid duplicate labels)
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    # Place legend outside as 2x2 grid on top
+    ax.legend(
+        by_label.values(),
+        by_label.keys(),
+        fontsize=12,
+        frameon=False,
+        framealpha=0.7,
+        loc='upper center',
+        bbox_to_anchor=(0.5, 1.22),
+        ncol=2,
+        columnspacing=1.2,
+        handletextpad=0.5,
+        borderaxespad=0.2
+    )
+    plt.tight_layout()
+    plt.savefig(f"{filename}_gate_acrx_group_single.pdf", bbox_inches='tight')
+    plt.savefig(f"{filename}_gate_acrx_group_single.png", bbox_inches='tight')
+    print(f"Saved plot to {filename}_gate_acrx_group_single.pdf")
+    plt.close(fig)
+
+
+def plot_gate_acrx_group_inset(sc_df, ntt_df, filename, poly_group):
+    """
+    Draw a single plot for one group of polynomials (gates).
+    Shows Pareto points for both SumCheck and NTT for each gate in the group.
+    Args:
+        sc_df: DataFrame for sumcheck results
+        ntt_df: DataFrame for NTT results
+        filename: output file prefix (no extension)
+        poly_group: list of gates (each gate is a list of lists)
+    """
+    marker_styles = ['o', 's']  # 'o' for SumCheck, 's' for NTT
+    color_list = plt.cm.tab10.colors  # Up to 10 distinct colors
+    group_gate_names = [gate_to_string(gate) for gate in poly_group]
+    group_sc_gate_names = [gate_to_string([[*term, "fz"] for term in gate]) for gate in poly_group]
+    color_dict = {gate_name: color_list[i % len(color_list)] for i, gate_name in enumerate(group_gate_names)}
+
+    fig, ax = plt.subplots(figsize=(6, 4.5))
+
+    # Main plot
+    for i, gate in enumerate(poly_group):
+        gate_name = gate_to_string(gate)
+        sc_gate_name = gate_to_string([[*term, "fz"] for term in gate])
+        gate_sc_df = sc_df[sc_df["sumcheck_gate"] == sc_gate_name]
+        gate_ntt_df = ntt_df[ntt_df["sumcheck_gate"] == gate_name]
+        color = color_dict[gate_name]
+        # Pareto filter for Sumcheck
+        if not gate_sc_df.empty:
+            costs = gate_sc_df[["area", "total_latency"]].values
+            pareto_mask = is_pareto_efficient(costs)
+            pareto_gate_sc_df = gate_sc_df[pareto_mask]
+            ax.scatter(
+                pareto_gate_sc_df["total_latency"] / 1e3,
+                pareto_gate_sc_df["area"],
+                marker=marker_styles[0],
+                color=color,
+                s=30,
+                edgecolor="k",
+                alpha=0.8,
+                label=f"{gate_name} (SumCheck)"
+            )
+        # Pareto filter for NTT
+        if not gate_ntt_df.empty:
+            area_col = "total_area" if "total_area" in gate_ntt_df.columns else "area"
+            costs_ntt = gate_ntt_df[[area_col, "total_latency"]].values
+            pareto_mask_ntt = is_pareto_efficient(costs_ntt)
+            pareto_gate_ntt_df = gate_ntt_df[pareto_mask_ntt]
+            ax.scatter(
+                pareto_gate_ntt_df["total_latency"] / 1e3,
+                pareto_gate_ntt_df[area_col],
+                marker=marker_styles[1],
+                color=color,
+                s=35,
+                edgecolor="k",
+                alpha=0.8,
+                label=f"{gate_name} (NTT)"
+            )
+
+    ax.set_xlabel("Runtime (μs)", fontsize=14)
+    ax.set_ylabel("Area (mm²)", fontsize=14)
+    ax.set_ylim(0, 650)  # Limit y-axis between 0 and 650
+    ax.set_xlim(1, 17)  # Convert limits from ns to ms
+    ax.grid(True, which='major', color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.minorticks_on()
+    ax.tick_params(axis='both', labelsize=14)
+    # Custom legend (avoid duplicate labels)
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    # Place legend outside as 2x2 grid on top
+    ax.legend(
+        by_label.values(),
+        by_label.keys(),
+        fontsize=12,
+        frameon=False,
+        framealpha=0.7,
+        loc='upper center',
+        bbox_to_anchor=(0.42, 1.3),
+        ncol=2,
+        columnspacing=1.2,
+        handletextpad=0.5,
+        borderaxespad=0.2
+    )
+
+    # Inset axes
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+    import matplotlib.patches as patches
+    # Define the region for the inset
+    x1, x2 = 1.5, 4.5
+    y1, y2 = 400, 650
+
+    axins = inset_axes(ax, width="45%", height="45%", loc='upper right', borderpad=1.2)
+    for i, gate in enumerate(poly_group):
+        gate_name = gate_to_string(gate)
+        sc_gate_name = gate_to_string([[*term, "fz"] for term in gate])
+        gate_sc_df = sc_df[sc_df["sumcheck_gate"] == sc_gate_name]
+        gate_ntt_df = ntt_df[ntt_df["sumcheck_gate"] == gate_name]
+        color = color_dict[gate_name]
+        # Pareto filter for Sumcheck
+        if not gate_sc_df.empty:
+            costs = gate_sc_df[["area", "total_latency"]].values
+            pareto_mask = is_pareto_efficient(costs)
+            pareto_gate_sc_df = gate_sc_df[pareto_mask]
+            axins.scatter(
+                pareto_gate_sc_df["total_latency"] / 1e3,
+                pareto_gate_sc_df["area"],
+                marker=marker_styles[0],
+                color=color,
+                s=30,
+                edgecolor="k",
+                alpha=0.8
+            )
+        # Pareto filter for NTT
+        if not gate_ntt_df.empty:
+            area_col = "total_area" if "total_area" in gate_ntt_df.columns else "area"
+            costs_ntt = gate_ntt_df[[area_col, "total_latency"]].values
+            pareto_mask_ntt = is_pareto_efficient(costs_ntt)
+            pareto_gate_ntt_df = gate_ntt_df[pareto_mask_ntt]
+            axins.scatter(
+                pareto_gate_ntt_df["total_latency"] / 1e3,
+                pareto_gate_ntt_df[area_col],
+                marker=marker_styles[1],
+                color=color,
+                s=35,
+                edgecolor="k",
+                alpha=0.8
+            )
+    # Set zoomed-in region
+    axins.set_xlim(x1, x2)
+    axins.set_ylim(y1, y2)
+    axins.grid(True, which='major', color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
+    axins.minorticks_on()
+    axins.tick_params(axis='both', labelsize=10)
+
+    # Draw a rectangle on the main plot to indicate the inset area
+    x1, x2 = 1.3, 4.8
+    y1, y2 = 410, 640
+    rect = patches.Rectangle(
+        (x1, y1), x2 - x1, y2 - y1,
+        linewidth=1.5, edgecolor='gray', facecolor='none', linestyle='--', alpha=0.6, zorder=10
+    )
+    ax.add_patch(rect)
+
+    plt.tight_layout()
+    plt.savefig(f"{filename}_gate_acrx_group_single.pdf", bbox_inches='tight')
+    plt.savefig(f"{filename}_gate_acrx_group_single.png", bbox_inches='tight')
+    print(f"Saved plot to {filename}_gate_acrx_group_single.pdf")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     n_values = 17
     # bw_values = [128, 256, 1024, 2048]  # in GB/s
@@ -895,23 +1130,23 @@ if __name__ == "__main__":
     output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    ntt_result_df = sweep_miniNTT_all_onchip_configs(
-        n_size_values=[n_values],
-        polynomial_list=polynomial_list,
-        consider_sparsity=True
-    )
-    sc_results_df = sweep_onchip_sumcheck_configs(
-        num_var_list=[n_values],
-        available_bw_list=[1e9],
-        polynomial_list=polynomial_list,
-    )
-    save_results(
-        sc_results_df,
-        ntt_result_df,
-        output_dir.joinpath(f"{poly_style_name}"),
-        save_excel=True
-    )
-    # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+    # ntt_result_df = sweep_miniNTT_all_onchip_configs(
+    #     n_size_values=[n_values],
+    #     polynomial_list=polynomial_list,
+    #     consider_sparsity=True
+    # )
+    # sc_results_df = sweep_onchip_sumcheck_configs(
+    #     num_var_list=[n_values],
+    #     available_bw_list=[1e9],
+    #     polynomial_list=polynomial_list,
+    # )
+    # save_results(
+    #     sc_results_df,
+    #     ntt_result_df,
+    #     output_dir.joinpath(f"{poly_style_name}"),
+    #     save_excel=True
+    # )
+    sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
     polynomial_list = [
         [
@@ -931,14 +1166,38 @@ if __name__ == "__main__":
             [["g1", "g2", "g3", "g4"]],
         ],
     ]
-    plot_gate_acrx_groups(
+    # plot_gate_acrx_groups(
+    #     sc_df=sc_results_df,
+    #     ntt_df=ntt_result_df,
+    #     filename=output_dir.joinpath(f"{poly_style_name}_n{n_values}"),
+    #     poly_groups=polynomial_list,
+    # )
+
+    polynomial_list = [
+            [["g1", "g2", "g3"]],  # a gate of degree 3
+            [["g1", "g2", "g3", "g4"]],
+        ]
+    # plot_gate_acrx_group_single(
+    #     sc_df=sc_results_df,
+    #     ntt_df=ntt_result_df,
+    #     filename=output_dir.joinpath(f"{poly_style_name}_n{n_values}_high_degree"),
+    #     poly_group=polynomial_list,
+    # )
+
+    polynomial_list = [
+        [["g1", "g2"]],
+        [["g1", "g2"], ["g3"]],
+        [["g1", "g2"], ["g3"], ["g4"]],
+        [["g1", "g2"], ["g1"], ["g2"]],
+    ]
+    plot_gate_acrx_group_inset(
         sc_df=sc_results_df,
         ntt_df=ntt_result_df,
-        filename=output_dir.joinpath(f"{poly_style_name}_n{n_values}"),
-        poly_groups=polynomial_list,
+        filename=output_dir.joinpath(f"{poly_style_name}_n{n_values}_inset"),
+        poly_group=polynomial_list,
     )
     
-    
+
     ################################################
     print("End...")
 

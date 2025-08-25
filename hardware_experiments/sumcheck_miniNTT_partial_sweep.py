@@ -630,6 +630,126 @@ def plot_gate_acrx_bw_grid(sc_df, ntt_df, filename, poly_groups, bw_list):
     plt.close(fig)
 
 
+def plot_gate_acrx_bw_grid_2x3(sc_df, ntt_df, filename, poly_groups, bw_list):
+    """
+    Draw a 2x3 grid of subplots: each row is a group of polynomials (gates), each column is a bandwidth.
+    Each subplot: area vs latency for all gates in that group and bandwidth, for both SumCheck and NTT (Pareto filtered).
+    The legend is placed above the chart.
+    Args:
+        sc_df: DataFrame for sumcheck results
+        ntt_df: DataFrame for NTT results
+        filename: output file prefix (no extension)
+        poly_groups: list of 2 lists, each is a group of gates (gate as list of lists)
+        bw_list: list of 3 bandwidth values (must match available_bw in dfs)
+    """
+    assert len(poly_groups) == 2 and len(bw_list) == 3, "Need 2 poly groups and 3 bandwidths"
+    # Use color for each polynomial, marker for protocol
+    color_list = plt.cm.tab10.colors  # Up to 10 distinct colors
+    all_gates = [gate for group in poly_groups for gate in group]
+    unique_gate_names = [gate_to_string(gate) for gate in all_gates]
+    color_dict = {gate_name: color_list[i % len(color_list)] for i, gate_name in enumerate(unique_gate_names)}
+    marker_dict = {'SumCheck': 'o', 'NTT': 's'}
+
+    fig, axes = plt.subplots(2, 3, figsize=(12, 6), sharex=False, sharey=False)
+    legend_handles = []
+    # Collect legend handles for all gates in both groups (rows), for both SumCheck and NTT
+    for group in poly_groups:
+        for gate in group:
+            gate_name = gate_to_string(gate)
+            color = color_dict[gate_name]
+            legend_handles.append(
+                Line2D([0], [0], marker=marker_dict['SumCheck'], color='w', label=f"{gate_name} (SumCheck)",
+                       markerfacecolor=color, markeredgecolor='k', markersize=10, linestyle='None')
+            )
+            legend_handles.append(
+                Line2D([0], [0], marker=marker_dict['NTT'], color='w', label=f"{gate_name} (NTT)",
+                       markerfacecolor=color, markeredgecolor='k', markersize=10, linestyle='None')
+            )
+
+    for row, group in enumerate(poly_groups):
+        group_gate_names = [gate_to_string(gate) for gate in group]
+        group_sc_gate_names = [gate_to_string([[*term, "fz"] for term in gate]) for gate in group]
+        for col, bw in enumerate(bw_list):
+            ax = axes[row, col]
+            sub_sc_df = sc_df[(sc_df["available_bw"] == bw) & (sc_df["sumcheck_gate"].isin(group_sc_gate_names))]
+            sub_ntt_df = ntt_df[(ntt_df["available_bw"] == bw) & (ntt_df["sumcheck_gate"].isin(group_gate_names))]
+            for gate in group:
+                gate_name = gate_to_string(gate)
+                sc_gate_name = gate_to_string([[*term, "fz"] for term in gate])
+                gate_sc_df = sub_sc_df[sub_sc_df["sumcheck_gate"] == sc_gate_name]
+                gate_ntt_df = sub_ntt_df[sub_ntt_df["sumcheck_gate"] == gate_name]
+                color = color_dict[gate_name]
+                # Pareto filter for Sumcheck
+                if not gate_sc_df.empty:
+                    costs = gate_sc_df[["area", "total_latency"]].values
+                    pareto_mask = is_pareto_efficient(costs)
+                    pareto_gate_sc_df = gate_sc_df[pareto_mask]
+                    s1 = ax.scatter(
+                        pareto_gate_sc_df["total_latency"] / 1e6,
+                        pareto_gate_sc_df["area"],
+                        marker=marker_dict['SumCheck'],
+                        color=color,
+                        s=20,
+                        edgecolor="k",
+                        alpha=0.8,
+                        label=f"{gate_name} (SumCheck)"
+                    )
+                # Pareto filter for NTT
+                if not gate_ntt_df.empty:
+                    area_col = "total_area" if "total_area" in gate_ntt_df.columns else "area"
+                    costs_ntt = gate_ntt_df[[area_col, "total_latency"]].values
+                    pareto_mask_ntt = is_pareto_efficient(costs_ntt)
+                    pareto_gate_ntt_df = gate_ntt_df[pareto_mask_ntt]
+                    s2 = ax.scatter(
+                        pareto_gate_ntt_df["total_latency"] / 1e6,
+                        pareto_gate_ntt_df[area_col],
+                        marker=marker_dict['NTT'],
+                        color=color,
+                        s=20,
+                        edgecolor="k",
+                        alpha=0.8,
+                        label=f"{gate_name} (NTT)"
+                    )
+            # Set y and x axis limits as requested
+            if col == 0:
+                ax.set_xlim(0, 8)
+            elif col == 1:
+                ax.set_xlim(0, 2)
+            elif col == 2:
+                ax.set_xlim(0, 0.55)
+            # Fix: set y range per row
+            if row == 0:
+                ax.set_ylim(0, 650)
+            elif row == 1:
+                ax.set_ylim(100, 650)
+            if row == 1:
+                ax.set_xlabel("Runtime (ms)", fontsize=13)
+            if col == 0:
+                ax.set_ylabel("Area (mm²)", fontsize=13)
+            if row == 0:
+                ax.set_title(f"Bandwidth: {bw} GB/s", fontsize=14)
+            ax.grid(True, which='major', color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
+            ax.minorticks_on()
+            ax.tick_params(axis='both', labelsize=12)
+
+    # Place the legend above the chart
+    fig.legend(
+        handles=legend_handles,
+        loc='upper center',
+        bbox_to_anchor=(0.48, 1.1),
+        ncol=min(4, len(legend_handles)),
+        fontsize=12,
+        frameon=False,
+        framealpha=0.85,
+    )
+
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    plt.savefig(f"{filename}_gate_acrx_bw_grid_2x3.pdf", bbox_inches='tight')
+    plt.savefig(f"{filename}_gate_acrx_bw_grid_2x3.png", bbox_inches='tight')
+    print(f"Saved plot to {filename}_gate_acrx_bw_grid_2x3.pdf")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     n_values = 20
     bw_values = [64, 256, 1024]  # in GB/s
@@ -805,6 +925,7 @@ if __name__ == "__main__":
 
         [["g1", "g2"], ["g3"]],
         [["g1", "g2"], ["g1"], ["g3"]],
+        [["g1", "g2"], ["g1"], ["g2"]],
         [["g1", "g2"], ["g1"], ["g2"], ["g3"]],
 
         # [["g1", "g2"], ["g3"]],
@@ -850,12 +971,28 @@ if __name__ == "__main__":
             [["g1", "g2", "g3", "g4"]],
         ],
     ]
-
-    plot_gate_acrx_bw_grid(sc_df=sc_results_df, 
-                           ntt_df=ntt_result_df, 
-                           filename=output_dir.joinpath(f"{poly_style_name}"),
-                           poly_groups=polynomial_list,
-                           bw_list=bw_values)
+    # plot_gate_acrx_bw_grid(sc_df=sc_results_df, 
+    #                        ntt_df=ntt_result_df, 
+    #                        filename=output_dir.joinpath(f"{poly_style_name}"),
+    #                        poly_groups=polynomial_list,
+    #                        bw_list=bw_values)
+    polynomial_list = [
+        [
+            [["g1", "g2"]],
+            [["g1", "g2"], ["g3"]],
+            [["g1", "g2"], ["g3"], ["g4"]],
+            # [["g1", "g2"], ["g1"], ["g2"]],
+        ],
+        [
+            [["g1", "g2", "g3"]],
+            [["g1", "g2", "g3", "g4"]],
+        ],
+    ]
+    plot_gate_acrx_bw_grid_2x3(sc_df=sc_results_df, 
+                               ntt_df=ntt_result_df, 
+                               filename=output_dir.joinpath(f"{poly_style_name}_2x3"),
+                               poly_groups=polynomial_list,
+                               bw_list=bw_values)
 
     print("End...")
 
