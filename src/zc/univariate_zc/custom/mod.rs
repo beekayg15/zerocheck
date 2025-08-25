@@ -97,10 +97,10 @@ where
 
         // compute the vanishing polynomial of the zero domain
         // let z_poly = zero_domain.vanishing_polynomial();
-        let z_deg = zero_domain.size();
+        let z_size = zero_domain.size();
 
         let prove_time = start_timer!(|| format!(
-            "OptimizedUnivariateZeroCheck::prove, with {z_deg} zero_domain size."
+            "OptimizedUnivariateZeroCheck::prove, with {z_size} zero_domain size."
         ));
 
         let ifft_time = start_timer!(|| "IFFT for g,h,s,o from evaluations to coefficients");
@@ -113,11 +113,11 @@ where
         let coset_time = start_timer!(|| "Compute coset domain");
 
         // compute degree of quotient polynomial to
-        let f_deg = virtual_polynomial.degree();
-        let q_deg = f_deg - z_deg;
+        let f_size = virtual_polynomial.degree();
+        let q_size = f_size - z_size;
 
         // Compute the coset domain to interpolate q(X)
-        let q_domain = GeneralEvaluationDomain::<F>::new(q_deg + 1).unwrap();
+        let q_domain = GeneralEvaluationDomain::<F>::new(q_size).unwrap();
         let offset = F::GENERATOR;
         let coset_domain: GeneralEvaluationDomain<F> = q_domain.get_coset(offset).unwrap();
 
@@ -297,7 +297,7 @@ where
 mod tests {
     use crate::pcs::univariate_pcs::kzg::KZG;
     use crate::pcs::univariate_pcs::ligero::Ligero;
-    use crate::zc::univariate_zc::custom::parser::prepare_virtual_evaluation_from_string;
+    use crate::zc::univariate_zc::custom::parser::prepare_zero_virtual_evaluation_from_string;
 
     use super::*;
     use ark_bls12_381::Bls12_381;
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     // This function tests the proof and verification combined with parser
-    fn test_proof_generation_verification_with_parser(){
+    fn test_proof_generation_verification_with_parser() {
         let test_timer = start_timer!(|| "Proof Generation Test");
         let pool_prepare = rayon::ThreadPoolBuilder::new()
             .num_threads(1)
@@ -317,12 +317,12 @@ mod tests {
 
         let degree = 1 << 6;
         let input = "g*h*s + (1 - s)*(g + h)";
-        let inp_evals = prepare_virtual_evaluation_from_string(input, degree, &pool_prepare).unwrap();
+        let inp_evals =
+            prepare_zero_virtual_evaluation_from_string(input, degree, &pool_prepare).unwrap();
         let domain = GeneralEvaluationDomain::<Fr>::new(degree).unwrap();
 
         let proof_gen_timer = start_timer!(|| "Prove fn called for g, h, zero_domain");
 
-        print!("{}", inp_evals.evals_info.max_multiplicand);
         let max_degree = inp_evals.evals_info.max_multiplicand * degree;
 
         let zp = CustomUnivariateZeroCheck::<Fr, KZG<Bls12_381>>::setup(&max_degree).unwrap();

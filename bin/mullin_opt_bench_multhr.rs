@@ -4,6 +4,7 @@ use ark_ed_on_bls12_381::EdwardsAffine;
 use clap::Parser;
 use std::iter::zip;
 use std::time::Instant;
+use zerocheck::zc::multilinear_zc::optimized::parser;
 use zerocheck::{
     pcs::multilinear_pcs::{
         hyrax::Hyrax,
@@ -12,7 +13,9 @@ use zerocheck::{
         mpc::MPC,
     },
     transcripts::ZCTranscript,
-    zc::multilinear_zc::optimized::{custom_zero_test_case, OptMLZeroCheck},
+    zc::multilinear_zc::optimized::{
+        custom_zero_test_case, parser::prepare_virtual_evaluation_from_string, OptMLZeroCheck,
+    },
     ZeroCheck,
 };
 
@@ -193,12 +196,14 @@ fn test_template_ligero(
     batch_commit_threads: Option<usize>,
     batch_open_threads: Option<usize>,
     hash_scheme: Option<String>,
+    input: String,
 ) -> u128 {
     let hash_scheme = hash_scheme.unwrap_or_else(|| "sha3".to_string());
     let instant = Instant::now();
 
     // Generate a random polynomial for testing
     let poly = custom_zero_test_case::<Fr>(num_vars);
+    let poly = prepare_virtual_evaluation_from_string(&input, 0, num_vars).unwrap();
 
     let inp_params = 2 * (1 << num_vars); // Input parameters for Ligero setup
 
@@ -332,6 +337,9 @@ struct Args {
     /// Number of threads to run batch commit
     #[arg(long, default_value = "1")]
     batch_commit_threads: usize,
+
+    #[arg(long, default_value = "g*h*s + (1 - s)*(g + h)")]
+    f: String,
 }
 
 fn bench_opt_mle_zc() {
@@ -370,7 +378,8 @@ fn bench_opt_mle_zc() {
                     Some(args.run_threads),
                     Some(args.batch_commit_threads),
                     Some(args.batch_opening_threads),
-                    Some("sha3".to_string()), // Default hash scheme for Ligero
+                    Some("sha3".to_string()), // Default hash scheme for Ligero,
+                    args.f.clone(),
                 ),
                 "ligero_poseidon" => test_template_ligero(
                     size,
@@ -378,7 +387,8 @@ fn bench_opt_mle_zc() {
                     Some(args.run_threads),
                     Some(args.batch_commit_threads),
                     Some(args.batch_opening_threads),
-                    Some("poseidon".to_string()), // Use Poseidon hash scheme for Ligero
+                    Some("poseidon".to_string()), // Use Poseidon hash scheme for Ligero,
+                    args.f.clone(),
                 ),
                 _ => panic!("Invalid poly_commit_scheme"),
             };
