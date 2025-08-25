@@ -909,6 +909,7 @@ if __name__ == "__main__":
 
         [["g1", "g2"], ["g3"]],
         [["g1", "g2"], ["g1"], ["g3"]],
+        [["g1", "g2"], ["g1"], ["g2"]],
         [["g1", "g2"], ["g1"], ["g2"], ["g3"]],
 
         # [["g1", "g2"], ["g3"]],
@@ -919,24 +920,24 @@ if __name__ == "__main__":
     output_dir = Path(f"outplot_mo/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    # ntt_result_df = sweep_NTT_configs(
-    #     n_size_values=[n_values],
-    #     bw_values=bw_values,
-    #     polynomial_list=polynomial_list,
-    #     consider_sparsity=True
-    # )
-    # sc_results_df = sweep_sumcheck_configs(
-    #     num_var_list=[n_values],
-    #     available_bw_list=bw_values,
-    #     polynomial_list=polynomial_list,
-    # )
-    # save_results(
-    #     sc_results_df,
-    #     ntt_result_df,
-    #     output_dir.joinpath(f"{poly_style_name}"),
-    #     save_excel=True
-    # )
-    sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+    ntt_result_df = sweep_NTT_configs(
+        n_size_values=[n_values],
+        bw_values=bw_values,
+        polynomial_list=polynomial_list,
+        consider_sparsity=False
+    )
+    sc_results_df = sweep_sumcheck_configs(
+        num_var_list=[n_values],
+        available_bw_list=bw_values,
+        polynomial_list=polynomial_list,
+    )
+    save_results(
+        sc_results_df,
+        ntt_result_df,
+        output_dir.joinpath(f"{poly_style_name}"),
+        save_excel=True
+    )
+    # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
     polynomial_list = [
         [
             [["g1", "g2"]],
