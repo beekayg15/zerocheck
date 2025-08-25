@@ -511,6 +511,113 @@ def load_results(filename):
     return sumcheck_result_df, ntt_result_df
 
 
+# def plot_gate_acrx_groups(sc_df, ntt_df, filename, poly_groups):
+#     """
+#     Draw a 1x3 grid of subplots: each column is a group of polynomials (gates).
+#     Bandwidth is not considered.
+#     Args:
+#         sc_df: DataFrame for sumcheck results
+#         ntt_df: DataFrame for NTT results
+#         filename: output file prefix (no extension)
+#         poly_groups: list of 3 lists, each is a group of gates (gate as list of lists)
+#     """
+#     assert len(poly_groups) == 3, "Need 3 poly groups"
+#     marker_styles = ['o', '*', '^', 'X', '<', '>', 's', 'v', 'D', 'P']
+#     # Flatten all groups to get unique gates
+#     all_gates = [gate for group in poly_groups for gate in group]
+#     unique_gate_names = sorted(set(gate_to_string(gate) for gate in all_gates))
+#     marker_dict = {gate_name: marker_styles[i % len(marker_styles)] for i, gate_name in enumerate(unique_gate_names)}
+
+#     fig = plt.figure(figsize=(24, 5))
+#     gs = fig.add_gridspec(1, 4, width_ratios=[1, 1, 1, 0.8], 
+#                          )  # Reduced spacing between all subplots
+#     # Create first 3 subplots normally
+#     axes = [fig.add_subplot(gs[0, i]) for i in range(3)]
+#     # Add the 4th subplot separately since it will be 3D
+#     axes.append(fig.add_subplot(gs[0, 3], projection='3d'))
+
+#     # 1-3: original scatter plots
+#     for col, group in enumerate(poly_groups):
+#         ax = axes[col]
+#         group_gate_names = [gate_to_string(gate) for gate in group]
+#         # For SumCheck, add another 'fz' to each term for indexing
+#         group_sc_gate_names = [gate_to_string([[*term, "fz"] for term in gate]) for gate in group]
+#         sub_sc_df = sc_df[sc_df["sumcheck_gate"].isin(group_sc_gate_names)]
+#         sub_ntt_df = ntt_df[ntt_df["sumcheck_gate"].isin(group_gate_names)]
+#         for gate in group:
+#             gate_name = gate_to_string(gate)
+#             sc_gate_name = gate_to_string([[*term, "fz"] for term in gate])
+#             gate_sc_df = sub_sc_df[sub_sc_df["sumcheck_gate"] == sc_gate_name]
+#             gate_ntt_df = sub_ntt_df[sub_ntt_df["sumcheck_gate"] == gate_name]
+#             # Pareto filter for Sumcheck
+#             if not gate_sc_df.empty:
+#                 costs = gate_sc_df[["area", "total_latency"]].values
+#                 pareto_mask = is_pareto_efficient(costs)
+#                 pareto_gate_sc_df = gate_sc_df[pareto_mask]
+#                 # Convert total_latency from ns to ms
+#                 ax.scatter(
+#                     pareto_gate_sc_df["total_latency"] / 1e3,
+#                     pareto_gate_sc_df["area"],
+#                     marker=marker_dict[gate_name],
+#                     color='C0',
+#                     s=30,
+#                     edgecolor="k",
+#                     alpha=0.8,
+#                     label=f"{gate_name} (Sumcheck)"
+#                 )
+#             # Pareto filter for NTT
+#             if not gate_ntt_df.empty:
+#                 area_col = "total_area" if "total_area" in gate_ntt_df.columns else "area"
+#                 costs_ntt = gate_ntt_df[[area_col, "total_latency"]].values
+#                 pareto_mask_ntt = is_pareto_efficient(costs_ntt)
+#                 pareto_gate_ntt_df = gate_ntt_df[pareto_mask_ntt]
+#                 # Convert total_latency from ns to ms
+#                 ax.scatter(
+#                     pareto_gate_ntt_df["total_latency"] / 1e3,
+#                     pareto_gate_ntt_df[area_col],
+#                     marker=marker_dict[gate_name],
+#                     color='C3',
+#                     s=35,
+#                     edgecolor="k",
+#                     alpha=0.8,
+#                     label=f"{gate_name} (NTT)"
+#                 )
+#         # Change x-axis to ms units
+#         xticks = ax.get_xticks()
+#         ax.set_xlabel("Runtime (μs)", fontsize=14)
+#         ax.set_ylim(0, 650)  # Limit y-axis between 0 and 650
+#         ax.set_xlim(1, 30)  # Convert limits from ns to ms
+#         ax.set_xticklabels([f"{x:.0f}" for x in ax.get_xticks()], fontsize=14)
+#         ax.grid(True, which='major', color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
+#         ax.minorticks_on()
+#         ax.tick_params(axis='y', labelsize=14)
+#         if col == 0:
+#             ax.set_ylabel("Area (mm²)", fontsize=14)
+#         # Custom legend for each subplot (group)
+#         handles = []
+#         for gate in group:
+#             gate_name = gate_to_string(gate)
+#             handles.append(Line2D([0], [0], marker=marker_dict[gate_name], color='w', label=f"{gate_name} (SumCheck)",
+#                       markerfacecolor='C0', markeredgecolor='k', markersize=10, linestyle='None'))
+#             handles.append(Line2D([0], [0], marker=marker_dict[gate_name], color='w', label=f"{gate_name} (NTT)",
+#                       markerfacecolor='C3', markeredgecolor='k', markersize=10, linestyle='None'))
+#         ax.legend(handles=handles, loc='best', fontsize=12, framealpha=0.7)
+
+
+#     # 4th subplot: 3D surface from plot_n17_ntt_sumcheck_allonchip
+#     from sram_budget_plot import plot_n17_ntt_sumcheck_allonchip
+#     plot_n17_ntt_sumcheck_allonchip(max_MB=200, ax=axes[3])
+#     axes[3].spines['top'].set_visible(False)
+#     axes[3].spines['right'].set_visible(False)
+#     axes[3].spines['bottom'].set_visible(False)
+#     axes[3].spines['left'].set_visible(False)
+#     plt.tight_layout()
+#     plt.savefig(f"{filename}_gate_acrx_groups.pdf", bbox_inches='tight')
+#     plt.savefig(f"{filename}_gate_acrx_groups.png", bbox_inches='tight')
+#     print(f"Saved plot to {filename}_gate_acrx_groups.pdf")
+#     plt.close(fig)
+
+
 def plot_gate_acrx_groups(sc_df, ntt_df, filename, poly_groups):
     """
     Draw a 1x3 grid of subplots: each column is a group of polynomials (gates).
@@ -528,13 +635,9 @@ def plot_gate_acrx_groups(sc_df, ntt_df, filename, poly_groups):
     unique_gate_names = sorted(set(gate_to_string(gate) for gate in all_gates))
     marker_dict = {gate_name: marker_styles[i % len(marker_styles)] for i, gate_name in enumerate(unique_gate_names)}
 
-    fig = plt.figure(figsize=(24, 5))
-    gs = fig.add_gridspec(1, 4, width_ratios=[1, 1, 1, 0.8], 
-                         )  # Reduced spacing between all subplots
-    # Create first 3 subplots normally
+    fig = plt.figure(figsize=(18, 4))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1, 1, 1])
     axes = [fig.add_subplot(gs[0, i]) for i in range(3)]
-    # Add the 4th subplot separately since it will be 3D
-    axes.append(fig.add_subplot(gs[0, 3], projection='3d'))
 
     # 1-3: original scatter plots
     for col, group in enumerate(poly_groups):
@@ -603,14 +706,6 @@ def plot_gate_acrx_groups(sc_df, ntt_df, filename, poly_groups):
                       markerfacecolor='C3', markeredgecolor='k', markersize=10, linestyle='None'))
         ax.legend(handles=handles, loc='best', fontsize=12, framealpha=0.7)
 
-
-    # 4th subplot: 3D surface from plot_n17_ntt_sumcheck_allonchip
-    from sram_budget_plot import plot_n17_ntt_sumcheck_allonchip
-    plot_n17_ntt_sumcheck_allonchip(max_MB=200, ax=axes[3])
-    axes[3].spines['top'].set_visible(False)
-    axes[3].spines['right'].set_visible(False)
-    axes[3].spines['bottom'].set_visible(False)
-    axes[3].spines['left'].set_visible(False)
     plt.tight_layout()
     plt.savefig(f"{filename}_gate_acrx_groups.pdf", bbox_inches='tight')
     plt.savefig(f"{filename}_gate_acrx_groups.png", bbox_inches='tight')

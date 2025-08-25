@@ -668,6 +668,7 @@ def run_miniNTT_partial_onchip(target_n: int, polynomial, target_bw: int, modadd
             "total_modmuls": total_modmuls,
             "total_modadds": total_modadds,
             "total_num_words": total_num_words,
+            "q_intt_total_cycles": q_intt_result["total_cycles"],
         }
     return results
 

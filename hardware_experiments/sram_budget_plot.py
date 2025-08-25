@@ -492,24 +492,161 @@ def plot_n17_ntt_sumcheck_allonchip(ax, max_MB=None, filename=None):
     ax.legend(handles=legend_patches, loc='center left', bbox_to_anchor=(0.06, 0.7), frameon=True)
 
 
-def plot_n17_n20_n28_ntt_sumcheck_1x3(max_MB=400, filename=None):
-    """
-    Draw a 1x3 grid:
-      - Left: n=17, All onchip NTT + All onchip SumCheck
-      - Middle: n=20, Streaming NTT + All onchip SumCheck
-      - Right: n=28, Four-step NTT + All onchip SumCheck
-    Each subplot: x=unique_mle, y=degree, z=SRAM (MB), two surfaces per subplot.
-    """
-    n_list = [17, 20, 28]
+# def plot_n17_n20_n28_ntt_sumcheck_1x3(max_MB=600, filename=None):
+#     """
+#     Draw a 1x3 grid:
+#       - Left: n=17, All onchip NTT + All onchip SumCheck
+#       - Middle: n=20, Streaming NTT + All onchip SumCheck
+#       - Right: n=28, Four-step NTT only (no SumCheck surface)
+#     Each subplot: x=unique_mle, y=degree, z=SRAM (MB), two surfaces per subplot except right.
+#     """
+#     n_list = [17, 20, 28]
+#     ntt_cases = ["All onchip", "Stream", "Four-step"]
+#     ntt_cmaps = [cm.Blues, cm.Oranges, cm.Purples]
+#     sumcheck_cmap = cm.Greens
+#     degrees = range(2, 7)
+#     unique_mles_list = range(1, 9)
+
+#     fig = plt.figure(figsize=(18, 6))
+#     for idx, (n, ntt_case, ntt_cmap) in enumerate(zip(n_list, ntt_cases, ntt_cmaps)):
+#         # NTT data
+#         ntt_data = []
+#         for deg in degrees:
+#             for num_mle in unique_mles_list:
+#                 try:
+#                     sram_mb = ntt_sram_MB(ntt_case, n, num_mle, deg)
+#                 except Exception:
+#                     sram_mb = float('nan')
+#                 ntt_data.append({
+#                     "degree": deg,
+#                     "unique_mle": num_mle,
+#                     "sram_mb": sram_mb,
+#                 })
+#         ntt_df = pd.DataFrame(ntt_data)
+
+#         ax = fig.add_subplot(1, 3, idx + 1, projection='3d')
+#         ax.view_init(10, -130)
+
+#         # NTT surface with color normalization (avoid lightest colors)
+#         X_ntt, Y_ntt = np.meshgrid(
+#             sorted(ntt_df["unique_mle"].unique()),
+#             sorted(ntt_df["degree"].unique())
+#         )
+#         Z_ntt = np.empty_like(X_ntt, dtype=float)
+#         for i in range(X_ntt.shape[0]):
+#             for j in range(X_ntt.shape[1]):
+#                 val = ntt_df[
+#                     (ntt_df["unique_mle"] == X_ntt[i, j]) &
+#                     (ntt_df["degree"] == Y_ntt[i, j])
+#                 ]["sram_mb"]
+#                 Z_ntt[i, j] = val.values[0] if not val.empty else np.nan
+#         if max_MB is not None:
+#             Z_ntt = np.where(Z_ntt > max_MB, np.nan, Z_ntt)
+#         # Use a colormap range that avoids the lightest colors (map [0,1] to [0.3,1])
+#         norm_ntt = Normalize(Y_ntt.min(), Y_ntt.max())
+#         scaled_norm = 0.3 + 0.6 * norm_ntt(Y_ntt)
+#         facecolors_ntt = ntt_cmap(scaled_norm)
+#         ax.plot_surface(
+#             X_ntt, Y_ntt, Z_ntt,
+#             facecolors=facecolors_ntt,
+#             alpha=0.8,
+#             linewidth=0,
+#             antialiased=True,
+#             shade=False
+#         )
+
+#         # Only draw SumCheck surface for first two plots
+#         if idx < 2:
+#             # SumCheck data (always all onchip)
+#             sumcheck_data = []
+#             for deg in degrees:
+#                 for num_mle in unique_mles_list:
+#                     try:
+#                         sram_mb = sumcheck_sram_MB(n, num_mle, deg)
+#                     except Exception:
+#                         sram_mb = float('nan')
+#                     sumcheck_data.append({
+#                         "degree": deg,
+#                         "unique_mle": num_mle,
+#                         "sram_mb": sram_mb,
+#                     })
+#             sumcheck_df = pd.DataFrame(sumcheck_data)
+
+#             X_sc, Y_sc = np.meshgrid(
+#                 sorted(sumcheck_df["unique_mle"].unique()),
+#                 sorted(sumcheck_df["degree"].unique())
+#             )
+#             Z_sc = np.empty_like(X_sc, dtype=float)
+#             for i in range(X_sc.shape[0]):
+#                 for j in range(X_sc.shape[1]):
+#                     val = sumcheck_df[
+#                         (sumcheck_df["unique_mle"] == X_sc[i, j]) &
+#                         (sumcheck_df["degree"] == Y_sc[i, j])
+#                     ]["sram_mb"]
+#                     Z_sc[i, j] = val.values[0] if not val.empty else np.nan
+#             if max_MB is not None:
+#                 Z_sc = np.where(Z_sc > max_MB, np.nan, Z_sc)
+#             # Use a colormap range that avoids the lightest colors (map [0,1] to [0.3,1])
+#             norm_sc = Normalize(Y_sc.min(), Y_sc.max())
+#             scaled_norm_sc = 0.3 + 0.6 * norm_sc(Y_sc)
+#             facecolors_sc = sumcheck_cmap(scaled_norm_sc)
+#             ax.plot_surface(
+#                 X_sc, Y_sc, Z_sc,
+#                 facecolors=facecolors_sc,
+#                 alpha=0.6,
+#                 linewidth=0,
+#                 antialiased=True,
+#                 shade=False
+#             )
+
+#         ax.set_xlabel("Unique MLE", fontsize=13)
+#         ax.set_ylabel("Polynomial Degree", fontsize=13)
+#         ax.set_zlabel("SRAM (MB)", fontsize=13)
+#         ax.set_xticks(list(unique_mles_list))
+#         ax.set_yticks(list(degrees))
+#         if max_MB is not None:
+#             ax.set_zlim(0, max_MB)
+#         ax.tick_params(axis='x', labelsize=12)
+#         ax.tick_params(axis='y', labelsize=12)
+#         ax.tick_params(axis='z', labelsize=12)
+#         if idx == 0:
+#             ax.set_title(f"n={n}, {ntt_case} NTT + All onchip SumCheck", fontsize=14)
+#             legend_patches = [
+#                 Patch(color=ntt_cmap(0.7), label=f"{ntt_case} NTT"),
+#                 Patch(color=sumcheck_cmap(0.7), label="SumCheck All onchip")
+#             ]
+#         elif idx == 1:
+#             ax.set_title(f"n={n}, {ntt_case} NTT + All onchip SumCheck", fontsize=14)
+#             legend_patches = [
+#                 Patch(color=ntt_cmap(0.7), label=f"{ntt_case} NTT"),
+#                 Patch(color=sumcheck_cmap(0.7), label="SumCheck All onchip")
+#             ]
+#         else:
+#             ax.set_title(f"n={n}, {ntt_case} NTT", fontsize=14)
+#             legend_patches = [
+#                 Patch(color=ntt_cmap(0.7), label=f"{ntt_case} NTT")
+#             ]
+#         ax.legend(handles=legend_patches, loc='upper left', fontsize=11)
+
+#     plt.tight_layout()
+#     if filename:
+#         plt.savefig(filename, bbox_inches='tight')
+#         print(f"Plot saved to {filename}")
+#     plt.show()
+
+
+def plot_n17_n20_n26_ntt_sumcheck_1x3(max_MB=400, filename=None):
+    n_list = [17, 20, 26]
     ntt_cases = ["All onchip", "Stream", "Four-step"]
     ntt_cmaps = [cm.Blues, cm.Oranges, cm.Purples]
     sumcheck_cmap = cm.Greens
     degrees = range(2, 7)
-    unique_mles_list = range(1, 7)
+    unique_mles_list = range(1, 10)
 
     fig = plt.figure(figsize=(18, 6))
+
     for idx, (n, ntt_case, ntt_cmap) in enumerate(zip(n_list, ntt_cases, ntt_cmaps)):
-        # NTT data
+        # --- build data (unchanged) ---
         ntt_data = []
         for deg in degrees:
             for num_mle in unique_mles_list:
@@ -517,14 +654,9 @@ def plot_n17_n20_n28_ntt_sumcheck_1x3(max_MB=400, filename=None):
                     sram_mb = ntt_sram_MB(ntt_case, n, num_mle, deg)
                 except Exception:
                     sram_mb = float('nan')
-                ntt_data.append({
-                    "degree": deg,
-                    "unique_mle": num_mle,
-                    "sram_mb": sram_mb,
-                })
+                ntt_data.append(dict(degree=deg, unique_mle=num_mle, sram_mb=sram_mb))
         ntt_df = pd.DataFrame(ntt_data)
 
-        # SumCheck data (always all onchip)
         sumcheck_data = []
         for deg in degrees:
             for num_mle in unique_mles_list:
@@ -532,17 +664,13 @@ def plot_n17_n20_n28_ntt_sumcheck_1x3(max_MB=400, filename=None):
                     sram_mb = sumcheck_sram_MB(n, num_mle, deg)
                 except Exception:
                     sram_mb = float('nan')
-                sumcheck_data.append({
-                    "degree": deg,
-                    "unique_mle": num_mle,
-                    "sram_mb": sram_mb,
-                })
+                sumcheck_data.append(dict(degree=deg, unique_mle=num_mle, sram_mb=sram_mb))
         sumcheck_df = pd.DataFrame(sumcheck_data)
 
         ax = fig.add_subplot(1, 3, idx + 1, projection='3d')
-        ax.view_init(10, -130)
+        ax.view_init(10, -140)
 
-        # NTT surface
+        # --- NTT surface ---
         X_ntt, Y_ntt = np.meshgrid(
             sorted(ntt_df["unique_mle"].unique()),
             sorted(ntt_df["degree"].unique())
@@ -550,66 +678,98 @@ def plot_n17_n20_n28_ntt_sumcheck_1x3(max_MB=400, filename=None):
         Z_ntt = np.empty_like(X_ntt, dtype=float)
         for i in range(X_ntt.shape[0]):
             for j in range(X_ntt.shape[1]):
-                val = ntt_df[
-                    (ntt_df["unique_mle"] == X_ntt[i, j]) &
-                    (ntt_df["degree"] == Y_ntt[i, j])
-                ]["sram_mb"]
-                Z_ntt[i, j] = val.values[0] if not val.empty else np.nan
+                v = ntt_df[(ntt_df["unique_mle"] == X_ntt[i, j]) & (ntt_df["degree"] == Y_ntt[i, j])]["sram_mb"]
+                Z_ntt[i, j] = v.values[0] if not v.empty else np.nan
         if max_MB is not None:
             Z_ntt = np.where(Z_ntt > max_MB, np.nan, Z_ntt)
-        norm_ntt = Normalize(Y_ntt.min(), Y_ntt.max())
-        facecolors_ntt = ntt_cmap(norm_ntt(Y_ntt))
-        ax.plot_surface(
-            X_ntt, Y_ntt, Z_ntt,
-            facecolors=facecolors_ntt,
-            alpha=0.8,
-            linewidth=0,
-            antialiased=True,
-            shade=False
-        )
 
-        # SumCheck surface
-        X_sc, Y_sc = np.meshgrid(
-            sorted(sumcheck_df["unique_mle"].unique()),
-            sorted(sumcheck_df["degree"].unique())
-        )
+        # For 3rd plot, convert to GB
+        if idx == 2:
+            Z_ntt = Z_ntt / 1000.0
+
+        norm_ntt = Normalize(Y_ntt.min(), Y_ntt.max())
+        scaled_norm_ntt = 0.2 + 0.8 * norm_ntt(Y_ntt)
+        facecolors_ntt = ntt_cmap(scaled_norm_ntt)
+
+        # --- SumCheck surface (with small z-offset) ---
+        X_sc, Y_sc = np.meshgrid(sorted(sumcheck_df["unique_mle"].unique()),
+                                 sorted(sumcheck_df["degree"].unique()))
         Z_sc = np.empty_like(X_sc, dtype=float)
         for i in range(X_sc.shape[0]):
             for j in range(X_sc.shape[1]):
-                val = sumcheck_df[
-                    (sumcheck_df["unique_mle"] == X_sc[i, j]) &
-                    (sumcheck_df["degree"] == Y_sc[i, j])
-                ]["sram_mb"]
-                Z_sc[i, j] = val.values[0] if not val.empty else np.nan
+                v = sumcheck_df[(sumcheck_df["unique_mle"] == X_sc[i, j]) & (sumcheck_df["degree"] == Y_sc[i, j])]["sram_mb"]
+                Z_sc[i, j] = v.values[0] if not v.empty else np.nan
         if max_MB is not None:
             Z_sc = np.where(Z_sc > max_MB, np.nan, Z_sc)
+
+        # For 3rd plot, convert to GB
+        if idx == 2:
+            Z_sc = Z_sc / 1000.0
+
+        # Only apply tiny lift to SumCheck in the second subplot (idx == 1)
+        if idx == 1:
+            zmax = np.nanmax([Z_ntt, Z_sc])
+            eps = 0 * (max_MB if max_MB is not None else zmax if np.isfinite(zmax) else 1.0)  # 0.1389
+            Z_sc_draw = Z_sc + eps
+        else:
+            Z_sc_draw = Z_sc
+
         norm_sc = Normalize(Y_sc.min(), Y_sc.max())
-        facecolors_sc = sumcheck_cmap(norm_sc(Y_sc))
-        ax.plot_surface(
-            X_sc, Y_sc, Z_sc,
+        facecolors_sc = sumcheck_cmap(0.3 + 0.6 * norm_sc(Y_sc))
+
+        # --- draw order: NTT first, then SumCheck ---
+        surf_ntt = ax.plot_surface(X_ntt, Y_ntt, Z_ntt,
+                                   facecolors=facecolors_ntt, alpha=0.65,
+                                   linewidth=0, antialiased=True, shade=False)
+        surf_sc = ax.plot_surface(
+            X_sc, Y_sc, Z_sc_draw,
             facecolors=facecolors_sc,
-            alpha=0.6,
+            alpha=0.95,
             linewidth=0,
             antialiased=True,
             shade=False
         )
 
-        ax.set_xlabel("Unique MLE", fontsize=13)
-        ax.set_ylabel("Polynomial Degree", fontsize=13)
-        ax.set_zlabel("SRAM (MB)", fontsize=13)
+        # hint the face sorting
+        try:
+            surf_ntt.set_zsort('min')
+            surf_sc.set_zsort('max')
+        except Exception:
+            pass  # for older Matplotlib this attribute may not exist
+
+        ax.set_xlabel("Unique Polynomial", fontsize=14)
+        ax.set_ylabel("Polynomial Degree", fontsize=14)
+        # Z axis label and ticks
+        if idx == 2:
+            ax.set_zlabel("SRAM (GB)", fontsize=14)
+        else:
+            ax.set_zlabel("SRAM (MB)", fontsize=14)
         ax.set_xticks(list(unique_mles_list))
         ax.set_yticks(list(degrees))
         if max_MB is not None:
-            ax.set_zlim(0, max_MB)
-        ax.tick_params(axis='x', labelsize=12)
-        ax.tick_params(axis='y', labelsize=12)
-        ax.tick_params(axis='z', labelsize=12)
-        ax.set_title(f"n={n}, {ntt_case} NTT + All onchip SumCheck", fontsize=14)
-        legend_patches = [
+            if idx == 2:
+                ax.set_zlim(0, max_MB / 1000.0)
+            else:
+                ax.set_zlim(0, max_MB)
+        ax.tick_params(axis='x', labelsize=14)
+        ax.tick_params(axis='y', labelsize=14)
+        ax.tick_params(axis='z', labelsize=14)
+
+        # Place a dedicated text box for the title at the bottom of each subplot (axes fraction coordinates)
+        # You can adjust the y value (e.g., -0.18) to move the box up/down as needed
+        ax.text2D(0.52, 0.1, f"Workload N=$2^{{{n}}}$", transform=ax.transAxes, fontsize=16, ha='center', va='top')
+
+        # Legend: move inside plot with dedicated bbox for each subplot
+        if idx == 0:
+            legend_bbox = (0.05, 0.75)
+        elif idx == 1:
+            legend_bbox = (0.05, 0.75)
+        else:
+            legend_bbox = (0.05, 0.75)
+        ax.legend(handles=[
             Patch(color=ntt_cmap(0.7), label=f"{ntt_case} NTT"),
-            Patch(color=sumcheck_cmap(0.7), label="SumCheck All onchip")
-        ]
-        ax.legend(handles=legend_patches, loc='upper left', fontsize=11)
+            Patch(color=sumcheck_cmap(0.7), label="All onchip SumCheck")
+        ], loc='upper left', bbox_to_anchor=legend_bbox, fontsize=14, frameon=True)
 
     plt.tight_layout()
     if filename:
@@ -647,11 +807,11 @@ if __name__ == "__main__":
     #     os.makedirs(output_dir, exist_ok=True)
     # plot_n17_ntt_sumcheck_allonchip(max_MB=200, filename=output_dir / f"sram_vs_degree_n{n_values}_all_onchip.pdf")
 
-    n_values = 28
+    n_values = 26
     output_dir = Path(f"outplot_mem/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    plot_n17_n20_n28_ntt_sumcheck_1x3(max_MB=None, filename=output_dir / f"sram_vs_degree_n17_n20_n28_ntt_sumcheck_1x3.pdf")
+    plot_n17_n20_n26_ntt_sumcheck_1x3(max_MB=None, filename=output_dir / f"sram_vs_degree_n17_n20_n26_ntt_sumcheck_1x3.pdf")
 
     ################################################
 

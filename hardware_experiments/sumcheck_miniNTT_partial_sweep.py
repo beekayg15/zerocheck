@@ -82,6 +82,7 @@ def sweep_miniNTT_part_onchip_configs(n_size_values: list, bw_values: list, poly
                     value["total_area_22"] = value["total_comp_area_22"] + value["total_mem_area_22"]
                     value["total_area"] = value["total_area_22"] / params.scale_factor_22_to_7nm
                     value["total_latency"] = value["total_cycles"] + num_gate_adds * (ntt_len // (2*num_butterflies)) + 1 * ntt_len // num_butterflies
+                    value["q_intt_total_cycles"] = value["q_intt_total_cycles"]
                     row.update(value)
                     all_rows.append(row)
     miniNTT_df = pd.DataFrame(all_rows)
@@ -599,6 +600,21 @@ def plot_gate_acrx_bw_grid(sc_df, ntt_df, filename, poly_groups, bw_list):
             ax.minorticks_on()
             ax.tick_params(axis='both', labelsize=12)
 
+            # Add text 'A' and a small red arrow in the middle of the first row, third subplot
+            if row == 0 and col == 2:
+                # Place 'A' at the center of the axes
+                ax.text(0.28, 0.4, 'A', color='black', fontsize=16, fontweight='bold', ha='center', va='center', transform=ax.transAxes, zorder=10)
+                # Draw a small red arrow
+                ax.annotate('', xy=(0.24, 0.2), xytext=(0.28, 0.36),
+                            xycoords='axes fraction', textcoords='axes fraction',
+                            arrowprops=dict(facecolor='red', edgecolor='red', arrowstyle='->', lw=2),
+                            zorder=11)
+                ax.text(0.5, 0.4, 'B', color='black', fontsize=16, fontweight='bold', ha='center', va='center', transform=ax.transAxes, zorder=10)
+                ax.annotate('', xy=(0.46, 0.21), xytext=(0.5, 0.36),
+                            xycoords='axes fraction', textcoords='axes fraction',
+                            arrowprops=dict(facecolor='blue', edgecolor='blue', arrowstyle='->', lw=2),
+                            zorder=11)            
+
             if col == 1:
                 handles = []
                 for gate in group:
@@ -798,24 +814,24 @@ if __name__ == "__main__":
     output_dir = Path(f"outplot_mo_part_onchip/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    ntt_result_df = sweep_miniNTT_part_onchip_configs(
-        n_size_values=[n_values],
-        bw_values=bw_values,
-        polynomial_list=polynomial_list,
-        consider_sparsity=True
-    )
-    sc_results_df = sweep_onchip_sumcheck_configs(
-        num_var_list=[n_values],
-        available_bw_list=bw_values,
-        polynomial_list=polynomial_list,
-    )
-    save_results(
-        sc_results_df,
-        ntt_result_df,
-        output_dir.joinpath(f"{poly_style_name}"),
-        save_excel=True
-    )
-    # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+    # ntt_result_df = sweep_miniNTT_part_onchip_configs(
+    #     n_size_values=[n_values],
+    #     bw_values=bw_values,
+    #     polynomial_list=polynomial_list,
+    #     consider_sparsity=True
+    # )
+    # sc_results_df = sweep_onchip_sumcheck_configs(
+    #     num_var_list=[n_values],
+    #     available_bw_list=bw_values,
+    #     polynomial_list=polynomial_list,
+    # )
+    # save_results(
+    #     sc_results_df,
+    #     ntt_result_df,
+    #     output_dir.joinpath(f"{poly_style_name}"),
+    #     save_excel=True
+    # )
+    sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
     polynomial_list = [
         [
             [["g1", "g2"]],
