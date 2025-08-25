@@ -489,17 +489,17 @@ where
     // return Ok(ve);
     // --- Adding a zeroizing variable "o" ---
     // Evaluate the full expression on the domain to get the vector for `o`
-    let o_vals: Vec<F> = domain
-        .elements()
-        .map(|pt| ve.evaluate_at_point(pt))
-        .collect();
+    // let o_vals: Vec<F> = domain
+    //     .elements()
+    //     .map(|pt| ve.evaluate_at_point(pt))
+    //     .collect();
 
-    let o_eval = Arc::new(Evaluations::from_vec_and_domain(o_vals, domain));
+    // let o_eval = Arc::new(Evaluations::from_vec_and_domain(o_vals, domain));
 
     // Optionally keep a name "o" somewhere else if you need it later.
     // Here, we just add it as an extra univariate to the VE with coef = -1.
     let mut ve_with_o = ve.clone();
-    ve_with_o.add_product(std::iter::once(o_eval), int_to_field(-1));
+    // ve_with_o.add_product(std::iter::once(o_eval), int_to_field(-1));
 
     Ok(ve_with_o)
 }
