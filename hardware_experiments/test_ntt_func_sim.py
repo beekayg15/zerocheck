@@ -949,13 +949,13 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
     else:
         unroll_factors_pow = range(0, unroll_factors_pow)
     unroll_factors = [2**i for i in unroll_factors_pow]
-    # Make the sweep denser between 2 and 128 (inclusive), step 32
-    dense_min = 2
-    dense_max = 128
-    dense_factors = [v for v in range(dense_min, dense_max + 1, 32)]
+
+    dense_min = 128
+    dense_max = 8192
+    dense_factors = [v for v in range(dense_min, dense_max + 1, 512)]
     unroll_factors = sorted(set(unroll_factors + dense_factors))
 
-    pe_counts = [1, 2, 4, 8, 16]  # [1, 2, 4, 8, 16, 32, 64]
+    pe_counts = [1, 2, 4, 8, 16, 32]  # [1, 2, 4, 8, 16, 32, 64]
 
     # fixed for a given n
     M, N, omegas_L, omega_L, omegas_N, omega_N, omegas_M, omega_M, modulus = get_twiddle_factors(target_n, bit_width, progress_print)
