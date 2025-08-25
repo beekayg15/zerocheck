@@ -302,7 +302,7 @@ def get_latencies_and_rates_with_sparsity(col_words, row_words, num_bfs, num_pes
     return rw_latencies, compute_latencies, prefetch_latencies
 
 # we should get this value from the simulator. this is the latency for a single NTT
-def expected_latency(M, N, num_pes, prefetch_latencies, mem_latencies, compute_latencies):
+def analytical_latency(M, N, num_pes, prefetch_latencies, mem_latencies, compute_latencies):
     
     first_step_prefetch_latency, fourth_step_prefetch_latency = prefetch_latencies
     r_or_w_mem_latency_cols, r_or_w_mem_latency_rows, r_and_w_mem_latency_cols, r_and_w_mem_latency_rows = mem_latencies
@@ -316,7 +316,7 @@ def expected_latency(M, N, num_pes, prefetch_latencies, mem_latencies, compute_l
     col_ntt_latency = first_step_prefetch_latency + 2*r_or_w_mem_latency_cols + 2*max(r_or_w_mem_latency_cols, compute_latency_cols) + (col_steps - 4)*max(compute_latency_cols, r_and_w_mem_latency_cols)
     row_ntt_latency = fourth_step_prefetch_latency + 2*r_or_w_mem_latency_rows + 2*max(r_or_w_mem_latency_rows, compute_latency_rows) + (row_steps- 4)*max(compute_latency_rows, r_and_w_mem_latency_rows)
 
-    return col_ntt_latency + row_ntt_latency
+    return col_ntt_latency + row_ntt_latency, col_ntt_latency, row_ntt_latency
 
 
 def characterize_poly(polynomial, debug=False):
@@ -756,7 +756,7 @@ def run_fit_onchip(target_n=None, target_bw=None, progress_print=False, polynomi
                     single_ntt_cycles = cycle_time_1 + cycle_time_2
 
                     # Calculate expected latency for this configuration
-                    expected_cycles = expected_latency(M, N, pe_amt, 
+                    expected_cycles, *_ = analytical_latency(M, N, pe_amt, 
                                                       (first_step_prefetch_latency, fourth_step_prefetch_latency),
                                                       (r_or_w_mem_latency_cols, r_or_w_mem_latency_rows, r_and_w_mem_latency_cols, r_and_w_mem_latency_rows),
                                                       (compute_latency_cols, compute_latency_rows))
@@ -925,6 +925,9 @@ def run_notfit_onchip():
 
 def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, unroll_factors_pow=None, progress_print=False, single_config=False, single_config_params=None):
 
+    if sparse_fraction == 0:
+        return run_fourstep_fit_on_chip_no_sparsity(target_n, target_bw, polynomial, unroll_factors_pow=unroll_factors_pow, progress_print=progress_print, single_config=single_config, single_config_params=single_config_params)
+    
     skip_compute = True
 
     if polynomial is None:
@@ -1068,6 +1071,123 @@ def run_fourstep_fit_on_chip(target_n, sparse_fraction, target_bw, polynomial, u
     return results
 
 
+def run_fourstep_fit_on_chip_no_sparsity(target_n, target_bw, polynomial, unroll_factors_pow=None, progress_print=False, single_config=False, single_config_params=None):
+
+    skip_compute = True
+
+    if polynomial is None:
+        # polynomial = [["f"]]
+        exit("must provide polynomial")
+
+    poly_features = characterize_poly(polynomial)
+    num_unique_mles = poly_features[0]
+
+    bit_width = 256
+    freq = 1e9
+
+    modadd_latency = 1
+    modmul_latency = 20
+    bf_latency = modmul_latency + modadd_latency
+
+    if unroll_factors_pow is None:
+        unroll_factors_pow = range(0, math.ceil(target_n / 2)) if target_n is not None else range(0, 13)
+    else:
+        unroll_factors_pow = range(0, unroll_factors_pow)
+    unroll_factors = [2**i for i in unroll_factors_pow]
+    # Make the sweep denser between 2 and 128 (inclusive), step 32
+    dense_min = 2
+    dense_max = 128
+    dense_factors = [v for v in range(dense_min, dense_max + 1, 32)]
+    unroll_factors = sorted(set(unroll_factors + dense_factors))
+
+    pe_counts = [1, 2, 4, 8, 16]  # [1, 2, 4, 8, 16, 32, 64]
+
+    # fixed for a given n
+    M, N, omegas_L, omega_L, omegas_N, omega_N, omegas_M, omega_M, modulus = get_twiddle_factors(target_n, bit_width, progress_print)
+
+    # Generate random data and reshape it.
+    start_time = time.time()
+    # data = [random.randint(0, modulus - 2) for _ in range(1<<target_n)]
+    data = np.zeros(1 << target_n, dtype=np.int64)
+    
+    end_time = time.time()
+    print(f"Data generation time: {end_time - start_time:.2f} seconds") if progress_print else None
+
+    # Reshape data into M x N matrix (list of lists)
+    # matrix = [data[i*N:(i+1)*N] for i in range(M)]
+    matrix = np.reshape(data, (M, N))
+
+    # Initialize results dictionary
+    results = {}
+
+    if single_config:
+        target_U, target_pe_amt = single_config_params
+    
+
+    for U in tqdm(unroll_factors, desc="Unroll factors (U)"):
+        if single_config and U != target_U:
+            continue
+        
+        for pe_amt in pe_counts:
+            if single_config and pe_amt != target_pe_amt:
+                continue
+            # num_col_words = M*pe_amt
+            # num_row_words = N*pe_amt
+            # total_bfs = U*pe_amt
+
+            r_or_w_mem_latency_cols, r_or_w_mem_latency_rows, r_and_w_mem_latency_cols, r_and_w_mem_latency_rows, \
+                compute_latency_cols, compute_latency_rows, first_step_prefetch_latency, fourth_step_prefetch_latency = \
+                get_latencies_and_rates(M, N, U, pe_amt, bit_width, target_bw, freq, modadd_latency, modmul_latency, bf_latency, debug=True)
+
+            # Calculate expected latency for this configuration
+            single_ntt_cycles, col_ntt_cycles, row_ntt_cycles = analytical_latency(M, N, pe_amt, 
+                                            (first_step_prefetch_latency, fourth_step_prefetch_latency),
+                                            (r_or_w_mem_latency_cols, r_or_w_mem_latency_rows, r_and_w_mem_latency_cols, r_and_w_mem_latency_rows),
+                                            (compute_latency_cols, compute_latency_rows))
+            
+            transposed_mat_dims = (N, M)
+
+            all_ntt_cycles = single_ntt_cycles*num_unique_mles
+            elementwise_cycles = estimate_elementwise_latency(poly_features, transposed_mat_dims, U, pe_amt, bit_width, target_bw, freq, modadd_latency=modadd_latency, modmul_latency=modmul_latency, bmax=5)
+
+            total_cycles = all_ntt_cycles + elementwise_cycles
+
+            # 5 buffers in each PE, each of length M
+            ping_pong_double_buffer_words = M*3*pe_amt
+
+            local_twiddle_words = M / 2     # shared among all PEs
+            global_scale_twiddle_words = M  # shared among all PEs
+            global_twiddle_words = M * pe_amt  # each PE computes its own global twiddle column
+
+            total_num_words = ping_pong_double_buffer_words + local_twiddle_words + global_scale_twiddle_words + global_twiddle_words
+
+            total_modmuls = U*pe_amt
+            total_modadds = U*2*pe_amt
+
+            data_to_store = {
+                "total_cycles": total_cycles,
+                "single_ntt_cycles": single_ntt_cycles,
+                "col_ntt_cycles": col_ntt_cycles,
+                "row_ntt_cycles": row_ntt_cycles,
+                "all_ntt_cycles": all_ntt_cycles,
+                "elementwise_cycles": elementwise_cycles,
+                "total_modmuls": total_modmuls,
+                "total_modadds": total_modadds,
+                "total_num_words": total_num_words
+            }
+            
+            if single_config:
+                print(f"Config: n={target_n}, bw={target_bw}, U={U}, pe_amt={pe_amt}")
+                print("Single configuration results:")
+                for key, value in data_to_store.items():
+                    print(f"  {key}: {value}")
+
+            results[(target_n, target_bw, U, pe_amt)] = data_to_store
+
+    return results
+
+
+
 def run_one_config_fourstep_fit_onchip(target_n=20, target_bw=64, polynomial=[["f"]], U_in=4, pe_amt_in=8):
     """
     Test the run_fourstep_fit_on_chip function with a single configuration
@@ -1193,7 +1313,7 @@ def run_one_config_fit_onchip(target_n=20, target_bw=64, polynomial=[["f"]], U_i
     single_ntt_cycles = cycle_time_1 + cycle_time_2
 
     # Calculate expected latency for this configuration
-    expected_cycles = expected_latency(M, N, pe_amt, 
+    expected_cycles, *_ = analytical_latency(M, N, pe_amt, 
                                       (first_step_prefetch_latency, fourth_step_prefetch_latency),
                                       (r_or_w_mem_latency_cols, r_or_w_mem_latency_rows, r_and_w_mem_latency_cols, r_and_w_mem_latency_rows),
                                       (compute_latency_cols, compute_latency_rows))
@@ -1373,8 +1493,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     polynomial = [["g", "h", "s"], ["o"]]
-    target_n = 23
-    target_bw = 1e99
+    target_n = args.n
+    target_bw = args.bw
     U_in=16
     pe_amt_in=1
 
