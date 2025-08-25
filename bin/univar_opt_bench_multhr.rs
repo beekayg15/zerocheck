@@ -226,7 +226,7 @@ struct Args {
     #[arg(long, default_value = "1")]
     batch_commit_threads: usize,
 
-    #[arg(long, default_value = "g*h*s + (1 - s)*(g + h)")]
+    #[arg(long, default_value = "g1*g2 + g3 + g4")]
     f: String,
 }
 
