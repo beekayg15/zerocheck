@@ -713,7 +713,7 @@ def plot_gate_acrx_groups(sc_df, ntt_df, filename, poly_groups):
     plt.close(fig)
 
 
-def plot_gate_acrx_group_single(sc_df, ntt_df, filename, poly_group):
+def plot_gate_acrx_group_single(sc_df, ntt_df, filename, poly_group, color_idx):
     """
     Draw a single plot for one group of polynomials (gates).
     Shows Pareto points for both SumCheck and NTT for each gate in the group.
@@ -727,7 +727,7 @@ def plot_gate_acrx_group_single(sc_df, ntt_df, filename, poly_group):
     color_list = plt.cm.tab10.colors  # Up to 10 distinct colors
     group_gate_names = [gate_to_string(gate) for gate in poly_group]
     group_sc_gate_names = [gate_to_string([[*term, "fz"] for term in gate]) for gate in poly_group]
-    color_dict = {gate_name: color_list[i % len(color_list)] for i, gate_name in enumerate(group_gate_names)}
+    color_dict = {gate_name: color_list[color_idx[i] % len(color_list)] for i, gate_name in enumerate(group_gate_names)}
 
     fig, ax = plt.subplots(figsize=(6, 4))
 
@@ -800,7 +800,7 @@ def plot_gate_acrx_group_single(sc_df, ntt_df, filename, poly_group):
     plt.close(fig)
 
 
-def plot_gate_acrx_group_inset(sc_df, ntt_df, filename, poly_group):
+def plot_gate_acrx_group_inset(sc_df, ntt_df, filename, poly_group, color_idx):
     """
     Draw a single plot for one group of polynomials (gates).
     Shows Pareto points for both SumCheck and NTT for each gate in the group.
@@ -814,7 +814,7 @@ def plot_gate_acrx_group_inset(sc_df, ntt_df, filename, poly_group):
     color_list = plt.cm.tab10.colors  # Up to 10 distinct colors
     group_gate_names = [gate_to_string(gate) for gate in poly_group]
     group_sc_gate_names = [gate_to_string([[*term, "fz"] for term in gate]) for gate in poly_group]
-    color_dict = {gate_name: color_list[i % len(color_list)] for i, gate_name in enumerate(group_gate_names)}
+    color_dict = {gate_name: color_list[color_idx[i] % len(color_list)] for i, gate_name in enumerate(group_gate_names)}
 
     fig, ax = plt.subplots(figsize=(6, 4.5))
 
@@ -1130,23 +1130,23 @@ if __name__ == "__main__":
     output_dir = Path(f"outplot_mo_onchip/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    # ntt_result_df = sweep_miniNTT_all_onchip_configs(
-    #     n_size_values=[n_values],
-    #     polynomial_list=polynomial_list,
-    #     consider_sparsity=True
-    # )
-    # sc_results_df = sweep_onchip_sumcheck_configs(
-    #     num_var_list=[n_values],
-    #     available_bw_list=[1e9],
-    #     polynomial_list=polynomial_list,
-    # )
-    # save_results(
-    #     sc_results_df,
-    #     ntt_result_df,
-    #     output_dir.joinpath(f"{poly_style_name}"),
-    #     save_excel=True
-    # )
-    sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
+    ntt_result_df = sweep_miniNTT_all_onchip_configs(
+        n_size_values=[n_values],
+        polynomial_list=polynomial_list,
+        consider_sparsity=True
+    )
+    sc_results_df = sweep_onchip_sumcheck_configs(
+        num_var_list=[n_values],
+        available_bw_list=[1e9],
+        polynomial_list=polynomial_list,
+    )
+    save_results(
+        sc_results_df,
+        ntt_result_df,
+        output_dir.joinpath(f"{poly_style_name}"),
+        save_excel=True
+    )
+    # sc_results_df, ntt_result_df = load_results(output_dir.joinpath(f"{poly_style_name}"))
 
     polynomial_list = [
         [
@@ -1177,24 +1177,28 @@ if __name__ == "__main__":
             [["g1", "g2", "g3"]],  # a gate of degree 3
             [["g1", "g2", "g3", "g4"]],
         ]
+    polynomial_color_idx = [4, 5]
     # plot_gate_acrx_group_single(
     #     sc_df=sc_results_df,
     #     ntt_df=ntt_result_df,
     #     filename=output_dir.joinpath(f"{poly_style_name}_n{n_values}_high_degree"),
     #     poly_group=polynomial_list,
+    #     color_idx=polynomial_color_idx
     # )
 
     polynomial_list = [
         [["g1", "g2"]],
         [["g1", "g2"], ["g3"]],
         [["g1", "g2"], ["g3"], ["g4"]],
-        [["g1", "g2"], ["g1"], ["g2"]],
+        # [["g1", "g2"], ["g1"], ["g2"]],
     ]
+    polynomial_color_idx = [0, 1, 2]
     plot_gate_acrx_group_inset(
         sc_df=sc_results_df,
         ntt_df=ntt_result_df,
         filename=output_dir.joinpath(f"{poly_style_name}_n{n_values}_inset"),
         poly_group=polynomial_list,
+        color_idx=polynomial_color_idx
     )
     
 

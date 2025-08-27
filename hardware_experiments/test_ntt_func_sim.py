@@ -60,32 +60,40 @@ def simulate_4step_all_onchip(arch, num_pes, mat, global_omega, modulus, output_
     total_length = num_rows * num_cols
     L = total_length
 
-    assert num_cols % num_pes == 0, "Number of columns must be divisible by number of PEs."
+    # Calculate number of column groups (may not be divisible)
+    num_col_groups = (num_cols + num_pes - 1) // num_pes
+    num_steps = num_col_groups + 2
 
     # Perform prefetch operation once before processing all columns
     arch.prefetch()
 
     output_matrix = [[0] * num_cols for _ in range(num_rows)]
 
-    num_col_groups = num_cols // num_pes
-    num_steps = num_cols // num_pes + 2
-    for idx in range(num_steps):  # Only need +2 now since no prefetch stage
+    for idx in range(num_steps):
         if idx < num_col_groups:
-            # Extract num_pes columns starting from idx * num_pes
-            col = [[mat[row][idx * num_pes + pe] for pe in range(num_pes)] for row in range(num_rows)] if not skip_compute else "don't care"
-            tags = [idx * num_pes + pe for pe in range(num_pes)]  # Individual column indices
+            # For the last group, may have fewer than num_pes columns
+            start_col = idx * num_pes
+            end_col = min(start_col + num_pes, num_cols)
+            actual_pes = end_col - start_col
+
+            if not skip_compute:
+                # Prepare columns for each PE (may be less than num_pes for last group)
+                col = [[mat[row][start_col + pe] for pe in range(actual_pes)] for row in range(num_rows)]
+            else:
+                col = "don't care"
+            tags = [start_col + pe for pe in range(actual_pes)]
         else:
             col = None
             tags = None
+
         arch.step(col, tags, tags_only=tags_only)
         if not skip_compute:
             out_data, out_tags = arch.out
-            if idx >= 2:  # Output starts after 2 cycles (READ -> COMPUTE -> WRITE)
+            if idx >= 2:
                 if out_tags is not None:
                     if isinstance(out_tags, list):
                         # Multi-PE case: out_data is a list of columns, out_tags is a list of column indices
-                        for pe in range(num_pes):
-                            col_idx = out_tags[pe]
+                        for pe, col_idx in enumerate(out_tags):
                             for i in range(num_rows):
                                 if output_scale:
                                     output_matrix[i][col_idx] = (out_data[pe][i] * pow(global_omega, (i * col_idx) % L, modulus)) % modulus
@@ -599,8 +607,8 @@ def run_miniNTT_partial_onchip(target_n: int, polynomial, target_bw: int, modadd
         sweep_butterflies = [1] + sweep_butterflies
 
     dense_min = 32
-    dense_max = 1024
-    dense_butterflies = [v for v in range(dense_min, min(dense_max, max_butterflies) + 1, 128)]
+    dense_max = 1600
+    dense_butterflies = [v for v in range(dense_min, min(dense_max, max_butterflies) + 1, 256)] + [672]
     sweep_butterflies = sorted(set(sweep_butterflies + dense_butterflies))
     dense_min = 1024
     dense_max = 8192
@@ -644,7 +652,7 @@ def run_miniNTT_partial_onchip(target_n: int, polynomial, target_bw: int, modadd
 
         total_modmuls = mini_ntt_result["total_modmuls"]
         total_modadds = mini_ntt_result["total_modadds"]
-        total_num_words = mini_ntt_result["total_num_words"] * 2 + ntt_len / 2  # pingpong+1double bf+1result, +local_twiddle_words
+        total_num_words = mini_ntt_result["total_num_words"] * 1.5 + max_degree * ntt_len + ntt_len / 2  # pingpong+1double bf+1result, +local_twiddle_words
 
         # 3. q iNTT
         q_intt_result = simulate_mini_ntt_onchip(

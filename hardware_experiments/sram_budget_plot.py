@@ -34,9 +34,15 @@ def ntt_sram_MB(case: str, n: int, num_unique_mles: int, max_degree: int) -> flo
     """
     deg_ntt = get_step_radix_gate_degree(max_degree)[0]
     if case == "All onchip":
-        return (2 * (deg_ntt * 2 ** n) * num_unique_mles + 0.5 * (deg_ntt * 2 ** n)) * (32 / 1024 / 1024)
+        if len(get_step_radix_gate_degree(max_degree)) == 1:
+            return (2 * (deg_ntt * 2 ** n) * num_unique_mles + 0.5 * (deg_ntt * 2 ** n)) * (32 / 1024 / 1024)
+        else:
+            return ((2 * (deg_ntt * 2 ** n) + get_step_radix_gate_degree(max_degree)[1] * (2 ** n)) * num_unique_mles + 0.5 * (deg_ntt * 2 ** n)) * (32 / 1024 / 1024)
     elif case == "Stream":
-        return (4 * (deg_ntt * 2 ** n) * 1 + 0.5 * (deg_ntt * 2 ** n)) * (32 / 1024 / 1024)
+        if len(get_step_radix_gate_degree(max_degree)) == 1:
+            return (4 * (deg_ntt * 2 ** n) * 1 + 0.5 * (deg_ntt * 2 ** n)) * (32 / 1024 / 1024)
+        else:
+            return ((3 * (deg_ntt * 2 ** n) + max_degree * 2 ** n) * 1 + 0.5 * (deg_ntt * 2 ** n)) * (32 / 1024 / 1024)
     elif case == "Four-step":
         closest_n = closest_powers_of_two(n)[0]
         return ((3 + 0.5 + 1 + 1) * closest_n) * (32 / 1024 / 1024)
@@ -635,8 +641,8 @@ def plot_n17_ntt_sumcheck_allonchip(ax, max_MB=None, filename=None):
 #     plt.show()
 
 
-def plot_n17_n20_n26_ntt_sumcheck_1x3(max_MB=400, filename=None):
-    n_list = [17, 20, 26]
+def plot_n17_n20_n32_ntt_sumcheck_1x3(max_MB=400, filename=None):
+    n_list = [17, 20, 32]
     ntt_cases = ["All onchip", "Stream", "Four-step"]
     ntt_cmaps = [cm.Blues, cm.Oranges, cm.Purples]
     sumcheck_cmap = cm.Greens
@@ -683,9 +689,9 @@ def plot_n17_n20_n26_ntt_sumcheck_1x3(max_MB=400, filename=None):
         if max_MB is not None:
             Z_ntt = np.where(Z_ntt > max_MB, np.nan, Z_ntt)
 
-        # For 3rd plot, convert to GB
+        # For 3rd plot, convert to TB
         if idx == 2:
-            Z_ntt = Z_ntt / 1000.0
+            Z_ntt = Z_ntt / 1000000.0
 
         norm_ntt = Normalize(Y_ntt.min(), Y_ntt.max())
         scaled_norm_ntt = 0.2 + 0.8 * norm_ntt(Y_ntt)
@@ -702,9 +708,9 @@ def plot_n17_n20_n26_ntt_sumcheck_1x3(max_MB=400, filename=None):
         if max_MB is not None:
             Z_sc = np.where(Z_sc > max_MB, np.nan, Z_sc)
 
-        # For 3rd plot, convert to GB
+        # For 3rd plot, convert to TB
         if idx == 2:
-            Z_sc = Z_sc / 1000.0
+            Z_sc = Z_sc / 1000000.0
 
         # Only apply tiny lift to SumCheck in the second subplot (idx == 1)
         if idx == 1:
@@ -741,9 +747,9 @@ def plot_n17_n20_n26_ntt_sumcheck_1x3(max_MB=400, filename=None):
         ax.set_ylabel("Polynomial Degree", fontsize=14)
         # Z axis label and ticks
         if idx == 2:
-            ax.set_zlabel("SRAM (GB)", fontsize=14)
+            ax.set_zlabel("Memory (TB)", fontsize=14)
         else:
-            ax.set_zlabel("SRAM (MB)", fontsize=14)
+            ax.set_zlabel("Memory (MB)", fontsize=14)
         ax.set_xticks(list(unique_mles_list))
         ax.set_yticks(list(degrees))
         if max_MB is not None:
@@ -755,20 +761,26 @@ def plot_n17_n20_n26_ntt_sumcheck_1x3(max_MB=400, filename=None):
         ax.tick_params(axis='y', labelsize=14)
         ax.tick_params(axis='z', labelsize=14)
 
+        if idx == 2:
+            ax.text(10, 4, 0, "26 MB", color='red', fontsize=13, ha='center', va='bottom', zorder=20)
+            ax.quiver(
+                10, 4, 0,    # starting point (same as text, or slightly above it)
+                0, 0.6, -1,    # direction vector (0, 0, -1 means down in z)
+                length=0.4,    # scale length of the arrow
+                arrow_length_ratio=0.3,
+                color='red',
+                linewidth=1.5
+            )
+
         # Place a dedicated text box for the title at the bottom of each subplot (axes fraction coordinates)
-        # You can adjust the y value (e.g., -0.18) to move the box up/down as needed
         ax.text2D(0.52, 0.1, f"Workload N=$2^{{{n}}}$", transform=ax.transAxes, fontsize=16, ha='center', va='top')
 
         # Legend: move inside plot with dedicated bbox for each subplot
-        if idx == 0:
-            legend_bbox = (0.05, 0.75)
-        elif idx == 1:
-            legend_bbox = (0.05, 0.75)
-        else:
-            legend_bbox = (0.05, 0.75)
+        legend_bbox = (0.05, 0.75)
+        legend_label = "Full onchip" if ntt_case == "All onchip" else ntt_case
         ax.legend(handles=[
-            Patch(color=ntt_cmap(0.7), label=f"{ntt_case} NTT"),
-            Patch(color=sumcheck_cmap(0.7), label="All onchip SumCheck")
+            Patch(color=ntt_cmap(0.7), label=f"{legend_label} NTT"),
+            Patch(color=sumcheck_cmap(0.7), label="Full onchip SumCheck")
         ], loc='upper left', bbox_to_anchor=legend_bbox, fontsize=14, frameon=True)
 
     plt.tight_layout()
@@ -807,11 +819,11 @@ if __name__ == "__main__":
     #     os.makedirs(output_dir, exist_ok=True)
     # plot_n17_ntt_sumcheck_allonchip(max_MB=200, filename=output_dir / f"sram_vs_degree_n{n_values}_all_onchip.pdf")
 
-    n_values = 26
+    n_values = 32
     output_dir = Path(f"outplot_mem/n_{n_values}")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    plot_n17_n20_n26_ntt_sumcheck_1x3(max_MB=None, filename=output_dir / f"sram_vs_degree_n17_n20_n26_ntt_sumcheck_1x3.pdf")
+    plot_n17_n20_n32_ntt_sumcheck_1x3(max_MB=None, filename=output_dir / f"sram_vs_degree_n17_n20_n32_ntt_sumcheck_1x3.pdf")
 
     ################################################
 
