@@ -1,29 +1,30 @@
-# Zero-Check Rust Implementation
+# ZeroCheck Implementation
 
-This is a rust implementation of the zero check protocol that is used to verify that an univariate function evaluates to 0 on a certain set of inputs.
+## 1. Software Baseline
 
-## Installation
+1. The ZeroCheck protocol implementation can be found under `/src`, which includes both univariate zerocheck and multilinear zerocheck.
+2. Several tests are provided and can be run in `/src`. For concrete software benchmarks, see `/bin`.
+   - Example benchmark script: `/bin/run_bins.sh`
 
-To run the program locally, run in bash:
+For multilinear:
 ```
-git clone https://github.com/beekayg15/zerocheck.git
-```
-
-then, run
-```
-cargo build
+RAYON_NUM_THREADS=64 cargo run --release --bin mullin_opt_bench_multhr -- --repeat=2 --min-size=10 --max-size=10 --prepare-threads=64 --run-threads=12 --poly-commit-scheme=ligero --batch-opening-threads=48
 ```
 
-to build the packages and 
+For univariate:
 ```
-cargo test
-```
-
-to run the unit tests.
-
-Before rising a PR, run 
-```
-cargo format
+RAYON_NUM_THREADS=64 cargo run --release --bin univar_opt_bench_multhr -- --repeat=2 --min-size=10 --max-size=10 --prepare-threads=64 --run-threads=12 --poly-commit-scheme=ligero --batch-opening-threads=60
 ```
 
-to format the code.
+## 2. Hardware Architecture Simulator
+
+The hardware architecture simulator is located in `/hardware_experiments`.
+
+There are two main parts:
+
+- **SumCheck simulation:** Uses `helper_funcs.py`, which provides simulation and sweeping for SumCheck.
+- **NTT simulation:**
+  - On-chip NTT (mini-NTT) simulation: see `test_ntt_func_sim.py` (`run_miniNTT_fit_onchip` function).
+  - Large NTT (four-step NTT) simulation: see `test_ntt_func_sim.py` (`run_fourstep_fit_on_chip` function).
+
+
