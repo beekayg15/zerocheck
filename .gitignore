@@ -30,6 +30,8 @@ bench/
 *.xlsx
 *.png
 *.jpg
+*.pkl
+*.pdf
 
 # Dependencies and tools
 /.idea/
@@ -37,6 +39,7 @@ bench/
 /dist/
 /out/
 /output_log
+/hardware_experiments/debug_logs
 
 /config.stamp
 /Makefile

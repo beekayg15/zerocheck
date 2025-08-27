@@ -56,6 +56,9 @@ def get_area_cost(hw_config, latencies, constants, available_bw):
     # accumulation registers area
     accumulation_reg_area_mm2 = num_accumulate_regs*reg_area
 
+    accumulation_pe_modadds = num_pes * num_product_lanes
+    accumulation_pe_modadds_mm2 = accumulation_pe_modadds * modadd_area
+
     # SRAM buffers area
     sumcheck_buffer_area_mb = num_sumcheck_sram_buffers*onchip_mle_size*bits_per_scalar/BITS_PER_MB
     sumcheck_buffer_area_mm2 = sumcheck_buffer_area_mb*MB_CONVERSION_FACTOR
@@ -65,7 +68,7 @@ def get_area_cost(hw_config, latencies, constants, available_bw):
 
     hbm_phy_area_mm2 = get_phy_cost(available_bw)
 
-    total_area_mm2 = multifunction_tree_compute_area_mm2 + eval_engine_area_mm2 + accumulation_reg_area_mm2 + sumcheck_buffer_area_mm2 + tmp_mle_buffer_area_mm2
+    total_area_mm2 = multifunction_tree_compute_area_mm2 + eval_engine_area_mm2 + accumulation_reg_area_mm2 + sumcheck_buffer_area_mm2 + tmp_mle_buffer_area_mm2 + accumulation_pe_modadds_mm2
     total_area_mm2 /= scale_factor_22_to_7nm  # convert to 7nm area
 
     total_onchip_memory_MB = (
@@ -155,7 +158,7 @@ def sumcheck_only_sweep(sweep_params, sumcheck_polynomials, latencies, constants
     sumcheck_core_stats = dict()
     for idx, sumcheck_polynomial in enumerate(sumcheck_polynomials):
         
-        modmul_ops, per_round_ops = num_modmul_ops_in_polynomial(num_vars, sumcheck_polynomial, debug=True)
+        modmul_ops, per_round_ops = num_modmul_ops_in_polynomial(num_vars, sumcheck_polynomial, debug=False)
         
         sumcheck_core_stats[idx] = dict()
         for num_pes in sumcheck_pes_range:
@@ -191,7 +194,7 @@ def sumcheck_only_sweep(sweep_params, sumcheck_polynomials, latencies, constants
 
                         utilization = calc_utilization(modmul_ops, total_modmuls, total_latency)
 
-                        s_dict['total_latency'] = total_latency
+                        s_dict['total_latency'] = total_latency + (math.ceil(math.log2(num_pes)) * num_vars)  # + PE accumulation per round
                         s_dict['area'] = total_area_mm2
                         s_dict['area_with_hbm'] = total_area_mm2 + hbm_phy_area_mm2
                         s_dict['modmul_count'] = total_modmuls

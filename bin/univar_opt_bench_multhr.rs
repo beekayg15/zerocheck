@@ -5,6 +5,7 @@ use clap::Parser;
 use std::iter::zip;
 use std::time::Instant;
 use zerocheck::transcripts::ZCTranscript;
+use zerocheck::zc::univariate_zc::custom::data_structures::custom_zero_test_case_with_products;
 use zerocheck::zc::univariate_zc::custom::{
     data_structures::{VirtualEvaluation, ZeroCheckParams},
     CustomUnivariateZeroCheck,
@@ -198,11 +199,11 @@ struct Args {
     repeat: usize,
 
     /// Minimum work size exponent (2^min_size)
-    #[arg(long, default_value = "10")]
+    #[arg(long, default_value = "8")]
     min_size: usize,
 
     /// Maximum work size exponent (inclusive, 2^max_size)
-    #[arg(long, default_value = "20")]
+    #[arg(long, default_value = "8")]
     max_size: usize,
 
     /// Number of threads to use for prepare input evaluations
@@ -225,7 +226,7 @@ struct Args {
     #[arg(long, default_value = "1")]
     batch_commit_threads: usize,
 
-    #[arg(long, default_value = "g*h*s + (1 - s)*(g + h)")]
+    #[arg(long, default_value = "g1*g2 + g3 + g4")]
     f: String,
 }
 
@@ -241,8 +242,7 @@ fn bench_opt_uni_zc() {
                 .build()
                 .unwrap();
 
-            let (input_evals, domain, pp) =
-                prepare_input_evals_domain(size, &pool_prepare, args.f.clone());
+            let (input_evals, domain, pp) = prepare_input_evals_domain(size, &pool_prepare, args.f.clone());
 
             let total_runtime: u128 = match args.poly_commit_scheme.as_str() {
                 "kzg" => {

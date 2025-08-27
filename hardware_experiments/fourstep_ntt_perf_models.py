@@ -31,15 +31,15 @@ def single_fourstep_ntt(M, N, num_pes, mem_latency_for_rows, compute_latency_for
     
     return int(total_latency)
 
-# this assumes that each butterfly has only 1 modmul and 1 modadd
+# this assumes that each butterfly has only 1 modmul and 1 modadd on the critical path
 def get_compute_latency(ntt_len, num_butterflies, bf_latency, modadd_latency, output_scaled=False, debug=False):
     
     num_stages = math.log2(ntt_len)
-    first_stage = modadd_latency + ntt_len/(num_butterflies*2) - 1 # only modadd
-    most_stages = bf_latency + ntt_len/(num_butterflies*2) - 1     # modmul
+    first_stage = modadd_latency + max(ntt_len/(num_butterflies*2), 1) - 1 # only modadd
+    most_stages = bf_latency + max(ntt_len/(num_butterflies*2), 1) - 1     # modmul
     if output_scaled:
-        last_stage = bf_latency + ntt_len/(num_butterflies*2) - 1    # 3 modmuls, 1 for butterfly, 2 for elementwise multiply
-        scaling_stage = ntt_len/num_butterflies + (bf_latency - modadd_latency) - 1
+        last_stage = bf_latency + max(ntt_len/(num_butterflies*2), 1) - 1    # 3 modmuls, 1 for butterfly, 2 for elementwise multiply
+        scaling_stage = max(ntt_len/num_butterflies, 1) + (bf_latency - modadd_latency) - 1
         if debug:
             print(f"Scaling stage: {scaling_stage}")
             print(f"Last stage: {last_stage}")
@@ -54,6 +54,54 @@ def get_compute_latency(ntt_len, num_butterflies, bf_latency, modadd_latency, ou
 
     compute_latency = first_stage + (num_stages - 2) * most_stages + last_stage
     return int(compute_latency)
+
+def get_effective_num_inputs(sparse_amplified_factor, num_stages):
+    assert num_stages > 2
+
+    if sparse_amplified_factor == 1:
+        return [1] * num_stages
+
+    elif sparse_amplified_factor == 2:
+        arr = [1] + [1/2] * (num_stages - 1)
+        return arr[::-1]
+    elif sparse_amplified_factor == 4:
+        arr = [1] + [1/2] + [1/4] * (num_stages - 2)
+        return arr[::-1]
+    elif sparse_amplified_factor == 8:
+        arr = [1] + [1/2] + [1/4] + [1/8] * (num_stages - 3)
+        return arr[::-1]
+
+# this assumes that each butterfly has only 1 modmul and 1 modadd on the critical path
+def get_compute_latency_with_sparsity(ntt_len, num_butterflies, bf_latency, modadd_latency, sparse_amplified_factor, output_scaled=False, debug=False):
+    
+    num_stages = int(math.log2(ntt_len))
+    assert num_stages > 2
+
+    effective_inputs_per_stage = get_effective_num_inputs(sparse_amplified_factor, num_stages)
+    print(effective_inputs_per_stage) if debug else None
+    total_latency = 0
+    per_stage_latency = []
+    for stage in range(num_stages):
+        num_input_fraction = effective_inputs_per_stage[stage]
+        num_inputs = num_input_fraction*ntt_len/(num_butterflies*2)
+
+        if stage == 0:
+            stage_latency = modadd_latency + num_inputs - 1 # only modadd
+        elif stage == num_stages - 1:
+            stage_latency = bf_latency + num_inputs - 1
+            if output_scaled:
+                scaling_stage = ntt_len/num_butterflies + (bf_latency - modadd_latency) - 1
+                stage_latency += scaling_stage
+        else:
+            stage_latency = bf_latency + num_inputs - 1 # modmul
+
+        per_stage_latency.append(stage_latency)
+        total_latency += stage_latency
+
+    if debug:
+        print(f"Per Stage Latency: {per_stage_latency}")
+    
+    return total_latency
 
 
 # this model assumes that all PEs are simultaneously reading from from off-chip memory.
