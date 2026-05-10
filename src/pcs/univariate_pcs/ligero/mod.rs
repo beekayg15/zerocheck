@@ -1,5 +1,8 @@
 use std::marker::PhantomData;
 
+use crate::pcs::linear_code_pcs::{
+    LinCodePCCommitment, LinCodePCCommitmentState, LinCodePCProof, LocalLinearCodePCS,
+};
 use crate::pcs::PolynomialCommitmentScheme;
 use anyhow::Ok;
 use ark_crypto_primitives::sponge::poseidon::PoseidonConfig;
@@ -15,10 +18,7 @@ use ark_poly::univariate::DensePolynomial;
 use ark_poly_commit::linear_codes::UnivariateLigero as UVLigero;
 use ark_poly_commit::LabeledCommitment;
 use ark_poly_commit::{
-    linear_codes::{
-        LigeroPCParams, LinCodePCCommitment, LinCodePCCommitmentState, LinCodePCProof,
-        LinearCodePCS, LinearEncode,
-    },
+    linear_codes::{LigeroPCParams, LinearEncode},
     LabeledPolynomial, PolynomialCommitment,
 };
 use ark_std::rand::thread_rng;
@@ -92,7 +92,7 @@ where
 
         let rng = &mut thread_rng();
 
-        let (comm, comm_state) = LinearCodePCS::<
+        let (comm, comm_state) = LocalLinearCodePCS::<
             UVLigero<F, MerkleConfig<F>, Self::Polynomial, Sha256FieldsToBytesHasher<F>>,
             F,
             Self::Polynomial,
@@ -120,7 +120,7 @@ where
 
         let rng = &mut thread_rng();
 
-        let (comm, comm_state) = LinearCodePCS::<
+        let (comm, comm_state) = LocalLinearCodePCS::<
             UVLigero<F, MerkleConfig<F>, Self::Polynomial, Sha256FieldsToBytesHasher<F>>,
             F,
             Self::Polynomial,
@@ -180,7 +180,7 @@ where
         let states: Vec<LinCodePCCommitmentState<F, Sha256FieldsToBytesHasher<F>>> =
             comm.par_iter().map(|cm| cm.state.clone()).collect();
 
-        Ok(LinearCodePCS::<
+        Ok(LocalLinearCodePCS::<
             UVLigero<F, MerkleConfig<F>, Self::Polynomial, Sha256FieldsToBytesHasher<F>>,
             F,
             Self::Polynomial,
@@ -230,7 +230,7 @@ where
         let rng = &mut thread_rng();
         let mut sponge = Sha256Sponge::new();
 
-        Ok(LinearCodePCS::<
+        Ok(LocalLinearCodePCS::<
             UVLigero<F, MerkleConfig<F>, Self::Polynomial, Sha256FieldsToBytesHasher<F>>,
             F,
             Self::Polynomial,
@@ -312,7 +312,7 @@ where
 
         let rng = &mut thread_rng();
 
-        let (comm, comm_state) = LinearCodePCS::<
+        let (comm, comm_state) = LocalLinearCodePCS::<
             UVLigero<F, MerkleConfig<F>, Self::Polynomial, FieldsToBytesHasher<F>>,
             F,
             Self::Polynomial,
@@ -340,7 +340,7 @@ where
 
         let rng = &mut thread_rng();
 
-        let (comm, comm_state) = LinearCodePCS::<
+        let (comm, comm_state) = LocalLinearCodePCS::<
             UVLigero<F, MerkleConfig<F>, Self::Polynomial, FieldsToBytesHasher<F>>,
             F,
             Self::Polynomial,
@@ -401,7 +401,7 @@ where
         let states: Vec<LinCodePCCommitmentState<F, FieldsToBytesHasher<F>>> =
             comm.par_iter().map(|cm| cm.state.clone()).collect();
 
-        Ok(LinearCodePCS::<
+        Ok(LocalLinearCodePCS::<
             UVLigero<F, MerkleConfig<F>, Self::Polynomial, FieldsToBytesHasher<F>>,
             F,
             Self::Polynomial,
@@ -452,7 +452,7 @@ where
         let poseidon_config: PoseidonConfig<F> = poseidon_parameters();
         let mut sponge = PoseidonSponge::new(&poseidon_config);
 
-        Ok(LinearCodePCS::<
+        Ok(LocalLinearCodePCS::<
             UVLigero<F, MerkleConfig<F>, Self::Polynomial, FieldsToBytesHasher<F>>,
             F,
             Self::Polynomial,

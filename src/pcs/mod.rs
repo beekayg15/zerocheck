@@ -5,6 +5,7 @@ use std::fmt::Debug;
 
 pub mod multilinear_pcs;
 pub mod univariate_pcs;
+pub mod linear_code_pcs;
 
 pub trait PolynomialCommitmentScheme: Clone + Sized {
     type VerifierKey: Clone + Sync;

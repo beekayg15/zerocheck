@@ -47,3 +47,4 @@ bench/
 rustc
 __pycache__
 *.iml
+/papers
