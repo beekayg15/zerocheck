@@ -127,25 +127,35 @@ where
 
         let f_evals = virtual_polynomial.evaluate_over_domain(coset_domain, Some(&pool_run));
 
-        // Find the value of q(X) over the coset domain using threads
-        let z_evals = pool_run.install(|| {
-            zero_domain
-                .vanishing_polynomial()
-                .evaluate_over_domain(coset_domain)
-                .evals
+        // z_H(X) = X^N - 1 is periodic on the coset: at offset*w^i it equals offset^N * (w^N)^i - 1, and w^N has order
+        // |coset| / N, so only |coset| / N distinct values occur. Evaluate and batch-invert those once, then compute
+        // q_evals = f_evals * z_inv in parallel instead of one field division per point.
+        let period = coset_domain.size() / z_size;
+        let mut z_inv: Vec<F> = (0..period)
+            .map(|j| coset_domain.element(j).pow([z_size as u64]) - F::one())
+            .collect();
+        if z_inv.iter().any(|z| *z == F::zero()) {
+            panic!("Zero domain evaluation is zero, cannot compute quotient polynomial");
+        }
+        ark_ff::batch_inversion(&mut z_inv);
+        let q_evals: Vec<F> = pool_run.install(|| {
+            f_evals
+                .par_iter()
+                .enumerate()
+                .map(|(i, f_eval)| *f_eval * z_inv[i % period])
+                .collect()
         });
 
-        // Compute q_evals as f_evals / z_evals
-        let q_evals: Vec<F> = f_evals
-            .iter()
-            .zip(z_evals.iter())
-            .map(|(f_eval, z_eval)| {
-                if *z_eval == F::zero() {
-                    panic!("Zero domain evaluation is zero, cannot compute quotient polynomial");
-                }
-                *f_eval / *z_eval
-            })
-            .collect();
+        // optional equivalence check against the original per-point division (not enabled in timing runs)
+        if std::env::var("ZC_CHECK_Q").is_ok() {
+            let z_evals = zero_domain
+                .vanishing_polynomial()
+                .evaluate_over_domain(coset_domain)
+                .evals;
+            let q_ref: Vec<F> = f_evals.iter().zip(z_evals.iter()).map(|(f, z)| *f / *z).collect();
+            assert!(q_ref == q_evals, "fast q_evals differ from per-point division");
+            eprintln!("ZC_CHECK_Q: fast q_evals match per-point division ({} points)", q_evals.len());
+        }
 
         end_timer!(coset_eval_time);
         let ifft_q_time = start_timer!(|| "IFFT for q from evaluations to coefficients");

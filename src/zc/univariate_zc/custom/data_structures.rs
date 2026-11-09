@@ -262,17 +262,25 @@ impl<F: PrimeField> VirtualPolynomial<F> {
                 .collect();
         }
 
-        let mut result = vec![F::zero(); domain.size()];
-        for i in 0..domain.size() {
-            for (coef, indices) in &self.products {
+        // combine the per-polynomial evaluations point by point, in parallel when a pool is given
+        let products = &self.products;
+        let evals = &evals;
+        let combine = |i: usize| -> F {
+            let mut acc = F::zero();
+            for (coef, indices) in products {
                 let mut product = coef.clone();
                 for &index in indices {
                     product *= evals[index][i];
                 }
-                result[i] += product;
+                acc += product;
             }
+            acc
+        };
+        if let Some(pool_run) = pool_run {
+            pool_run.install(|| (0..domain.size()).into_par_iter().map(combine).collect())
+        } else {
+            (0..domain.size()).map(combine).collect()
         }
-        result
     }
 }
 
