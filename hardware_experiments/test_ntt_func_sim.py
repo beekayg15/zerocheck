@@ -533,13 +533,13 @@ def run_miniNTT_fit_onchip(target_n:int, polynomial, modadd_latency=1, modmul_la
         # 2. Bigger NTTs
         step_size = get_step_radix_gate_degree(max_degree)
         mini_ntt_result = simulate_mini_ntt_onchip(
-            step_size[0] * ntt_len, min(num_butterflies, step_size[0] * ntt_len // 2),
+            step_size[0] * N, min(num_butterflies, step_size[0] * N // 2),
             modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
             sparse_fraction=1 - 1/step_size[0] if consider_sparsity else 0,
         )
         if len(step_size) > 1:
             mini_ntt_result_b = simulate_mini_ntt_onchip(
-                step_size[1] * ntt_len, min(num_butterflies, step_size[1] * ntt_len // 2),
+                step_size[1] * N, min(num_butterflies, step_size[1] * N // 2),
                 modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
                 sparse_fraction=1 - 1/step_size[1] if consider_sparsity else 0,
             )
@@ -549,17 +549,17 @@ def run_miniNTT_fit_onchip(target_n:int, polynomial, modadd_latency=1, modmul_la
         total_cycles += mini_ntt_result["total_cycles"]
         total_modmuls = mini_ntt_result["total_modmuls"] * num_unique_mles
         total_modadds = mini_ntt_result["total_modadds"] * num_unique_mles
-        total_num_words = mini_ntt_result["total_num_words"] * num_unique_mles + ntt_len / 2  # pingpong, +local_twiddle_words
+        total_num_words = mini_ntt_result["total_num_words"] * num_unique_mles + step_size[0] * N / 2  # pingpong, +local_twiddle_words
 
         # 3. q iNTT
         q_intt_result = simulate_mini_ntt_onchip(
-            step_size[0] * ntt_len, min(num_butterflies, step_size[0] * ntt_len // 2),
+            step_size[0] * N, min(num_butterflies, step_size[0] * N // 2),
             modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
             sparse_fraction=0,
         )
         if len(step_size) > 1:
             q_intt_result_b = simulate_mini_ntt_onchip(
-                step_size[1] * ntt_len, min(num_butterflies, step_size[1] * ntt_len // 2),
+                step_size[1] * N, min(num_butterflies, step_size[1] * N // 2),
                 modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
                 sparse_fraction=0,
             )
@@ -630,13 +630,13 @@ def run_miniNTT_partial_onchip(target_n: int, polynomial, target_bw: int, modadd
         # 2. Bigger NTTs (high degree)
         step_size = get_step_radix_gate_degree(max_degree)
         mini_ntt_result = simulate_mini_ntt_onchip(
-            step_size[0] * ntt_len, min(num_butterflies, step_size[0] * ntt_len // 2),
+            step_size[0] * N, min(num_butterflies, step_size[0] * N // 2),
             modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
             sparse_fraction=1 - 1/step_size[0] if consider_sparsity else 0,
         )
         if len(step_size) > 1:
             mini_ntt_result_b = simulate_mini_ntt_onchip(
-                step_size[1] * ntt_len, min(num_butterflies, step_size[1] * ntt_len // 2),
+                step_size[1] * N, min(num_butterflies, step_size[1] * N // 2),
                 modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
                 sparse_fraction=1 - 1/step_size[1] if consider_sparsity else 0,
             )
@@ -652,17 +652,20 @@ def run_miniNTT_partial_onchip(target_n: int, polynomial, target_bw: int, modadd
 
         total_modmuls = mini_ntt_result["total_modmuls"]
         total_modadds = mini_ntt_result["total_modadds"]
-        total_num_words = mini_ntt_result["total_num_words"] * 1.5 + max_degree * ntt_len + ntt_len / 2  # pingpong+1double bf+1result, +local_twiddle_words
+        # Result accumulators: one if at most one product term (fold its MLEs first, then add the rest), else running product + running sum
+        num_product_terms = sum(1 for term in polynomial if len(term) > 1)
+        num_result_bufs = 1 if num_product_terms <= 1 else 2
+        total_num_words = mini_ntt_result["total_num_words"] * 1.5 + num_result_bufs * sum(step_size) * N + step_size[0] * N / 2  # pingpong+1double bf, +result accumulators, +local_twiddle_words
 
         # 3. q iNTT
         q_intt_result = simulate_mini_ntt_onchip(
-            step_size[0] * ntt_len, min(num_butterflies, step_size[0] * ntt_len // 2),
+            step_size[0] * N, min(num_butterflies, step_size[0] * N // 2),
             modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
             sparse_fraction=0,
         )
         if len(step_size) > 1:
             q_intt_result_b = simulate_mini_ntt_onchip(
-                step_size[1] * ntt_len, min(num_butterflies, step_size[1] * ntt_len // 2),
+                step_size[1] * N, min(num_butterflies, step_size[1] * N // 2),
                 modadd_latency=modadd_latency, modmul_latency=modmul_latency, bit_width=bit_width,
                 sparse_fraction=0,
             )

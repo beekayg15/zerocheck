@@ -43,3 +43,11 @@ def is_pareto_efficient(costs, return_mask = True):
         return is_efficient_mask
     else:
         return is_efficient
+
+
+def plot_pareto_line(ax, x, y, color, linestyle='-', linewidth=1.0, alpha=0.6):
+    """Connect Pareto points (sorted by x) with a thin line drawn behind the markers."""
+    x = np.asarray(x)
+    y = np.asarray(y)
+    order = np.argsort(x)
+    ax.plot(x[order], y[order], color=color, linestyle=linestyle, linewidth=linewidth, alpha=alpha, zorder=0.9)

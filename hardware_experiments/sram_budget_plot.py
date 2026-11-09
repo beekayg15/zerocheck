@@ -37,14 +37,14 @@ def ntt_sram_MB(case: str, n: int, num_unique_mles: int, max_degree: int) -> flo
         if len(get_step_radix_gate_degree(max_degree)) == 1:
             return (2 * (deg_ntt * 2 ** n) * num_unique_mles + 0.5 * (deg_ntt * 2 ** n)) * (32 / 1024 / 1024)
         else:
-            return ((2 * (deg_ntt * 2 ** n) + get_step_radix_gate_degree(max_degree)[1] * (2 ** n)) * num_unique_mles + 0.5 * (deg_ntt * 2 ** n)) * (32 / 1024 / 1024)
+            # the second step-radix NTT reuses the ping-pong pair of the first (larger) one, as in run_miniNTT_fit_onchip
+            return (2 * (deg_ntt * 2 ** n) * num_unique_mles + 0.5 * (deg_ntt * 2 ** n)) * (32 / 1024 / 1024)
     elif case == "Stream":
-        if len(get_step_radix_gate_degree(max_degree)) == 1:
-            return (4 * (deg_ntt * 2 ** n) * 1 + 0.5 * (deg_ntt * 2 ** n)) * (32 / 1024 / 1024)
-        else:
-            return ((3 * (deg_ntt * 2 ** n) + max_degree * 2 ** n) * 1 + 0.5 * (deg_ntt * 2 ** n)) * (32 / 1024 / 1024)
+        # Match run_miniNTT_partial_onchip: pingpong+1double bf, +1 result accumulator (one product term), +twiddles
+        return (3 * (deg_ntt * 2 ** n) + 1 * sum(get_step_radix_gate_degree(max_degree)) * 2 ** n + 0.5 * (deg_ntt * 2 ** n)) * (32 / 1024 / 1024)
     elif case == "Four-step":
-        closest_n = closest_powers_of_two(n)[0]
+        # mini-NTT length of the largest step-radix chunk, as in run_fourstep_fit_on_chip
+        closest_n = closest_powers_of_two(n + int(math.log2(deg_ntt)))[0]
         return ((3 + 0.5 + 1 + 1) * closest_n) * (32 / 1024 / 1024)
     else:
         raise ValueError("Invalid case, must be one of 'fourstep', 'stream', 'all_onchip'")
@@ -743,13 +743,13 @@ def plot_n17_n20_n32_ntt_sumcheck_1x3(max_MB=400, filename=None):
         except Exception:
             pass  # for older Matplotlib this attribute may not exist
 
-        ax.set_xlabel("Unique Polynomial", fontsize=14)
-        ax.set_ylabel("Polynomial Degree", fontsize=14)
+        ax.set_xlabel("Unique Polynomial", fontsize=14, labelpad=9)
+        ax.set_ylabel("Polynomial Degree", fontsize=14, labelpad=9)
         # Z axis label and ticks
         if idx == 2:
-            ax.set_zlabel("Memory (TB)", fontsize=14)
+            ax.set_zlabel("Memory (TB)", fontsize=14, labelpad=8)
         else:
-            ax.set_zlabel("Memory (MB)", fontsize=14)
+            ax.set_zlabel("Memory (MB)", fontsize=14, labelpad=8)
         ax.set_xticks(list(unique_mles_list))
         ax.set_yticks(list(degrees))
         if max_MB is not None:
@@ -762,7 +762,7 @@ def plot_n17_n20_n32_ntt_sumcheck_1x3(max_MB=400, filename=None):
         ax.tick_params(axis='z', labelsize=14)
 
         if idx == 2:
-            ax.text(10, 4, 0, "26 MB", color='red', fontsize=13, ha='center', va='bottom', zorder=20)
+            ax.text(10, 4, 0, "11-22 MB", color='red', fontsize=13, ha='center', va='bottom', zorder=20)
             ax.quiver(
                 10, 4, 0,    # starting point (same as text, or slightly above it)
                 0, 0.6, -1,    # direction vector (0, 0, -1 means down in z)
@@ -773,7 +773,7 @@ def plot_n17_n20_n32_ntt_sumcheck_1x3(max_MB=400, filename=None):
             )
 
         # Place a dedicated text box for the title at the bottom of each subplot (axes fraction coordinates)
-        ax.text2D(0.52, 0.1, f"Workload N=$2^{{{n}}}$", transform=ax.transAxes, fontsize=16, ha='center', va='top')
+        ax.text2D(0.52, 0.06, f"Workload N=$2^{{{n}}}$", transform=ax.transAxes, fontsize=16, ha='center', va='top')
 
         # Legend: move inside plot with dedicated bbox for each subplot
         legend_bbox = (0.05, 0.75)

@@ -7,8 +7,9 @@ import openpyxl
 import seaborn as sns
 from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
-from util import is_pareto_efficient
-from test_ntt_func_sim import run_fourstep_fit_on_chip, get_step_radix_gate_degree
+from util import is_pareto_efficient, plot_pareto_line
+from test_ntt_func_sim import run_fourstep_fit_on_chip, get_step_radix_gate_degree, characterize_poly, estimate_elementwise_latency
+from ntt_utility import closest_powers_of_two
 from tqdm import tqdm
 import math
 import os
@@ -112,16 +113,31 @@ def run_step_radix_ntt(gate_degree, n, bw, polynomial=[["f"]], consider_sparsity
                 # Sum total_cycles and other relevant fields if needed
                 if "total_cycles" in combined and "total_cycles" in val_b:
                     combined["total_cycles"] += val_b["total_cycles"]
-                # if "all_ntt_cycles" in combined and "all_ntt_cycles" in val_b:
-                #     combined["all_ntt_cycles"] += val_b["all_ntt_cycles"]
-                # if "single_ntt_cycles" in combined and "single_ntt_cycles" in val_b:
-                #     combined["single_ntt_cycles"] += val_b["single_ntt_cycles"]
-                # if "elementwise_cycles" in combined and "elementwise_cycles" in val_b:
-                #     combined["elementwise_cycles"] += val_b["elementwise_cycles"]
+                # Also sum the per-chunk NTT and element-wise cycles, so that
+                # total_cycles - elementwise_cycles is the NTT-only cost of the whole step-radix transform
+                for k in ["all_ntt_cycles", "single_ntt_cycles", "elementwise_cycles"]:
+                    if k in combined and k in val_b:
+                        combined[k] += val_b[k]
                 res[(math.log2(degree_minus1) + n, key_a[1], key_a[2], key_a[3])] = combined
             else:
                 raise ValueError(f"Key {key_b} not found in res_b. This should not happen for valid NTT sizes.")
         return res
+
+
+def fourstep_gate_elementwise_cycles(polynomial, n, bw, unroll_factor, pe_amt, bit_width=256, freq=1e9):
+    """
+    Element-wise stage of the univariate ZeroCheck for one gate, done once over the whole coset domain:
+    stream the coset evaluations of every unique polynomial, combine them and divide by z_H.
+    The coset domain of a degree-d gate is split into the step-radix chunks (d-1)N = sum(step)*N,
+    and the stage is costed with the same four-step PE layout (U butterflies x pe_amt PEs) as the transforms.
+    """
+    poly_features = characterize_poly(polynomial)
+    degree = analyze_polynomial_gate(polynomial)["degree"]
+    cycles = 0
+    for step in get_step_radix_gate_degree(degree):
+        M, N = closest_powers_of_two(int(n + math.log2(step)))
+        cycles += estimate_elementwise_latency(poly_features, (N, M), unroll_factor, pe_amt, bit_width, bw, freq)
+    return cycles
 
 
 def process_gate_n_bw(args):
@@ -157,8 +173,15 @@ def process_gate_n_bw(args):
         value_input_iNTT = res_input_iNTT.get((n, available_bw, unroll_factor, pe_amt), {})
         value_q_iNTT = res_q_iNTT.get(key, {})
         if "total_cycles" in value:
+            # Each run_fourstep_fit_on_chip call (polynomial=[["f"]]) adds its own element-wise read pass; strip it so the
+            # 2k+1 transforms are NTT-only, then charge one element-wise stage for the actual gate.
+            ntt_only = lambda v: v["total_cycles"] - v["elementwise_cycles"]
+            value["ntt_cycles"] = ntt_only(value_input_iNTT) * gate_num_unique_mle + ntt_only(value) * gate_num_unique_mle + ntt_only(value_q_iNTT)
+            value["input_ntt_cycles"] = ntt_only(value_input_iNTT) * gate_num_unique_mle + ntt_only(value) * gate_num_unique_mle
+            value["q_ntt_cycles"] = ntt_only(value_q_iNTT)
+            value["elementwise_cycles"] = fourstep_gate_elementwise_cycles(gate, n, available_bw, unroll_factor, pe_amt)
             # Repeat NTT for each MLE in series
-            value["total_latency"] = value_input_iNTT["total_cycles"] * gate_num_unique_mle + value["total_cycles"] * gate_num_unique_mle + value_q_iNTT["total_cycles"]
+            value["total_latency"] = value["ntt_cycles"] + value["elementwise_cycles"]
 
             # area cost
             value["design_modmul_area"] = value["total_modmuls"] * params.modmul_area  # 22nm, mm^2
@@ -785,6 +808,7 @@ def plot_gate_acrx_bw_grid_1x3(sc_df, ntt_df, filename, poly_group, bw_list, col
                 costs = gate_sc_df[["area", "total_latency"]].values
                 pareto_mask = is_pareto_efficient(costs)
                 pareto_gate_sc_df = gate_sc_df[pareto_mask]
+                plot_pareto_line(ax, pareto_gate_sc_df["total_latency"] / 1e9, pareto_gate_sc_df["area"], color, linestyle='-')
                 ax.scatter(
                     pareto_gate_sc_df["total_latency"] / 1e9,
                     pareto_gate_sc_df["area"],
@@ -800,11 +824,13 @@ def plot_gate_acrx_bw_grid_1x3(sc_df, ntt_df, filename, poly_group, bw_list, col
                 area_col = "total_area" if "total_area" in gate_ntt_df.columns else "area"
                 costs_ntt = gate_ntt_df[[area_col, "total_latency"]].values
                 pareto_mask_ntt = is_pareto_efficient(costs_ntt)
-                if row_idx == 0 and col <= 1:
-                    if len(pareto_mask_ntt) > 30:
-                        for i in range(30, len(pareto_mask_ntt), 8):
-                            pareto_mask_ntt[i] = True
+                # Removed: forcing every 8th non-Pareto NTT point into the plot (row 0, 64/256 GB/s); plot only Pareto points
+                # if row_idx == 0 and col <= 1:
+                #     if len(pareto_mask_ntt) > 30:
+                #         for i in range(30, len(pareto_mask_ntt), 8):
+                #             pareto_mask_ntt[i] = True
                 pareto_gate_ntt_df = gate_ntt_df[pareto_mask_ntt]
+                plot_pareto_line(ax, pareto_gate_ntt_df["total_latency"] / 1e9, pareto_gate_ntt_df[area_col], color, linestyle='--')
                 ax.scatter(
                     pareto_gate_ntt_df["total_latency"] / 1e9,
                     pareto_gate_ntt_df[area_col],
@@ -855,8 +881,9 @@ def plot_gate_acrx_bw_grid_1x3(sc_df, ntt_df, filename, poly_group, bw_list, col
                     xycoords='axes fraction', textcoords='axes fraction',
                     arrowprops=dict(facecolor='black', edgecolor='black', arrowstyle='->', lw=2),
                     zorder=11)
-        ax.text(0.55, 0.4, 'C', color='black', fontsize=16, fontweight='bold', ha='center', va='center', transform=ax.transAxes, zorder=10)
-        ax.annotate('', xy=(0.45, 0.25), xytext=(0.55, 0.35),
+        # C: 196 butterflies (U=98, 2 PEs) at 1024 GB/s, g1g2+g3+g4: 5.00 s, 23.8 mm^2 -> axes fraction (0.357, 0.298)
+        ax.text(0.52, 0.43, 'C', color='black', fontsize=16, fontweight='bold', ha='center', va='center', transform=ax.transAxes, zorder=10)
+        ax.annotate('', xy=(0.37, 0.31), xytext=(0.50, 0.39),
                     xycoords='axes fraction', textcoords='axes fraction',
                     arrowprops=dict(facecolor='black', edgecolor='black', arrowstyle='->', lw=2),
                     zorder=11)

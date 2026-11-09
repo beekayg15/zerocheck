@@ -7,7 +7,7 @@ import openpyxl
 import seaborn as sns
 from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
-from util import is_pareto_efficient
+from util import is_pareto_efficient, plot_pareto_line
 from test_ntt_func_sim import run_fit_onchip, run_miniNTT_partial_onchip, characterize_poly, get_step_radix_gate_degree
 from tqdm import tqdm
 import math
@@ -154,7 +154,10 @@ def sweep_onchip_sumcheck_configs(num_var_list: list, available_bw_list: list, p
         assert gate_degree >= 2, "Gate degree must be at least 2"
         stepNTT_big_gate_degree = get_step_radix_gate_degree(gate_degree - 1)[0]
         ntt_length = stepNTT_big_gate_degree * (2**num_vars)
-        num_word_in_ntt = ntt_length * 4 + ntt_length / 2
+        # Same as run_miniNTT_partial_onchip: pingpong+1double bf, +result accumulators, +twiddles ("fz" is appended to every term)
+        num_product_terms = sum(1 for term in sumcheck_gate if len(term) > 2)
+        num_result_bufs = 1 if num_product_terms <= 1 else 2
+        num_word_in_ntt = ntt_length * 3 + num_result_bufs * sum(get_step_radix_gate_degree(gate_degree - 1)) * (2**num_vars) + ntt_length / 2
 
         num_unique_mle_in_gate = len(set(sum(sumcheck_gate, [])))
         tmp_mle_sram_scale_factor = 0  if gate_degree <= 3 else (gate_degree + 1) / 2
@@ -802,6 +805,7 @@ def plot_gate_acrx_bw_grid_1x3(sc_df, ntt_df, filename, poly_group, bw_list, col
                 costs = gate_sc_df[["area", "total_latency"]].values
                 pareto_mask = is_pareto_efficient(costs)
                 pareto_gate_sc_df = gate_sc_df[pareto_mask]
+                plot_pareto_line(ax, pareto_gate_sc_df["total_latency"] / 1e6, pareto_gate_sc_df["area"], color, linestyle='-')
                 ax.scatter(
                     pareto_gate_sc_df["total_latency"] / 1e6,
                     pareto_gate_sc_df["area"],
@@ -818,6 +822,7 @@ def plot_gate_acrx_bw_grid_1x3(sc_df, ntt_df, filename, poly_group, bw_list, col
                 costs_ntt = gate_ntt_df[[area_col, "total_latency"]].values
                 pareto_mask_ntt = is_pareto_efficient(costs_ntt)
                 pareto_gate_ntt_df = gate_ntt_df[pareto_mask_ntt]
+                plot_pareto_line(ax, pareto_gate_ntt_df["total_latency"] / 1e6, pareto_gate_ntt_df[area_col], color, linestyle='--')
                 ax.scatter(
                     pareto_gate_ntt_df["total_latency"] / 1e6,
                     pareto_gate_ntt_df[area_col],
